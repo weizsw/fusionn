@@ -11,6 +11,6 @@ func main() {
 	api := app.Group("/api")
 	v1 := api.Group("/v1")
 	v1.Post("/extract", processor.Extract)
-
+	v1.Post("/merge", processor.Merge)
 	app.Listen("localhost:4664")
 }

@@ -3,12 +3,15 @@ package merger
 import (
 	"bufio"
 	"fmt"
+	"fusionn/internal/consts"
+	"math"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 )
 
-func Merge() {
+func Merge() error {
 	lines1 := readFile("/Users/maverick/go/src/Github/fusionn/tmp/test.chi.srt")
 	lines2 := readFile("/Users/maverick/go/src/Github/fusionn/tmp/test.eng.srt")
 
@@ -20,6 +23,8 @@ func Merge() {
 
 	s1TsLst, s1TsCodeMap, s1TsContentMap := parseSubtitles(lines1)
 	s2TsLst, s2TsCodeMap, s2TsContentMap := parseSubtitles(lines2)
+	s1TsCodeMap = unFragment(s1TsLst, s1TsCodeMap)
+	s2TsCodeMap = unFragment(s2TsLst, s2TsCodeMap)
 
 	for {
 		if i1 >= len(s1TsLst) && i2 >= len(s2TsLst) {
@@ -67,8 +72,111 @@ func Merge() {
 		continue
 	}
 	// fmt.Println(merged)
-	writeFile(merged, "/Users/maverick/go/src/Github/fusionn/tmp/test.merged2.srt")
+	return writeFile(merged, "/Users/maverick/go/src/Github/fusionn/tmp/test.merged2.srt")
 }
+
+func unFragment(tsLst []int, tsCodeMap map[int]string) map[int]string {
+	for i := 0; i < len(tsLst)-1; i++ {
+		j := i + 1
+		if j >= len(tsLst) {
+			break
+		}
+		_, s1et := getLastThreeDigits(tsCodeMap[tsLst[i]])
+		s2st, _ := getLastThreeDigits(tsCodeMap[tsLst[j]])
+		if s1et < s2st {
+			continue
+		}
+
+		tsCodeMap[tsLst[i]] = changeEndTimeLastThreeDigits(tsCodeMap[tsLst[i]], floorToThreeDigits(s1et))
+		tsCodeMap[tsLst[j]] = changeStartTimeLastThreeDigits(tsCodeMap[tsLst[j]], ceilToThreeDigits(s2st))
+	}
+	return tsCodeMap
+}
+
+func getLastThreeDigits(timestamp string) (int, int) {
+	// Regular expression pattern to match the timestamp line
+	pattern := consts.TIME_CODE_PATTERN
+
+	// Compile the regular expression pattern
+	re := regexp.MustCompile(pattern)
+
+	// Find the matches in the timestamp string
+	matches := re.FindStringSubmatch(timestamp)
+
+	// Extract the last three digits from the start and end times
+	startLastThreeDigits, _ := strconv.Atoi(matches[4])
+	endLastThreeDigits, _ := strconv.Atoi(matches[8])
+
+	// Compare the last three digits
+	return startLastThreeDigits, endLastThreeDigits
+}
+
+func changeStartTimeLastThreeDigits(timestamp string, newDigits int) string {
+	// Regular expression pattern to match the timestamp line
+	pattern := consts.TIME_CODE_PATTERN
+
+	// Compile the regular expression pattern
+	re := regexp.MustCompile(pattern)
+
+	// Find the matches in the timestamp string
+	matches := re.FindStringSubmatch(timestamp)
+
+	// Extract the individual components from the matches
+	startHour, _ := strconv.Atoi(matches[1])
+	startMinute, _ := strconv.Atoi(matches[2])
+	startSecond, _ := strconv.Atoi(matches[3])
+	startLastThreeDigits, _ := strconv.Atoi(matches[4])
+
+	endHour, _ := strconv.Atoi(matches[5])
+	endMinute, _ := strconv.Atoi(matches[6])
+	endSecond, _ := strconv.Atoi(matches[7])
+	endLastThreeDigits, _ := strconv.Atoi(matches[8])
+
+	// Update the last three digits with the new value
+	startLastThreeDigits = newDigits
+
+	// Format the updated timestamp
+	updatedTimestamp := fmt.Sprintf("%02d:%02d:%02d,%03d --> %02d:%02d:%02d,%03d",
+		startHour, startMinute, startSecond, startLastThreeDigits,
+		endHour, endMinute, endSecond, endLastThreeDigits)
+
+	// Replace the original timestamp with the updated one in the input string
+	return re.ReplaceAllString(timestamp, updatedTimestamp)
+}
+
+func changeEndTimeLastThreeDigits(timestamp string, newDigits int) string {
+	// Regular expression pattern to match the timestamp line
+	pattern := consts.TIME_CODE_PATTERN
+
+	// Compile the regular expression pattern
+	re := regexp.MustCompile(pattern)
+
+	// Find the matches in the timestamp string
+	matches := re.FindStringSubmatch(timestamp)
+
+	// Extract the individual components from the matches
+	startHour, _ := strconv.Atoi(matches[1])
+	startMinute, _ := strconv.Atoi(matches[2])
+	startSecond, _ := strconv.Atoi(matches[3])
+	startLastThreeDigits, _ := strconv.Atoi(matches[4])
+
+	endHour, _ := strconv.Atoi(matches[5])
+	endMinute, _ := strconv.Atoi(matches[6])
+	endSecond, _ := strconv.Atoi(matches[7])
+	endLastThreeDigits, _ := strconv.Atoi(matches[8])
+
+	// Update the last three digits with the new value
+	endLastThreeDigits = newDigits
+
+	// Format the updated timestamp
+	updatedTimestamp := fmt.Sprintf("%02d:%02d:%02d,%03d --> %02d:%02d:%02d,%03d",
+		startHour, startMinute, startSecond, startLastThreeDigits,
+		endHour, endMinute, endSecond, endLastThreeDigits)
+
+	// Replace the original timestamp with the updated one in the input string
+	return re.ReplaceAllString(timestamp, updatedTimestamp)
+}
+
 func parseTimestamp(line string) (int, bool) {
 	if !strings.Contains(line, "-->") {
 		// Not a timestamp line
@@ -180,4 +288,12 @@ func writeFile(lines []string, filePath string) error {
 
 	fmt.Println("File written successfully.")
 	return nil
+}
+
+func floorToThreeDigits(num int) int {
+	return int(math.Floor(float64(num)/10.0)) * 10
+}
+
+func ceilToThreeDigits(num int) int {
+	return int(math.Ceil(float64(num)/10.0)) * 10
 }
