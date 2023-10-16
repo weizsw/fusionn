@@ -3,14 +3,27 @@ package merger
 import (
 	"bufio"
 	"fmt"
+	"fusionn/internal/consts"
+	"fusionn/internal/repository/common"
+	"log"
+	"math"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/longbridgeapp/opencc"
 )
 
-func Merge() {
-	lines1 := readFile("/Users/maverick/go/src/Github/fusionn/tmp/test.chi.srt")
-	lines2 := readFile("/Users/maverick/go/src/Github/fusionn/tmp/test.eng.srt")
+func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
+	lines1, err := readFile(zhSubPath)
+	if err != nil {
+		return err
+	}
+	lines2, err := readFile(engSubPath)
+	if err != nil {
+		return err
+	}
 
 	var (
 		i1, i2 int
@@ -18,8 +31,10 @@ func Merge() {
 	)
 	index := 1
 
-	s1TsLst, s1TsCodeMap, s1TsContentMap := parseSubtitles(lines1)
-	s2TsLst, s2TsCodeMap, s2TsContentMap := parseSubtitles(lines2)
+	s1TsLst, s1TsCodeMap, s1TsContentMap := parseSubtitles("zh", lines1)
+	s2TsLst, s2TsCodeMap, s2TsContentMap := parseSubtitles("eng", lines2)
+	s1TsCodeMap = unFragment(s1TsLst, s1TsCodeMap)
+	s2TsCodeMap = unFragment(s2TsLst, s2TsCodeMap)
 
 	for {
 		if i1 >= len(s1TsLst) && i2 >= len(s2TsLst) {
@@ -66,9 +81,112 @@ func Merge() {
 		i2++
 		continue
 	}
-	// fmt.Println(merged)
-	writeFile(merged, "/Users/maverick/go/src/Github/fusionn/tmp/test.merged2.srt")
+
+	return writeFile(merged, fmt.Sprintf("%s.zh.srt", common.ExtractPathWithoutExtension(targetPath)))
 }
+
+func unFragment(tsLst []int, tsCodeMap map[int]string) map[int]string {
+	for i := 0; i < len(tsLst)-1; i++ {
+		j := i + 1
+		if j >= len(tsLst) {
+			break
+		}
+		_, s1et := getLastThreeDigits(tsCodeMap[tsLst[i]])
+		s2st, _ := getLastThreeDigits(tsCodeMap[tsLst[j]])
+		if s1et < s2st {
+			continue
+		}
+
+		tsCodeMap[tsLst[i]] = changeEndTimeLastThreeDigits(tsCodeMap[tsLst[i]], floorToThreeDigits(s1et))
+		tsCodeMap[tsLst[j]] = changeStartTimeLastThreeDigits(tsCodeMap[tsLst[j]], ceilToThreeDigits(s2st))
+	}
+	return tsCodeMap
+}
+
+func getLastThreeDigits(timestamp string) (int, int) {
+	// Regular expression pattern to match the timestamp line
+	pattern := consts.TIME_CODE_PATTERN
+
+	// Compile the regular expression pattern
+	re := regexp.MustCompile(pattern)
+
+	// Find the matches in the timestamp string
+	matches := re.FindStringSubmatch(timestamp)
+
+	// Extract the last three digits from the start and end times
+	startLastThreeDigits, _ := strconv.Atoi(matches[4])
+	endLastThreeDigits, _ := strconv.Atoi(matches[8])
+
+	// Compare the last three digits
+	return startLastThreeDigits, endLastThreeDigits
+}
+
+func changeStartTimeLastThreeDigits(timestamp string, newDigits int) string {
+	// Regular expression pattern to match the timestamp line
+	pattern := consts.TIME_CODE_PATTERN
+
+	// Compile the regular expression pattern
+	re := regexp.MustCompile(pattern)
+
+	// Find the matches in the timestamp string
+	matches := re.FindStringSubmatch(timestamp)
+
+	// Extract the individual components from the matches
+	startHour, _ := strconv.Atoi(matches[1])
+	startMinute, _ := strconv.Atoi(matches[2])
+	startSecond, _ := strconv.Atoi(matches[3])
+	startLastThreeDigits, _ := strconv.Atoi(matches[4])
+
+	endHour, _ := strconv.Atoi(matches[5])
+	endMinute, _ := strconv.Atoi(matches[6])
+	endSecond, _ := strconv.Atoi(matches[7])
+	endLastThreeDigits, _ := strconv.Atoi(matches[8])
+
+	// Update the last three digits with the new value
+	startLastThreeDigits = newDigits
+
+	// Format the updated timestamp
+	updatedTimestamp := fmt.Sprintf("%02d:%02d:%02d,%03d --> %02d:%02d:%02d,%03d",
+		startHour, startMinute, startSecond, startLastThreeDigits,
+		endHour, endMinute, endSecond, endLastThreeDigits)
+
+	// Replace the original timestamp with the updated one in the input string
+	return re.ReplaceAllString(timestamp, updatedTimestamp)
+}
+
+func changeEndTimeLastThreeDigits(timestamp string, newDigits int) string {
+	// Regular expression pattern to match the timestamp line
+	pattern := consts.TIME_CODE_PATTERN
+
+	// Compile the regular expression pattern
+	re := regexp.MustCompile(pattern)
+
+	// Find the matches in the timestamp string
+	matches := re.FindStringSubmatch(timestamp)
+
+	// Extract the individual components from the matches
+	startHour, _ := strconv.Atoi(matches[1])
+	startMinute, _ := strconv.Atoi(matches[2])
+	startSecond, _ := strconv.Atoi(matches[3])
+	startLastThreeDigits, _ := strconv.Atoi(matches[4])
+
+	endHour, _ := strconv.Atoi(matches[5])
+	endMinute, _ := strconv.Atoi(matches[6])
+	endSecond, _ := strconv.Atoi(matches[7])
+	endLastThreeDigits, _ := strconv.Atoi(matches[8])
+
+	// Update the last three digits with the new value
+	endLastThreeDigits = newDigits
+
+	// Format the updated timestamp
+	updatedTimestamp := fmt.Sprintf("%02d:%02d:%02d,%03d --> %02d:%02d:%02d,%03d",
+		startHour, startMinute, startSecond, startLastThreeDigits,
+		endHour, endMinute, endSecond, endLastThreeDigits)
+
+	// Replace the original timestamp with the updated one in the input string
+	return re.ReplaceAllString(timestamp, updatedTimestamp)
+}
+
 func parseTimestamp(line string) (int, bool) {
 	if !strings.Contains(line, "-->") {
 		// Not a timestamp line
@@ -93,11 +211,14 @@ func parseTimestamp(line string) (int, bool) {
 	return totalMillis, true
 }
 
-func parseSubtitles(lines []string) ([]int, map[int]string, map[int]string) {
+func parseSubtitles(lan string, lines []string) ([]int, map[int]string, map[int]string) {
 	var timestamps []int
 	tsCodeMap := make(map[int]string)
 	tsContentMap := make(map[int]string)
-
+	t2s, err := opencc.New("t2s")
+	if err != nil {
+		log.Fatal(err)
+	}
 	for i := 0; i < len(lines); i++ {
 		ts, ok := parseTimestamp(lines[i])
 		if !ok {
@@ -113,6 +234,14 @@ func parseSubtitles(lines []string) ([]int, map[int]string, map[int]string) {
 			if len(strings.TrimSpace(lines[i])) == 0 {
 				break
 			}
+			if lan == "zh" {
+				out, err := t2s.Convert(lines[i])
+				if err != nil {
+					log.Fatal(err)
+				}
+				tsContentMap[ts] += out
+				continue
+			}
 			tsContentMap[ts] += lines[i]
 		}
 		i++
@@ -122,12 +251,12 @@ func parseSubtitles(lines []string) ([]int, map[int]string, map[int]string) {
 	return timestamps, tsCodeMap, tsContentMap
 }
 
-func readFile(filePath string) []string {
+func readFile(filePath string) ([]string, error) {
 	// Open the file
 	file, err := os.Open(filePath)
 	if err != nil {
-		fmt.Println("Error opening file:", err)
-		return nil
+		log.Println("Error opening file:", err)
+		return nil, err
 	}
 	defer file.Close()
 
@@ -143,18 +272,18 @@ func readFile(filePath string) []string {
 
 	// Check for any scanning errors
 	if err := scanner.Err(); err != nil {
-		fmt.Println("Error scanning file:", err)
-		return nil
+		log.Println("Error scanning file:", err)
+		return nil, err
 	}
 
-	return lines
+	return lines, nil
 }
 
 func writeFile(lines []string, filePath string) error {
 	// Open the file for writing
 	file, err := os.Create(filePath)
 	if err != nil {
-		fmt.Println("Error creating file:", err)
+		log.Println("Error creating file:", err)
 		return err
 	}
 	defer file.Close()
@@ -166,7 +295,7 @@ func writeFile(lines []string, filePath string) error {
 	for _, line := range lines {
 		_, err := writer.WriteString(line + "\n")
 		if err != nil {
-			fmt.Println("Error writing line:", err)
+			log.Println("Error writing line:", err)
 			return err
 		}
 	}
@@ -174,10 +303,18 @@ func writeFile(lines []string, filePath string) error {
 	// Flush the writer to ensure all data is written to the file
 	err = writer.Flush()
 	if err != nil {
-		fmt.Println("Error flushing writer:", err)
+		log.Println("Error flushing writer:", err)
 		return err
 	}
 
-	fmt.Println("File written successfully.")
+	log.Println("File written successfully:", filePath)
 	return nil
+}
+
+func floorToThreeDigits(num int) int {
+	return int(math.Floor(float64(num)/10.0)) * 10
+}
+
+func ceilToThreeDigits(num int) int {
+	return int(math.Ceil(float64(num)/10.0)) * 10
 }

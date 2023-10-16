@@ -1,3 +1,5 @@
 *.mkv
 *.srt
 *.ass
+main.go
+.vscode/
