@@ -74,3 +74,10 @@ type Stream struct {
 		StatisticsTags       string `json:"_STATISTICS_TAGS"`
 	} `json:"tags"`
 }
+
+type ExtractData struct {
+	FileName   string
+	EngSubPath string
+	CHSSubPath string
+	CHTSubPath string
+}

@@ -4,16 +4,26 @@ import (
 	"bufio"
 	"fmt"
 	"fusionn/internal/consts"
+	"fusionn/internal/repository/common"
+	"log"
 	"math"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/longbridgeapp/opencc"
 )
 
-func Merge() error {
-	lines1 := readFile("/Users/maverick/go/src/Github/fusionn/tmp/test.chi.srt")
-	lines2 := readFile("/Users/maverick/go/src/Github/fusionn/tmp/test.eng.srt")
+func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
+	lines1, err := readFile(zhSubPath)
+	if err != nil {
+		return err
+	}
+	lines2, err := readFile(engSubPath)
+	if err != nil {
+		return err
+	}
 
 	var (
 		i1, i2 int
@@ -21,8 +31,8 @@ func Merge() error {
 	)
 	index := 1
 
-	s1TsLst, s1TsCodeMap, s1TsContentMap := parseSubtitles(lines1)
-	s2TsLst, s2TsCodeMap, s2TsContentMap := parseSubtitles(lines2)
+	s1TsLst, s1TsCodeMap, s1TsContentMap := parseSubtitles("zh", lines1)
+	s2TsLst, s2TsCodeMap, s2TsContentMap := parseSubtitles("eng", lines2)
 	s1TsCodeMap = unFragment(s1TsLst, s1TsCodeMap)
 	s2TsCodeMap = unFragment(s2TsLst, s2TsCodeMap)
 
@@ -71,8 +81,8 @@ func Merge() error {
 		i2++
 		continue
 	}
-	// fmt.Println(merged)
-	return writeFile(merged, "/Users/maverick/go/src/Github/fusionn/tmp/test.merged2.srt")
+
+	return writeFile(merged, fmt.Sprintf("%s.zh.srt", common.ExtractPathWithoutExtension(targetPath)))
 }
 
 func unFragment(tsLst []int, tsCodeMap map[int]string) map[int]string {
@@ -201,7 +211,7 @@ func parseTimestamp(line string) (int, bool) {
 	return totalMillis, true
 }
 
-func parseSubtitles(lines []string) ([]int, map[int]string, map[int]string) {
+func parseSubtitles(lan string, lines []string) ([]int, map[int]string, map[int]string) {
 	var timestamps []int
 	tsCodeMap := make(map[int]string)
 	tsContentMap := make(map[int]string)
@@ -221,6 +231,18 @@ func parseSubtitles(lines []string) ([]int, map[int]string, map[int]string) {
 			if len(strings.TrimSpace(lines[i])) == 0 {
 				break
 			}
+			if lan == "zh" {
+				t2s, err := opencc.New("t2s")
+				if err != nil {
+					log.Fatal(err)
+				}
+				out, err := t2s.Convert(lines[i])
+				if err != nil {
+					log.Fatal(err)
+				}
+				tsContentMap[ts] += out
+				continue
+			}
 			tsContentMap[ts] += lines[i]
 		}
 		i++
@@ -230,12 +252,12 @@ func parseSubtitles(lines []string) ([]int, map[int]string, map[int]string) {
 	return timestamps, tsCodeMap, tsContentMap
 }
 
-func readFile(filePath string) []string {
+func readFile(filePath string) ([]string, error) {
 	// Open the file
 	file, err := os.Open(filePath)
 	if err != nil {
-		fmt.Println("Error opening file:", err)
-		return nil
+		log.Println("Error opening file:", err)
+		return nil, err
 	}
 	defer file.Close()
 
@@ -251,18 +273,18 @@ func readFile(filePath string) []string {
 
 	// Check for any scanning errors
 	if err := scanner.Err(); err != nil {
-		fmt.Println("Error scanning file:", err)
-		return nil
+		log.Println("Error scanning file:", err)
+		return nil, err
 	}
 
-	return lines
+	return lines, nil
 }
 
 func writeFile(lines []string, filePath string) error {
 	// Open the file for writing
 	file, err := os.Create(filePath)
 	if err != nil {
-		fmt.Println("Error creating file:", err)
+		log.Println("Error creating file:", err)
 		return err
 	}
 	defer file.Close()
@@ -274,7 +296,7 @@ func writeFile(lines []string, filePath string) error {
 	for _, line := range lines {
 		_, err := writer.WriteString(line + "\n")
 		if err != nil {
-			fmt.Println("Error writing line:", err)
+			log.Println("Error writing line:", err)
 			return err
 		}
 	}
@@ -282,11 +304,11 @@ func writeFile(lines []string, filePath string) error {
 	// Flush the writer to ensure all data is written to the file
 	err = writer.Flush()
 	if err != nil {
-		fmt.Println("Error flushing writer:", err)
+		log.Println("Error flushing writer:", err)
 		return err
 	}
 
-	fmt.Println("File written successfully.")
+	log.Println("File written successfully:", filePath)
 	return nil
 }
 

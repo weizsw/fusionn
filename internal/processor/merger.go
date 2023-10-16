@@ -14,5 +14,5 @@ func Merge(c *fiber.Ctx) error {
 		return err
 	}
 	fmt.Println(req.SonarrEpisodefilePath)
-	return merger.Merge()
+	return merger.Merge("", "", "", "")
 }

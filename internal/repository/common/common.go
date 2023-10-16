@@ -3,7 +3,9 @@ package common
 import (
 	"fmt"
 	"fusionn/internal/consts"
+	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -11,7 +13,7 @@ import (
 func GetTmpSubtitleFullPath(filename string) (string, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
-		fmt.Println("Error:", err)
+		log.Println("Error:", err)
 		return "", err
 	}
 	return fmt.Sprintf("%s%s%s.srt", currentDir, consts.TMP_DIR, filename), nil
@@ -27,8 +29,22 @@ func ExtractFilenameWithoutExtension(path string) string {
 	return filenameWithoutExtension
 }
 
+func GetFilenameWithoutExtension(filepath string) string {
+	filename := path.Base(filepath)
+	extension := path.Ext(filename)
+	return filename[:len(filename)-len(extension)]
+}
+
+func ExtractPathWithoutExtension(filePath string) string {
+	dir, file := filepath.Split(filePath)
+	extension := filepath.Ext(file)
+	fileWithoutExtension := strings.TrimSuffix(file, extension)
+	pathWithoutExtension := filepath.Join(dir, fileWithoutExtension)
+	return pathWithoutExtension
+}
+
 func IsCHS(lan string, title string) bool {
-	return (lan == consts.CHS_LAN) && (title == consts.CHS_TITLE)
+	return (lan == consts.CHS_LAN || lan == consts.CHI_LAN) && (title == consts.CHS_TITLE)
 }
 
 func IsCHT(lan string, title string) bool {

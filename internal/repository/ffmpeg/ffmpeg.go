@@ -5,26 +5,32 @@ import (
 	"fmt"
 	"fusionn/internal/entity"
 	"fusionn/internal/repository/common"
+	"log"
 	"os"
 	"os/exec"
 )
 
-func ExtractSubtitles(videoPath string) error {
+func ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
 	ffprobePath, err := exec.LookPath("ffprobe")
 	if err != nil {
-		return fmt.Errorf("ffprobe not found: %v", err)
+		return nil, fmt.Errorf("ffprobe not found: %v", err)
 	}
 
 	cmd := exec.Command(ffprobePath, "-i", videoPath, "-v", "quiet", "-print_format", "json", "-show_streams")
 	output, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("failed to run ffprobe: %v", err)
+		return nil, fmt.Errorf("failed to run ffprobe: %v", err)
 	}
 
 	var ffprobeData entity.FFprobeData
 	err = json.Unmarshal(output, &ffprobeData)
 	if err != nil {
-		return fmt.Errorf("failed to parse ffprobe output: %v", err)
+		return nil, fmt.Errorf("failed to parse ffprobe output: %v", err)
+	}
+
+	filename := common.GetFilenameWithoutExtension(videoPath)
+	extractData := &entity.ExtractData{
+		FileName: filename,
 	}
 
 	for _, stream := range ffprobeData.Streams {
@@ -37,21 +43,28 @@ func ExtractSubtitles(videoPath string) error {
 
 		subtitlePath, err := common.GetTmpSubtitleFullPath(common.ExtractFilenameWithoutExtension(videoPath) + "." + stream.Tags.Language)
 		if err != nil {
-			fmt.Printf("Failed to get subtitle path: %v\n", err)
+			log.Printf("Failed to get subtitle path: %v\n", err)
 			continue
 		}
-		fmt.Println(subtitlePath)
+
+		if common.IsEng(stream.Tags.Language, stream.Tags.Title) {
+			extractData.EngSubPath = subtitlePath
+		}
+		if common.IsCHS(stream.Tags.Language, stream.Tags.Title) {
+			extractData.CHSSubPath = subtitlePath
+		}
+		if common.IsCHT(stream.Tags.Language, stream.Tags.Title) {
+			extractData.CHTSubPath = subtitlePath
+		}
 		err = ExtractSubtitleStream(videoPath, subtitlePath, stream.Index)
 		if err != nil {
-			fmt.Printf("Failed to extract subtitle stream %d: %v\n", stream.Index, err)
+			log.Printf("Failed to extract subtitle stream %d: %v\n", stream.Index, err)
 		} else {
-			fmt.Printf("Subtitle stream %d extracted successfully: %s\n", stream.Index, subtitlePath)
+			log.Printf("Subtitle stream %d extracted successfully: %s\n", stream.Index, subtitlePath)
 		}
-		fmt.Println(stream.Index, stream.Tags.Language, stream.Tags.Title)
-
 	}
 
-	return nil
+	return extractData, nil
 }
 
 func ExtractSubtitleStream(videoPath, subtitlePath string, streamIndex int) error {

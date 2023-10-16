@@ -7,7 +7,7 @@ const (
 	ENG_TITLE         = ""
 	CHT_LAN           = "cht"
 	CHI_LAN           = "chi"
-	CHS_LAN           = "chi"
+	CHS_LAN           = "chs"
 	ENG_LAN           = "eng"
 	TIME_CODE_PATTERN = `(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})`
 )
