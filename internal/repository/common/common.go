@@ -44,11 +44,11 @@ func ExtractPathWithoutExtension(filePath string) string {
 }
 
 func IsCHS(lan string, title string) bool {
-	return (lan == consts.CHS_LAN || lan == consts.CHI_LAN) && (title == consts.CHS_TITLE)
+	return (lan == consts.CHS_LAN || lan == consts.CHI_LAN) && (title == consts.CHS_TITLE || title == consts.CHS_TITLE_II)
 }
 
 func IsCHT(lan string, title string) bool {
-	return (lan == consts.CHT_LAN || lan == consts.CHI_LAN) && (title == consts.CHT_TITLE)
+	return (lan == consts.CHT_LAN || lan == consts.CHI_LAN) && (title == consts.CHT_TITLE || title == consts.CHT_TITLE_II)
 }
 
 func IsEng(lan string, title string) bool {
