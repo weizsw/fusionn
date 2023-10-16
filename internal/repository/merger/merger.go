@@ -215,7 +215,10 @@ func parseSubtitles(lan string, lines []string) ([]int, map[int]string, map[int]
 	var timestamps []int
 	tsCodeMap := make(map[int]string)
 	tsContentMap := make(map[int]string)
-
+	t2s, err := opencc.New("t2s")
+	if err != nil {
+		log.Fatal(err)
+	}
 	for i := 0; i < len(lines); i++ {
 		ts, ok := parseTimestamp(lines[i])
 		if !ok {
@@ -232,10 +235,6 @@ func parseSubtitles(lan string, lines []string) ([]int, map[int]string, map[int]
 				break
 			}
 			if lan == "zh" {
-				t2s, err := opencc.New("t2s")
-				if err != nil {
-					log.Fatal(err)
-				}
 				out, err := t2s.Convert(lines[i])
 				if err != nil {
 					log.Fatal(err)
