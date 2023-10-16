@@ -3,6 +3,7 @@ package ffmpeg
 import (
 	"encoding/json"
 	"fmt"
+	"fusionn/internal/consts"
 	"fusionn/internal/entity"
 	"fusionn/internal/repository/common"
 	"log"
@@ -51,6 +52,7 @@ func ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
 			extractData.EngSubPath = subtitlePath
 		}
 		if common.IsCHS(stream.Tags.Language, stream.Tags.Title) {
+			subtitlePath, _ = common.GetTmpSubtitleFullPath(common.ExtractFilenameWithoutExtension(videoPath) + "." + consts.CHS_LAN)
 			extractData.CHSSubPath = subtitlePath
 		}
 		if common.IsCHT(stream.Tags.Language, stream.Tags.Title) {

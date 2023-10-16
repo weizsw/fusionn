@@ -30,7 +30,7 @@ func Extract(c *fiber.Ctx) error {
 		if err != nil {
 			return err
 		}
-		return nil
+		return c.SendString("success")
 	}
 
 	if extractedData.CHTSubPath != "" && extractedData.EngSubPath != "" {
@@ -38,8 +38,8 @@ func Extract(c *fiber.Ctx) error {
 		if err != nil {
 			return err
 		}
-		return nil
+		return c.SendString("success")
 	}
-
-	return errors.New("no subtitle found")
+	log.Println("no subtitles found")
+	return errors.New("no subtitles found")
 }

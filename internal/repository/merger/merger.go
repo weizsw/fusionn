@@ -1,13 +1,10 @@
 package merger
 
 import (
-	"bufio"
 	"fmt"
 	"fusionn/internal/consts"
 	"fusionn/internal/repository/common"
 	"log"
-	"math"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,11 +13,11 @@ import (
 )
 
 func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
-	lines1, err := readFile(zhSubPath)
+	lines1, err := common.ReadFile(zhSubPath)
 	if err != nil {
 		return err
 	}
-	lines2, err := readFile(engSubPath)
+	lines2, err := common.ReadFile(engSubPath)
 	if err != nil {
 		return err
 	}
@@ -82,7 +79,7 @@ func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
 		continue
 	}
 
-	return writeFile(merged, fmt.Sprintf("%s.zh.srt", common.ExtractPathWithoutExtension(targetPath)))
+	return common.WriteFile(merged, fmt.Sprintf("%s.zh.srt", common.ExtractPathWithoutExtension(targetPath)))
 }
 
 func unFragment(tsLst []int, tsCodeMap map[int]string) map[int]string {
@@ -97,8 +94,8 @@ func unFragment(tsLst []int, tsCodeMap map[int]string) map[int]string {
 			continue
 		}
 
-		tsCodeMap[tsLst[i]] = changeEndTimeLastThreeDigits(tsCodeMap[tsLst[i]], floorToThreeDigits(s1et))
-		tsCodeMap[tsLst[j]] = changeStartTimeLastThreeDigits(tsCodeMap[tsLst[j]], ceilToThreeDigits(s2st))
+		tsCodeMap[tsLst[i]] = changeEndTimeLastThreeDigits(tsCodeMap[tsLst[i]], common.Floor(s1et))
+		tsCodeMap[tsLst[j]] = changeStartTimeLastThreeDigits(tsCodeMap[tsLst[j]], common.Ceil(s2st))
 	}
 	return tsCodeMap
 }
@@ -212,7 +209,7 @@ func parseTimestamp(line string) (int, bool) {
 }
 
 func parseSubtitles(lan string, lines []string) ([]int, map[int]string, map[int]string) {
-	var timestamps []int
+	timestamps := []int{}
 	tsCodeMap := make(map[int]string)
 	tsContentMap := make(map[int]string)
 	t2s, err := opencc.New("t2s")
@@ -251,70 +248,20 @@ func parseSubtitles(lan string, lines []string) ([]int, map[int]string, map[int]
 	return timestamps, tsCodeMap, tsContentMap
 }
 
-func readFile(filePath string) ([]string, error) {
-	// Open the file
-	file, err := os.Open(filePath)
-	if err != nil {
-		log.Println("Error opening file:", err)
-		return nil, err
-	}
-	defer file.Close()
+func replaceStartTimestamp(timeStr string) string {
+	pattern := consts.TIME_CODE_PATTERN_II
+	replacement := `${1}999 --> ${3}`
 
-	// Create a scanner to read the file line by line
-	scanner := bufio.NewScanner(file)
-
-	// Read the file line by line and store in a []string slice
-	var lines []string
-	for scanner.Scan() {
-		line := scanner.Text()
-		lines = append(lines, line)
-	}
-
-	// Check for any scanning errors
-	if err := scanner.Err(); err != nil {
-		log.Println("Error scanning file:", err)
-		return nil, err
-	}
-
-	return lines, nil
+	re := regexp.MustCompile(pattern)
+	modifiedTimeStr := re.ReplaceAllString(timeStr, replacement)
+	return modifiedTimeStr
 }
 
-func writeFile(lines []string, filePath string) error {
-	// Open the file for writing
-	file, err := os.Create(filePath)
-	if err != nil {
-		log.Println("Error creating file:", err)
-		return err
-	}
-	defer file.Close()
+func replaceEndTimestamp(timeStr string) string {
+	pattern := consts.TIME_CODE_PATTERN_III
+	replacement := `${1} --> ${2}998`
 
-	// Create a buffered writer
-	writer := bufio.NewWriter(file)
-
-	// Write each line to the file
-	for _, line := range lines {
-		_, err := writer.WriteString(line + "\n")
-		if err != nil {
-			log.Println("Error writing line:", err)
-			return err
-		}
-	}
-
-	// Flush the writer to ensure all data is written to the file
-	err = writer.Flush()
-	if err != nil {
-		log.Println("Error flushing writer:", err)
-		return err
-	}
-
-	log.Println("File written successfully:", filePath)
-	return nil
-}
-
-func floorToThreeDigits(num int) int {
-	return int(math.Floor(float64(num)/10.0)) * 10
-}
-
-func ceilToThreeDigits(num int) int {
-	return int(math.Ceil(float64(num)/10.0)) * 10
+	re := regexp.MustCompile(pattern)
+	modifiedTimeStr := re.ReplaceAllString(timeStr, replacement)
+	return modifiedTimeStr
 }
