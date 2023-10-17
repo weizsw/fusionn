@@ -3,3 +3,4 @@
 *.ass
 main.go
 .vscode/
+.DS_Store
