@@ -79,7 +79,7 @@ func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
 		continue
 	}
 
-	return common.WriteFile(merged, fmt.Sprintf("%s.zh.srt", common.ExtractPathWithoutExtension(targetPath)))
+	return common.WriteFile(merged, fmt.Sprintf("%s.%s.srt", common.ExtractPathWithoutExtension(targetPath), consts.CHI_LAN))
 }
 
 func unFragment(tsLst []int, tsCodeMap map[int]string) map[int]string {

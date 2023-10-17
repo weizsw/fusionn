@@ -7,7 +7,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -30,12 +29,6 @@ func ExtractFilenameWithoutExtension(path string) string {
 	filenameWithoutExtension := strings.TrimSuffix(filename, extension)
 
 	return filenameWithoutExtension
-}
-
-func GetFilenameWithoutExtension(filepath string) string {
-	filename := path.Base(filepath)
-	extension := path.Ext(filename)
-	return filename[:len(filename)-len(extension)]
 }
 
 func ExtractPathWithoutExtension(filePath string) string {

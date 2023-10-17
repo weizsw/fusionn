@@ -29,7 +29,7 @@ func ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
 		return nil, fmt.Errorf("failed to parse ffprobe output: %v", err)
 	}
 
-	filename := common.GetFilenameWithoutExtension(videoPath)
+	filename := common.ExtractFilenameWithoutExtension(videoPath)
 	extractData := &entity.ExtractData{
 		FileName: filename,
 	}
