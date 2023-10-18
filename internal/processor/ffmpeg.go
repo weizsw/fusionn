@@ -82,6 +82,11 @@ func Extract(c *fiber.Ctx) error {
 	}
 
 	index := 0
+	originalASS.Styles["Default"].InlineStyle.SSAFontName = "方正黑体_GBK"
+	originalASS.Items[index].InlineStyle.SSAEffect = "test"
+	originalASS.Items[index].Lines = append(originalASS.Items[index].Lines, astisub.Line{
+		VoiceName: "test",
+	})
 	for {
 		if index >= len(originalASS.Items) {
 			break
@@ -101,15 +106,15 @@ func Extract(c *fiber.Ctx) error {
 		log.Println(err)
 	}
 
-	tmpPath, err := common.GetTmpDirPath()
-	if err != nil {
-		return err
-	}
+	// tmpPath, err := common.GetTmpDirPath()
+	// if err != nil {
+	// 	return err
+	// }
 
-	err = common.DeleteFilesInDirectory(tmpPath)
-	if err != nil {
-		return err
-	}
+	// err = common.DeleteFilesInDirectory(tmpPath)
+	// if err != nil {
+	// 	return err
+	// }
 
 	return c.SendString("success")
 

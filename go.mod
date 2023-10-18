@@ -2,6 +2,8 @@ module fusionn
 
 go 1.20
 
+// replace github.com/asticode/go-astisub => ../go-astisub
+
 require (
 	github.com/asticode/go-astisub v0.26.0
 	github.com/gofiber/fiber/v2 v2.49.2
