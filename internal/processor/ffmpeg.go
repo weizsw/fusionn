@@ -106,15 +106,15 @@ func Extract(c *fiber.Ctx) error {
 		log.Println(err)
 	}
 
-	// tmpPath, err := common.GetTmpDirPath()
-	// if err != nil {
-	// 	return err
-	// }
+	tmpPath, err := common.GetTmpDirPath()
+	if err != nil {
+		return err
+	}
 
-	// err = common.DeleteFilesInDirectory(tmpPath)
-	// if err != nil {
-	// 	return err
-	// }
+	err = common.DeleteFilesInDirectory(tmpPath)
+	if err != nil {
+		return err
+	}
 
 	return c.SendString("success")
 
