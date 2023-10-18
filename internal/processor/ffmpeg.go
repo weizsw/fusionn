@@ -75,7 +75,10 @@ func Extract(c *fiber.Ctx) error {
 		return err
 	}
 	tmpSubtitlePath := common.ExtractPathWithoutExtension(subtitlePath) + ".tmp.ass"
-	dualSubSRT.Write(tmpSubtitlePath)
+	err = dualSubSRT.Write(tmpSubtitlePath)
+	if err != nil {
+		return err
+	}
 	dualSubASS, err := astisub.OpenFile(tmpSubtitlePath)
 	if err != nil {
 		return err
