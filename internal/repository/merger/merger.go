@@ -42,6 +42,7 @@ func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
 			index++
 			merged = append(merged, s2TsCodeMap[s2TsLst[i2]])
 			merged = append(merged, s2TsContentMap[s2TsLst[i2]])
+			merged = append(merged, "")
 			i2++
 			continue
 		}
@@ -50,7 +51,9 @@ func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
 			index++
 			merged = append(merged, s1TsCodeMap[s1TsLst[i1]])
 			merged = append(merged, s1TsContentMap[s1TsLst[i1]])
+			merged = append(merged, "")
 			i1++
+
 			continue
 		}
 		if s1TsLst[i1]-s2TsLst[i2] <= 1000 && s1TsLst[i1]-s2TsLst[i2] >= -1000 {
@@ -59,6 +62,7 @@ func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
 			merged = append(merged, s1TsCodeMap[s1TsLst[i1]])
 			merged = append(merged, s1TsContentMap[s1TsLst[i1]])
 			merged = append(merged, s2TsContentMap[s2TsLst[i2]])
+			merged = append(merged, "")
 			i1++
 			i2++
 			continue
@@ -68,6 +72,7 @@ func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
 			index++
 			merged = append(merged, s1TsCodeMap[s1TsLst[i1]])
 			merged = append(merged, s1TsContentMap[s1TsLst[i1]])
+			merged = append(merged, "")
 			i1++
 			continue
 		}
@@ -75,6 +80,7 @@ func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
 		index++
 		merged = append(merged, s2TsCodeMap[s2TsLst[i2]])
 		merged = append(merged, s2TsContentMap[s2TsLst[i2]])
+		merged = append(merged, "")
 		i2++
 		continue
 	}
