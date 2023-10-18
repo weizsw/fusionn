@@ -91,7 +91,7 @@ func ConvertSubtitleToAss(subtitlePath, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("ffmpeg not found: %v", err)
 	}
-	cmd := exec.Command(ffmpegPath, "-i", "-v", "quiet", subtitlePath, outputPath)
+	cmd := exec.Command(ffmpegPath, "-i", subtitlePath, outputPath, "-v", "quiet")
 	cmd.Stderr = os.Stderr
 
 	err = cmd.Run()
