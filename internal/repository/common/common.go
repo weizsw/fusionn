@@ -20,6 +20,16 @@ func GetTmpSubtitleFullPath(filename string) (string, error) {
 	}
 	return fmt.Sprintf("%s%s%s.srt", currentDir, consts.TMP_DIR, filename), nil
 }
+
+func GetTmpDirPath() (string, error) {
+	currentDir, err := os.Getwd()
+	if err != nil {
+		log.Println("Error:", err)
+		return "", err
+	}
+	return fmt.Sprintf("%s%s", currentDir, consts.TMP_DIR), nil
+}
+
 func ExtractFilenameWithoutExtension(path string) string {
 	// Get the base filename from the path
 	filename := filepath.Base(path)
@@ -125,5 +135,42 @@ func WriteFile(lines []string, filePath string) error {
 	}
 
 	log.Println("File written successfully:", filePath)
+	return nil
+}
+
+func GetFullPathWithoutExtension(path string) string {
+	// Get the base name of the file
+	filename := filepath.Base(path)
+
+	// Remove the extension from the filename
+	extension := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, extension)
+
+	// Get the directory path
+	dir := filepath.Dir(path)
+
+	// Join the directory path and the base filename without extension
+	fullPath := filepath.Join(dir, base)
+
+	return fullPath
+}
+
+func DeleteFilesInDirectory(dirPath string) error {
+	files, err := os.ReadDir(dirPath)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		if !file.IsDir() {
+			filePath := filepath.Join(dirPath, file.Name())
+			err := os.Remove(filePath)
+			if err != nil {
+				return err
+			}
+			log.Printf("Deleted file: %s\n", filePath)
+		}
+	}
+
 	return nil
 }
