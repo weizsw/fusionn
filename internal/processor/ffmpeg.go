@@ -90,7 +90,7 @@ func Extract(c *fiber.Ctx) error {
 		originalASS.Items[index].EndAt = dualSubASS.Items[index].EndAt
 		index++
 	}
-	dstpath := common.ExtractPathWithoutExtension(req.SonarrEpisodefilePath) + "chi.ass"
+	dstpath := common.ExtractPathWithoutExtension(req.SonarrEpisodefilePath) + ".chi.ass"
 	err = originalASS.Write(dstpath)
 	if err != nil {
 		return err
