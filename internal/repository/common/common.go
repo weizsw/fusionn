@@ -50,15 +50,15 @@ func ExtractPathWithoutExtension(filePath string) string {
 }
 
 func IsCHS(lan string, title string) bool {
-	return (lan == consts.CHS_LAN || lan == consts.CHI_LAN) && (title == consts.CHS_TITLE || title == consts.CHS_TITLE_II)
+	return (lan == consts.CHS_LAN || lan == consts.CHI_LAN) && (title == consts.CHS_TITLE || title == consts.CHS_TITLE_II || title == consts.CHS_TITLE_III)
 }
 
 func IsCHT(lan string, title string) bool {
-	return (lan == consts.CHT_LAN || lan == consts.CHI_LAN) && (title == consts.CHT_TITLE || title == consts.CHT_TITLE_II)
+	return (lan == consts.CHT_LAN || lan == consts.CHI_LAN) && (title == consts.CHT_TITLE || title == consts.CHT_TITLE_II || title == consts.CHT_TITLE_III)
 }
 
 func IsEng(lan string, title string) bool {
-	return (lan == consts.ENG_LAN) && (title == consts.ENG_TITLE || title == consts.ENG_TITLE_II)
+	return (lan == consts.ENG_LAN) && (title == consts.ENG_TITLE || title == consts.ENG_TITLE_II || title == consts.ENG_TITLE_III)
 }
 
 func Floor(num int) int {

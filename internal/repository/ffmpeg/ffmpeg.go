@@ -48,7 +48,7 @@ func ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
 			continue
 		}
 
-		if common.IsEng(stream.Tags.Language, stream.Tags.Title) {
+		if common.IsEng(stream.Tags.Language, stream.Tags.Title) && len(extractData.EngSubPath) == 0 {
 			extractData.EngSubPath = subtitlePath
 		}
 		if common.IsCHS(stream.Tags.Language, stream.Tags.Title) {
