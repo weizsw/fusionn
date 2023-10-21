@@ -155,7 +155,7 @@ func GetFullPathWithoutExtension(path string) string {
 	return fullPath
 }
 
-func DeleteFilesInDirectory(dirPath string) error {
+func DeleteFilesInDirectory(dirPath, fileName string) error {
 	files, err := os.ReadDir(dirPath)
 	if err != nil {
 		return err
@@ -164,6 +164,9 @@ func DeleteFilesInDirectory(dirPath string) error {
 	for _, file := range files {
 		if !file.IsDir() {
 			filePath := filepath.Join(dirPath, file.Name())
+			if !strings.Contains(filePath, fileName) {
+				continue
+			}
 			err := os.Remove(filePath)
 			if err != nil {
 				return err

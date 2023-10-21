@@ -114,7 +114,7 @@ func Extract(c *fiber.Ctx) error {
 		return err
 	}
 
-	err = common.DeleteFilesInDirectory(tmpPath)
+	err = common.DeleteFilesInDirectory(tmpPath, extractedData.FileName)
 	if err != nil {
 		return err
 	}
