@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -50,11 +51,15 @@ func ExtractPathWithoutExtension(filePath string) string {
 }
 
 func IsCHS(lan string, title string) bool {
-	return (lan == consts.CHS_LAN || lan == consts.CHI_LAN) && (title == consts.CHS_TITLE || title == consts.CHS_TITLE_II || title == consts.CHS_TITLE_III)
+	var simplifiedRegex = regexp.MustCompile(`(?i)(simplified|简体|简)`)
+	isCHSTitle := simplifiedRegex.MatchString(title)
+	return (lan == consts.CHS_LAN || lan == consts.CHI_LAN) && isCHSTitle
 }
 
 func IsCHT(lan string, title string) bool {
-	return (lan == consts.CHT_LAN || lan == consts.CHI_LAN) && (title == consts.CHT_TITLE || title == consts.CHT_TITLE_II || title == consts.CHT_TITLE_III)
+	var traditionalRegex = regexp.MustCompile(`(?i)(traditional|繁體|繁)`)
+	isCHTTitle := traditionalRegex.MatchString(title)
+	return (lan == consts.CHT_LAN || lan == consts.CHI_LAN) && isCHTTitle
 }
 
 func IsEng(lan string, title string) bool {
