@@ -29,7 +29,7 @@ func ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
 		return nil, fmt.Errorf("failed to parse ffprobe output: %v", err)
 	}
 
-	filename := common.GetFilenameWithoutExtension(videoPath)
+	filename := common.ExtractFilenameWithoutExtension(videoPath)
 	extractData := &entity.ExtractData{
 		FileName: filename,
 	}
@@ -48,7 +48,7 @@ func ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
 			continue
 		}
 
-		if common.IsEng(stream.Tags.Language, stream.Tags.Title) {
+		if common.IsEng(stream.Tags.Language, stream.Tags.Title) && len(extractData.EngSubPath) == 0 {
 			extractData.EngSubPath = subtitlePath
 		}
 		if common.IsCHS(stream.Tags.Language, stream.Tags.Title) {
@@ -91,7 +91,7 @@ func ConvertSubtitleToAss(subtitlePath, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("ffmpeg not found: %v", err)
 	}
-	cmd := exec.Command(ffmpegPath, "-i", subtitlePath, outputPath)
+	cmd := exec.Command(ffmpegPath, "-i", subtitlePath, outputPath, "-v", "quiet")
 	cmd.Stderr = os.Stderr
 
 	err = cmd.Run()

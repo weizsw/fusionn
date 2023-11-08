@@ -12,7 +12,7 @@ import (
 	"github.com/longbridgeapp/opencc"
 )
 
-func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
+func Merge(filename, zhSubPath, engSubPath string) error {
 	lines1, err := common.ReadFile(zhSubPath)
 	if err != nil {
 		return err
@@ -30,8 +30,6 @@ func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
 
 	s1TsLst, s1TsCodeMap, s1TsContentMap := parseSubtitles("zh", lines1)
 	s2TsLst, s2TsCodeMap, s2TsContentMap := parseSubtitles("eng", lines2)
-	s1TsCodeMap = unFragment(s1TsLst, s1TsCodeMap)
-	s2TsCodeMap = unFragment(s2TsLst, s2TsCodeMap)
 
 	for {
 		if i1 >= len(s1TsLst) && i2 >= len(s2TsLst) {
@@ -42,6 +40,7 @@ func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
 			index++
 			merged = append(merged, s2TsCodeMap[s2TsLst[i2]])
 			merged = append(merged, s2TsContentMap[s2TsLst[i2]])
+			merged = append(merged, "")
 			i2++
 			continue
 		}
@@ -50,7 +49,9 @@ func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
 			index++
 			merged = append(merged, s1TsCodeMap[s1TsLst[i1]])
 			merged = append(merged, s1TsContentMap[s1TsLst[i1]])
+			merged = append(merged, "")
 			i1++
+
 			continue
 		}
 		if s1TsLst[i1]-s2TsLst[i2] <= 1000 && s1TsLst[i1]-s2TsLst[i2] >= -1000 {
@@ -59,6 +60,7 @@ func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
 			merged = append(merged, s1TsCodeMap[s1TsLst[i1]])
 			merged = append(merged, s1TsContentMap[s1TsLst[i1]])
 			merged = append(merged, s2TsContentMap[s2TsLst[i2]])
+			merged = append(merged, "")
 			i1++
 			i2++
 			continue
@@ -68,6 +70,7 @@ func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
 			index++
 			merged = append(merged, s1TsCodeMap[s1TsLst[i1]])
 			merged = append(merged, s1TsContentMap[s1TsLst[i1]])
+			merged = append(merged, "")
 			i1++
 			continue
 		}
@@ -75,11 +78,15 @@ func Merge(filename, zhSubPath, engSubPath, targetPath string) error {
 		index++
 		merged = append(merged, s2TsCodeMap[s2TsLst[i2]])
 		merged = append(merged, s2TsContentMap[s2TsLst[i2]])
+		merged = append(merged, "")
 		i2++
 		continue
 	}
-
-	return common.WriteFile(merged, fmt.Sprintf("%s.zh.srt", common.ExtractPathWithoutExtension(targetPath)))
+	subtitlePath, err := common.GetTmpSubtitleFullPath(filename + "." + consts.DUAL_LAN)
+	if err != nil {
+		return err
+	}
+	return common.WriteFile(merged, subtitlePath)
 }
 
 func unFragment(tsLst []int, tsCodeMap map[int]string) map[int]string {
@@ -236,10 +243,18 @@ func parseSubtitles(lan string, lines []string) ([]int, map[int]string, map[int]
 				if err != nil {
 					log.Fatal(err)
 				}
-				tsContentMap[ts] += out
+				if _, ok := tsContentMap[ts]; !ok {
+					tsContentMap[ts] += out
+					continue
+				}
+				tsContentMap[ts] += " " + out
 				continue
 			}
-			tsContentMap[ts] += lines[i]
+			if _, ok := tsContentMap[ts]; !ok {
+				tsContentMap[ts] += lines[i]
+				continue
+			}
+			tsContentMap[ts] += " " + lines[i]
 		}
 		i++
 

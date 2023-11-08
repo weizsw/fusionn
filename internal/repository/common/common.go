@@ -7,8 +7,8 @@ import (
 	"log"
 	"math"
 	"os"
-	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -21,6 +21,16 @@ func GetTmpSubtitleFullPath(filename string) (string, error) {
 	}
 	return fmt.Sprintf("%s%s%s.srt", currentDir, consts.TMP_DIR, filename), nil
 }
+
+func GetTmpDirPath() (string, error) {
+	currentDir, err := os.Getwd()
+	if err != nil {
+		log.Println("Error:", err)
+		return "", err
+	}
+	return fmt.Sprintf("%s%s", currentDir, consts.TMP_DIR), nil
+}
+
 func ExtractFilenameWithoutExtension(path string) string {
 	// Get the base filename from the path
 	filename := filepath.Base(path)
@@ -32,12 +42,6 @@ func ExtractFilenameWithoutExtension(path string) string {
 	return filenameWithoutExtension
 }
 
-func GetFilenameWithoutExtension(filepath string) string {
-	filename := path.Base(filepath)
-	extension := path.Ext(filename)
-	return filename[:len(filename)-len(extension)]
-}
-
 func ExtractPathWithoutExtension(filePath string) string {
 	dir, file := filepath.Split(filePath)
 	extension := filepath.Ext(file)
@@ -47,15 +51,19 @@ func ExtractPathWithoutExtension(filePath string) string {
 }
 
 func IsCHS(lan string, title string) bool {
-	return (lan == consts.CHS_LAN || lan == consts.CHI_LAN) && (title == consts.CHS_TITLE || title == consts.CHS_TITLE_II)
+	var simplifiedRegex = regexp.MustCompile(`(?i)(simplified|简体|简)`)
+	isCHSTitle := simplifiedRegex.MatchString(title)
+	return (lan == consts.CHS_LAN || lan == consts.CHI_LAN) && isCHSTitle
 }
 
 func IsCHT(lan string, title string) bool {
-	return (lan == consts.CHT_LAN || lan == consts.CHI_LAN) && (title == consts.CHT_TITLE || title == consts.CHT_TITLE_II)
+	var traditionalRegex = regexp.MustCompile(`(?i)(traditional|繁體|繁)`)
+	isCHTTitle := traditionalRegex.MatchString(title)
+	return (lan == consts.CHT_LAN || lan == consts.CHI_LAN) && isCHTTitle
 }
 
 func IsEng(lan string, title string) bool {
-	return (lan == consts.ENG_LAN) && (title == consts.ENG_TITLE || title == consts.ENG_TITLE_II)
+	return (lan == consts.ENG_LAN) && (title == consts.ENG_TITLE || title == consts.ENG_TITLE_II || title == consts.ENG_TITLE_III)
 }
 
 func Floor(num int) int {
@@ -132,5 +140,45 @@ func WriteFile(lines []string, filePath string) error {
 	}
 
 	log.Println("File written successfully:", filePath)
+	return nil
+}
+
+func GetFullPathWithoutExtension(path string) string {
+	// Get the base name of the file
+	filename := filepath.Base(path)
+
+	// Remove the extension from the filename
+	extension := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, extension)
+
+	// Get the directory path
+	dir := filepath.Dir(path)
+
+	// Join the directory path and the base filename without extension
+	fullPath := filepath.Join(dir, base)
+
+	return fullPath
+}
+
+func DeleteFilesInDirectory(dirPath, fileName string) error {
+	files, err := os.ReadDir(dirPath)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		if !file.IsDir() {
+			filePath := filepath.Join(dirPath, file.Name())
+			if !strings.Contains(filePath, fileName) {
+				continue
+			}
+			err := os.Remove(filePath)
+			if err != nil {
+				return err
+			}
+			log.Printf("Deleted file: %s\n", filePath)
+		}
+	}
+
 	return nil
 }
