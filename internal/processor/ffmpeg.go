@@ -13,6 +13,7 @@ import (
 
 	"github.com/asticode/go-astisub"
 	"github.com/gofiber/fiber/v2"
+	"google.golang.org/protobuf/proto"
 )
 
 var msgFormat = `{"title":"Fusionn notification","body":"%s"}`
@@ -86,6 +87,13 @@ func Extract(c *fiber.Ctx) error {
 
 	index := 0
 	originalASS.Styles["Default"].InlineStyle.SSAFontName = "方正黑体_GBK"
+	originalASS.Styles["Default"].InlineStyle.SSAFontSize = proto.Float64(18)
+	originalASS.Styles["Default"].InlineStyle.SSAPrimaryColour = &astisub.Color{
+		Red:   220,
+		Green: 220,
+		Blue:  220,
+	}
+
 	originalASS.Items[index].InlineStyle.SSAEffect = "test"
 	originalASS.Items[index].Lines = append(originalASS.Items[index].Lines, astisub.Line{
 		VoiceName: "test",
