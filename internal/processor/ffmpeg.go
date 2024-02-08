@@ -51,6 +51,14 @@ func Extract(c *fiber.Ctx) error {
 		merged = true
 	}
 
+	if extractedData.EngSubPath != "" && !merged {
+		err = merger.TranslateAndMerge(extractedData.FileName, extractedData.EngSubPath)
+		if err != nil {
+			return err
+		}
+		merged = true
+	}
+
 	if !merged {
 		log.Println("no subtitles found")
 		return errors.New("no subtitles found")
