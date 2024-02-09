@@ -135,8 +135,8 @@ func TranslateAndMerge(filename, engSubPath string) error {
 		merged = append(merged, strconv.Itoa(index))
 		index++
 		merged = append(merged, tsCodeMap[tsLst[i]])
-		merged = append(merged, tsContentMap[tsLst[i]])
 		merged = append(merged, tsTranslatedMap[tsLst[i]])
+		merged = append(merged, tsContentMap[tsLst[i]])
 		merged = append(merged, "")
 		i++
 	}
