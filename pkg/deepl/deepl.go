@@ -17,9 +17,11 @@ func NewDeepL() *DeepL {
 }
 
 type deepLTranslateReq struct {
-	Text       []string `json:"text"`
-	TargetLang string   `json:"target_lang"`
-	SourceLang string   `json:"source_lang"`
+	Text        []string `json:"text"`
+	TargetLang  string   `json:"target_lang"`
+	SourceLang  string   `json:"source_lang"`
+	TagHandling string   `json:"tag_handling"`
+	IgnoreTags  string   `json:"ignore_tags"`
 }
 
 type deepLTranslateResp struct {
@@ -35,9 +37,11 @@ func (d *DeepL) Translate(text []string, targetLang, sourceLang string) (*deepLT
 	cmd := consts.CMDDeepLTranslate
 
 	reqBody := deepLTranslateReq{
-		Text:       text,
-		TargetLang: targetLang,
-		SourceLang: sourceLang,
+		Text:        text,
+		TargetLang:  targetLang,
+		SourceLang:  sourceLang,
+		TagHandling: "xml",
+		IgnoreTags:  "i",
 	}
 	reqBodyByte, err := json.Marshal(reqBody)
 	if err != nil {
