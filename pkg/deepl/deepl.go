@@ -41,7 +41,6 @@ func (d *DeepL) Translate(text []string, targetLang, sourceLang string) (*deepLT
 		TargetLang:  targetLang,
 		SourceLang:  sourceLang,
 		TagHandling: "xml",
-		IgnoreTags:  []string{"i"},
 	}
 	reqBodyByte, err := json.Marshal(reqBody)
 	if err != nil {
