@@ -21,7 +21,7 @@ type deepLTranslateReq struct {
 	TargetLang  string   `json:"target_lang"`
 	SourceLang  string   `json:"source_lang"`
 	TagHandling string   `json:"tag_handling"`
-	IgnoreTags  string   `json:"ignore_tags"`
+	IgnoreTags  []string `json:"ignore_tags"`
 }
 
 type deepLTranslateResp struct {
@@ -41,7 +41,7 @@ func (d *DeepL) Translate(text []string, targetLang, sourceLang string) (*deepLT
 		TargetLang:  targetLang,
 		SourceLang:  sourceLang,
 		TagHandling: "xml",
-		IgnoreTags:  "i",
+		IgnoreTags:  []string{"i"},
 	}
 	reqBodyByte, err := json.Marshal(reqBody)
 	if err != nil {
@@ -59,7 +59,7 @@ func (d *DeepL) Translate(text []string, targetLang, sourceLang string) (*deepLT
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
-	if err != nil {
+	if err != nil || resp.StatusCode != 200 {
 		log.Fatalf("Error sending request: %s", err)
 		return nil, err
 	}
