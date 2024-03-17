@@ -95,21 +95,21 @@ func Extract(c *fiber.Ctx) error {
 
 	index := 0
 	originalASS.Styles["Default"].InlineStyle.SSAFontName = "方正黑体_GBK"
-	originalASS.Styles["Default"].InlineStyle.SSAFontSize = proto.Float64(18)
+	originalASS.Styles["Default"].InlineStyle.SSAFontSize = proto.Float64(16)
 	originalASS.Styles["Default"].InlineStyle.SSAPrimaryColour = &astisub.Color{
 		Red:   220,
 		Green: 220,
 		Blue:  220,
 	}
 
-	originalASS.Items[index].InlineStyle.SSAEffect = "test"
-	originalASS.Items[index].Lines = append(originalASS.Items[index].Lines, astisub.Line{
-		VoiceName: "test",
-	})
 	for {
 		if index >= len(originalASS.Items) {
 			break
 		}
+		originalASS.Items[index].InlineStyle.SSAEffect = "Default"
+		originalASS.Items[index].Lines = append(originalASS.Items[index].Lines, astisub.Line{
+			VoiceName: "Default",
+		})
 		originalASS.Items[index].StartAt = dualSubASS.Items[index].StartAt
 		originalASS.Items[index].EndAt = dualSubASS.Items[index].EndAt
 		index++

@@ -91,6 +91,7 @@ func Merge(filename, zhSubPath, engSubPath string) error {
 }
 
 func TranslateAndMerge(filename, engSubPath string) error {
+	log.Println("Using DeepL to translate English subtitles to Chinese...")
 	// Read the English subtitles
 	lines, err := common.ReadFile(engSubPath)
 	if err != nil {
