@@ -50,13 +50,14 @@ func Extract(c *fiber.Ctx) error {
 		}
 		merged = true
 	}
-
+	mode := "generated"
 	if extractedData.EngSubPath != "" && !merged {
 		err = merger.TranslateAndMerge(extractedData.FileName, extractedData.EngSubPath)
 		if err != nil {
 			return err
 		}
 		merged = true
+		mode = "translated"
 	}
 
 	if !merged {
@@ -120,7 +121,7 @@ func Extract(c *fiber.Ctx) error {
 		return err
 	}
 
-	_, err = apprise.SendBasicMessage(consts.APPRISE, []byte(fmt.Sprintf(msgFormat, fmt.Sprintf("Subtitle for %s generated successfully", extractedData.FileName))))
+	_, err = apprise.SendBasicMessage(consts.APPRISE, []byte(fmt.Sprintf(msgFormat, fmt.Sprintf("Subtitle for %s %s successfully", extractedData.FileName, mode))))
 	if err != nil {
 		log.Println(err)
 	}
