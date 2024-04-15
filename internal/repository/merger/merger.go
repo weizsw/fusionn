@@ -42,6 +42,7 @@ func Merge(filename, zhSubPath, engSubPath string) error {
 				Content:   content,
 				TimeCode:  l.TimeCode,
 			}
+			continue
 		}
 		engMap[l.StartTime] = l
 	}
