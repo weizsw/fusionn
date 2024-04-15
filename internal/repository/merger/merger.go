@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"fusionn/internal/consts"
 	"fusionn/internal/repository/common"
+	"fusionn/pkg/deepl"
 	"log"
 	"regexp"
 	"strconv"
@@ -82,6 +83,65 @@ func Merge(filename, zhSubPath, engSubPath string) error {
 		i2++
 		continue
 	}
+	subtitlePath, err := common.GetTmpSubtitleFullPath(filename + "." + consts.DUAL_LAN)
+	if err != nil {
+		return err
+	}
+	return common.WriteFile(merged, subtitlePath)
+}
+
+func TranslateAndMerge(filename, engSubPath string) error {
+	log.Println("Using DeepL to translate English subtitles to Chinese...")
+	// Read the English subtitles
+	lines, err := common.ReadFile(engSubPath)
+	if err != nil {
+		return err
+	}
+
+	// Initialize the DeepL translator
+	translator := deepl.NewDeepL()
+
+	// Parse the English subtitles
+	tsLst, tsCodeMap, tsContentMap := parseSubtitles("eng", lines)
+
+	// Translate the English subtitles to Chinese
+	tsTranslatedMap := make(map[int]string, len(tsContentMap))
+	for i := 0; i < len(tsLst); i += 50 {
+		var contents []string
+		var timestamps []int
+		for j := 0; j < 50 && i+j < len(tsLst); j++ {
+			timestamps = append(timestamps, tsLst[i+j])
+			contents = append(contents, tsContentMap[tsLst[i+j]])
+		}
+
+		translated, err := translator.Translate(contents, "zh", "en")
+		if err != nil {
+			log.Fatalf("Error translating subtitle: %s", err)
+			return err
+		}
+
+		// Replace the English subtitles with the translated Chinese subtitles
+		for k, translation := range translated.Translations {
+			tsTranslatedMap[timestamps[k]] = translation.Text
+		}
+	}
+
+	// Merge the original and translated subtitles
+	var (
+		i      int
+		merged []string
+	)
+	index := 1
+	for i < len(tsLst) {
+		merged = append(merged, strconv.Itoa(index))
+		index++
+		merged = append(merged, tsCodeMap[tsLst[i]])
+		merged = append(merged, tsTranslatedMap[tsLst[i]])
+		merged = append(merged, tsContentMap[tsLst[i]])
+		merged = append(merged, "")
+		i++
+	}
+
 	subtitlePath, err := common.GetTmpSubtitleFullPath(filename + "." + consts.DUAL_LAN)
 	if err != nil {
 		return err

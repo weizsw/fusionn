@@ -1,11 +1,12 @@
 package deepl
 
 import (
+	"bytes"
+	"encoding/json"
 	"fusionn/internal/consts"
+	"io"
 	"log"
-
-	"github.com/bytedance/sonic"
-	"github.com/valyala/fasthttp"
+	"net/http"
 )
 
 type DeepL struct {
@@ -15,39 +16,66 @@ func NewDeepL() *DeepL {
 	return &DeepL{}
 }
 
-type deepLTranslateRequest struct {
-	Text       []string `json:"text"`
-	TargetLang string   `json:"target_lang"`
-	SourceLang string   `json:"source_lang"`
+type deepLTranslateReq struct {
+	Text        []string `json:"text"`
+	TargetLang  string   `json:"target_lang"`
+	SourceLang  string   `json:"source_lang"`
+	TagHandling string   `json:"tag_handling"`
+	IgnoreTags  []string `json:"ignore_tags"`
 }
 
-func (d *DeepL) Translate(text, targetLang, souceLang string) (string, error) {
+type deepLTranslateResp struct {
+	Translations []*translations `json:"translations"`
+}
+
+type translations struct {
+	DetectedSourceLanguage string `json:"detected_source_language"`
+	Text                   string `json:"text"`
+}
+
+func (d *DeepL) Translate(text []string, targetLang, sourceLang string) (*deepLTranslateResp, error) {
 	cmd := consts.CMDDeepLTranslate
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
 
-	req.Header.SetMethod("POST")
-	req.SetRequestURI(cmd)
-	req.Header.Set("Content-Type", "application/json")
-
-	reqBody := deepLTranslateRequest{
-		Text:       []string{text},
-		TargetLang: targetLang,
-		SourceLang: souceLang,
+	reqBody := deepLTranslateReq{
+		Text:        text,
+		TargetLang:  targetLang,
+		SourceLang:  sourceLang,
+		TagHandling: "xml",
 	}
-	reqBodyByte, err := sonic.Marshal(reqBody)
+	reqBodyByte, err := json.Marshal(reqBody)
 	if err != nil {
 		log.Fatalf("Error marshaling request body: %s", err)
-		return "", err
+		return nil, err
 	}
-	req.SetBody(reqBodyByte)
 
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(resp)
+	req, err := http.NewRequest("POST", cmd, bytes.NewBuffer(reqBodyByte))
+	if err != nil {
+		log.Fatalf("Error creating request: %s", err)
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "DeepL-Auth-Key 6ec98a4c-52f1-a773-d4a6-7606a3720c3f:fx")
 
-	if err := fasthttp.Do(req, resp); err != nil {
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
 		log.Fatalf("Error sending request: %s", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("Error reading response body: %s", err)
+		return nil, err
 	}
 
-	return string(resp.Body()), nil
+	var translateResp deepLTranslateResp
+	err = json.Unmarshal(body, &translateResp)
+	if err != nil {
+		log.Fatalf("Error unmarshaling response body: %s", err)
+		return nil, err
+	}
+
+	return &translateResp, nil
 }

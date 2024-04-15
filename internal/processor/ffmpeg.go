@@ -50,6 +50,15 @@ func Extract(c *fiber.Ctx) error {
 		}
 		merged = true
 	}
+	mode := "generated"
+	if extractedData.EngSubPath != "" && !merged {
+		err = merger.TranslateAndMerge(extractedData.FileName, extractedData.EngSubPath)
+		if err != nil {
+			return err
+		}
+		merged = true
+		mode = "translated"
+	}
 
 	if !merged {
 		log.Println("no subtitles found")
@@ -87,21 +96,21 @@ func Extract(c *fiber.Ctx) error {
 
 	index := 0
 	originalASS.Styles["Default"].InlineStyle.SSAFontName = "方正黑体_GBK"
-	originalASS.Styles["Default"].InlineStyle.SSAFontSize = proto.Float64(18)
+	originalASS.Styles["Default"].InlineStyle.SSAFontSize = proto.Float64(16)
 	originalASS.Styles["Default"].InlineStyle.SSAPrimaryColour = &astisub.Color{
 		Red:   220,
 		Green: 220,
 		Blue:  220,
 	}
 
-	originalASS.Items[index].InlineStyle.SSAEffect = "test"
-	originalASS.Items[index].Lines = append(originalASS.Items[index].Lines, astisub.Line{
-		VoiceName: "test",
-	})
 	for {
 		if index >= len(originalASS.Items) {
 			break
 		}
+		originalASS.Items[index].InlineStyle.SSAEffect = "Default"
+		originalASS.Items[index].Lines = append(originalASS.Items[index].Lines, astisub.Line{
+			VoiceName: "Default",
+		})
 		originalASS.Items[index].StartAt = dualSubASS.Items[index].StartAt
 		originalASS.Items[index].EndAt = dualSubASS.Items[index].EndAt
 		index++
@@ -112,7 +121,7 @@ func Extract(c *fiber.Ctx) error {
 		return err
 	}
 
-	_, err = apprise.SendBasicMessage(consts.APPRISE, []byte(fmt.Sprintf(msgFormat, fmt.Sprintf("Subtitle for %s generated successfully", extractedData.FileName))))
+	_, err = apprise.SendBasicMessage(consts.APPRISE, []byte(fmt.Sprintf(msgFormat, fmt.Sprintf("Subtitle for %s %s successfully", extractedData.FileName, mode))))
 	if err != nil {
 		log.Println(err)
 	}
