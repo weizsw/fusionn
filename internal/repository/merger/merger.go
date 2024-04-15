@@ -357,12 +357,12 @@ func parseSubtitles(lan string, lines []string) ([]int, map[int]string, map[int]
 func parseSubtitlesV2(lan string, lines []string) ([]int, []line) {
 	timestamps := []int{}
 	t2s, err := opencc.New("t2s")
-	lineInfo := line{}
 	res := []line{}
 	if err != nil {
 		log.Fatal(err)
 	}
 	for i := 0; i < len(lines); i++ {
+		lineInfo := line{}
 		sts, ets, ok := parseTimestamp(lines[i])
 		if !ok {
 			continue
