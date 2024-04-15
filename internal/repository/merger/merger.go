@@ -23,66 +23,38 @@ func Merge(filename, zhSubPath, engSubPath string) error {
 		return err
 	}
 
-	var (
-		i1, i2 int
-		merged []string
-	)
-	index := 1
+	tsLst, zhLines := parseSubtitlesV2("zh", lines1)
+	_, engLines := parseSubtitlesV2("eng", lines2)
+	engLines = alignSubtitles(zhLines, engLines)
 
-	s1TsLst, s1TsCodeMap, s1TsContentMap := parseSubtitles("zh", lines1)
-	s2TsLst, s2TsCodeMap, s2TsContentMap := parseSubtitles("eng", lines2)
-
-	for {
-		if i1 >= len(s1TsLst) && i2 >= len(s2TsLst) {
-			break
-		}
-		if i1 >= len(s1TsLst) {
-			merged = append(merged, strconv.Itoa(index))
-			index++
-			merged = append(merged, s2TsCodeMap[s2TsLst[i2]])
-			merged = append(merged, s2TsContentMap[s2TsLst[i2]])
-			merged = append(merged, "")
-			i2++
-			continue
-		}
-		if i2 >= len(s2TsLst) {
-			merged = append(merged, strconv.Itoa(index))
-			index++
-			merged = append(merged, s1TsCodeMap[s1TsLst[i1]])
-			merged = append(merged, s1TsContentMap[s1TsLst[i1]])
-			merged = append(merged, "")
-			i1++
-
-			continue
-		}
-		if s1TsLst[i1]-s2TsLst[i2] <= 1000 && s1TsLst[i1]-s2TsLst[i2] >= -1000 {
-			merged = append(merged, strconv.Itoa(index))
-			index++
-			merged = append(merged, s1TsCodeMap[s1TsLst[i1]])
-			merged = append(merged, s1TsContentMap[s1TsLst[i1]])
-			merged = append(merged, s2TsContentMap[s2TsLst[i2]])
-			merged = append(merged, "")
-			i1++
-			i2++
-			continue
-		}
-		if s1TsLst[i1] < s2TsLst[i2] {
-			merged = append(merged, strconv.Itoa(index))
-			index++
-			merged = append(merged, s1TsCodeMap[s1TsLst[i1]])
-			merged = append(merged, s1TsContentMap[s1TsLst[i1]])
-			merged = append(merged, "")
-			i1++
-			continue
-		}
-		merged = append(merged, strconv.Itoa(index))
-		index++
-		merged = append(merged, s2TsCodeMap[s2TsLst[i2]])
-		merged = append(merged, s2TsContentMap[s2TsLst[i2]])
-		merged = append(merged, "")
-		i2++
-		continue
+	zhMap := make(map[int]line)
+	for _, l := range zhLines {
+		zhMap[l.StartTime] = l
 	}
+
+	engMap := make(map[int]line)
+	for _, l := range engLines {
+		if _, ok := engMap[l.StartTime]; ok {
+			content := engMap[l.StartTime].Content + " " + l.Content
+			engMap[l.StartTime] = line{
+				StartTime: l.StartTime,
+				EndTime:   l.EndTime,
+				Content:   content,
+				TimeCode:  l.TimeCode,
+			}
+		}
+		engMap[l.StartTime] = l
+	}
+
+	merged := make([]string, 0, len(tsLst))
+	for index, ts := range tsLst {
+		merged = append(merged, strconv.Itoa(index+1))
+		merged = append(merged, zhMap[ts].TimeCode)
+		merged = append(merged, zhMap[ts].Content)
+		merged = append(merged, engMap[ts].Content)
+		merged = append(merged, "")
+	}
+
 	subtitlePath, err := common.GetTmpSubtitleFullPath(filename + "." + consts.DUAL_LAN)
 	if err != nil {
 		return err
@@ -251,16 +223,23 @@ func changeEndTimeLastThreeDigits(timestamp string, newDigits int) string {
 	return re.ReplaceAllString(timestamp, updatedTimestamp)
 }
 
-func parseTimestamp(line string) (int, bool) {
+func parseTimestamp(line string) (int, int, bool) {
 	if !strings.Contains(line, "-->") {
 		// Not a timestamp line
-		return 0, false
+		return 0, 0, false
 	}
 	parts := strings.Split(line, " --> ")
 	start := parts[0]
-	// end := parts[1]
+	end := parts[1]
 
-	timeParts := strings.Split(start, ":")
+	startTimeMillis := calculateTime(start)
+	endTimeMillies := calculateTime(end)
+
+	return startTimeMillis, endTimeMillies, true
+}
+
+func calculateTime(timecode string) int {
+	timeParts := strings.Split(timecode, ":")
 	secondsAndMillis := strings.Split(timeParts[2], ",")
 
 	// Extract hours, minutes, seconds, and milliseconds
@@ -270,9 +249,61 @@ func parseTimestamp(line string) (int, bool) {
 	milliseconds, _ := strconv.Atoi(secondsAndMillis[1])
 
 	// Calculate the total duration in milliseconds
-	totalMillis := (hours * 3600 * 1000) + (minutes * 60 * 1000) + (seconds * 1000) + milliseconds
+	res := (hours * 3600 * 1000) + (minutes * 60 * 1000) + (seconds * 1000) + milliseconds
+	return res
+}
 
-	return totalMillis, true
+type line struct {
+	StartTime int
+	EndTime   int
+	Content   string
+	TimeCode  string
+}
+
+func alignSubtitles(chineseSubtitles []line, englishSubtitles []line) []line {
+	alignedSubtitles := make([]line, len(englishSubtitles))
+
+	for i, englishLine := range englishSubtitles {
+		alignedLine := line{
+			StartTime: englishLine.StartTime,
+			EndTime:   englishLine.EndTime,
+			Content:   englishLine.Content,
+		}
+
+		for j, chineseLine := range chineseSubtitles {
+			switch {
+			case englishLine.StartTime >= chineseLine.StartTime && englishLine.StartTime <= chineseLine.EndTime:
+				alignedLine.StartTime = chineseLine.StartTime
+
+				for k := j + 1; k < len(chineseSubtitles); k++ {
+					if englishLine.EndTime <= chineseSubtitles[k].EndTime {
+						alignedLine.EndTime = chineseSubtitles[k].EndTime
+						break
+					}
+				}
+			case englishLine.EndTime >= chineseLine.StartTime && englishLine.EndTime <= chineseLine.EndTime:
+				alignedLine.EndTime = chineseLine.EndTime
+
+				for k := j + 1; k < len(chineseSubtitles); k++ {
+					if englishLine.EndTime <= chineseSubtitles[k].EndTime {
+						alignedLine.EndTime = chineseSubtitles[k].EndTime
+						break
+					}
+				}
+
+				if englishLine.StartTime >= chineseLine.StartTime {
+					alignedLine.StartTime = chineseLine.StartTime
+				}
+			case englishLine.StartTime <= chineseLine.StartTime && englishLine.EndTime >= chineseLine.EndTime:
+				alignedLine.StartTime = chineseLine.StartTime
+				alignedLine.EndTime = chineseLine.EndTime
+			}
+		}
+
+		alignedSubtitles[i] = alignedLine
+	}
+
+	return alignedSubtitles
 }
 
 func parseSubtitles(lan string, lines []string) ([]int, map[int]string, map[int]string) {
@@ -284,7 +315,7 @@ func parseSubtitles(lan string, lines []string) ([]int, map[int]string, map[int]
 		log.Fatal(err)
 	}
 	for i := 0; i < len(lines); i++ {
-		ts, ok := parseTimestamp(lines[i])
+		ts, _, ok := parseTimestamp(lines[i])
 		if !ok {
 			continue
 		}
@@ -321,6 +352,52 @@ func parseSubtitles(lan string, lines []string) ([]int, map[int]string, map[int]
 	}
 
 	return timestamps, tsCodeMap, tsContentMap
+}
+
+func parseSubtitlesV2(lan string, lines []string) ([]int, []line) {
+	timestamps := []int{}
+	t2s, err := opencc.New("t2s")
+	lineInfo := line{}
+	res := []line{}
+	if err != nil {
+		log.Fatal(err)
+	}
+	for i := 0; i < len(lines); i++ {
+		sts, ets, ok := parseTimestamp(lines[i])
+		if !ok {
+			continue
+		}
+		lineInfo.StartTime = sts
+		lineInfo.EndTime = ets
+		lineInfo.TimeCode = lines[i]
+		timestamps = append(timestamps, sts)
+		for {
+			i++
+			if i >= len(lines) {
+				break
+			}
+			if len(strings.TrimSpace(lines[i])) == 0 {
+				break
+			}
+			out := lines[i]
+			if lan == "zh" {
+				out, err = t2s.Convert(lines[i])
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+			if len(lineInfo.Content) == 0 {
+				lineInfo.Content += out
+				continue
+			}
+			lineInfo.Content += " " + out
+			continue
+		}
+		res = append(res, lineInfo)
+		i++
+	}
+
+	return timestamps, res
 }
 
 func replaceStartTimestamp(timeStr string) string {
