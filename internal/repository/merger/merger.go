@@ -6,6 +6,7 @@ import (
 	"fusionn/internal/repository/common"
 	"fusionn/pkg/deepl"
 	"log"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -271,6 +272,7 @@ func alignSubtitles(chineseSubtitles []line, englishSubtitles []line) []line {
 			Content:   englishLine.Content,
 		}
 
+		foundOverlap := false
 		for j, chineseLine := range chineseSubtitles {
 			switch {
 			case englishLine.StartTime >= chineseLine.StartTime && englishLine.StartTime <= chineseLine.EndTime:
@@ -282,6 +284,8 @@ func alignSubtitles(chineseSubtitles []line, englishSubtitles []line) []line {
 						break
 					}
 				}
+				foundOverlap = true
+
 			case englishLine.EndTime >= chineseLine.StartTime && englishLine.EndTime <= chineseLine.EndTime:
 				alignedLine.EndTime = chineseLine.EndTime
 
@@ -295,16 +299,41 @@ func alignSubtitles(chineseSubtitles []line, englishSubtitles []line) []line {
 				if englishLine.StartTime >= chineseLine.StartTime {
 					alignedLine.StartTime = chineseLine.StartTime
 				}
+				foundOverlap = true
+
 			case englishLine.StartTime <= chineseLine.StartTime && englishLine.EndTime >= chineseLine.EndTime:
 				alignedLine.StartTime = chineseLine.StartTime
 				alignedLine.EndTime = chineseLine.EndTime
+				foundOverlap = true
 			}
+		}
+
+		if !foundOverlap {
+			// Find the nearest Chinese subtitle
+			nearestSubtitle := findNearestSubtitle(chineseSubtitles, englishLine.StartTime)
+			alignedLine.StartTime = nearestSubtitle.StartTime
+			alignedLine.EndTime = nearestSubtitle.EndTime
 		}
 
 		alignedSubtitles[i] = alignedLine
 	}
 
 	return alignedSubtitles
+}
+
+func findNearestSubtitle(subtitles []line, targetTime int) line {
+	nearestSubtitle := subtitles[0]
+	minDiff := math.Abs(float64(targetTime - nearestSubtitle.StartTime))
+
+	for _, subtitle := range subtitles {
+		diff := math.Abs(float64(targetTime - subtitle.StartTime))
+		if diff < minDiff {
+			minDiff = diff
+			nearestSubtitle = subtitle
+		}
+	}
+
+	return nearestSubtitle
 }
 
 func parseSubtitles(lan string, lines []string) ([]int, map[int]string, map[int]string) {
