@@ -18,6 +18,12 @@ import (
 
 var msgFormat = `{"title":"Fusionn notification","body":"%s"}`
 
+type ExtractService interface {
+}
+
+type extractService struct {
+}
+
 func Extract(c *fiber.Ctx) error {
 	req := &entity.ExtractRequest{}
 	if err := c.BodyParser(req); err != nil {
@@ -35,16 +41,16 @@ func Extract(c *fiber.Ctx) error {
 
 	merged := false
 
-	if extractedData.CHSSubPath != "" && extractedData.EngSubPath != "" {
-		err = merger.Merge(extractedData.FileName, extractedData.CHSSubPath, extractedData.EngSubPath)
+	if extractedData.ChsSubPath != "" && extractedData.EngSubPath != "" {
+		err = merger.Merge(extractedData.FileName, extractedData.ChsSubPath, extractedData.EngSubPath)
 		if err != nil {
 			return err
 		}
 		merged = true
 	}
 
-	if extractedData.CHTSubPath != "" && extractedData.EngSubPath != "" && !merged {
-		err = merger.Merge(extractedData.FileName, extractedData.CHTSubPath, extractedData.EngSubPath)
+	if extractedData.ChtSubPath != "" && extractedData.EngSubPath != "" && !merged {
+		err = merger.Merge(extractedData.FileName, extractedData.ChtSubPath, extractedData.EngSubPath)
 		if err != nil {
 			return err
 		}

@@ -9,7 +9,73 @@ import (
 	"log"
 	"os"
 	"os/exec"
+
+	fiberlog "github.com/gofiber/fiber/v2/log"
 )
+
+type FFMPEG interface {
+	ExtractSubtitles(videoPath string) (*entity.ExtractData, error)
+}
+
+type ffmpeg struct{}
+
+func (f *ffmpeg) ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
+	ffprobePath, err := exec.LookPath("ffprobe")
+	if err != nil {
+		return nil, fmt.Errorf("ffprobe not found: %w", err)
+	}
+
+	cmd := exec.Command(ffprobePath, "-i", videoPath, "-v", "quiet", "-print_format", "json", "-show_streams")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run ffprobe: %w", err)
+	}
+
+	var ffprobeData entity.FFprobeData
+	err = json.Unmarshal(output, &ffprobeData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ffprobe output: %w", err)
+	}
+
+	filename := common.ExtractFilenameWithoutExtension(videoPath)
+	extractData := &entity.ExtractData{
+		FileName: filename,
+	}
+
+	for _, stream := range ffprobeData.Streams {
+		if stream.CodecType != "subtitle" {
+			continue
+		}
+		if !common.IsEng(stream.Tags.Language, stream.Tags.Title) && !common.IsCht(stream.Tags.Language, stream.Tags.Title) && !common.IsChs(stream.Tags.Language, stream.Tags.Title) {
+			continue
+		}
+
+		subtitlePath, err := common.GetTmpSubtitleFullPath(filename + "." + stream.Tags.Language)
+		if err != nil {
+			fiberlog.Error("Failed to get subtitle path: %w", err)
+			continue
+		}
+
+		if common.IsEng(stream.Tags.Language, stream.Tags.Title) && (len(extractData.EngSubPath) == 0 || extractData.IsSdh) {
+			extractData.EngSubPath = subtitlePath
+		}
+		if common.IsChs(stream.Tags.Language, stream.Tags.Title) {
+			subtitlePath, _ = common.GetTmpSubtitleFullPath(filename + "." + consts.CHS_LAN)
+			extractData.ChsSubPath = subtitlePath
+		}
+		if common.IsCht(stream.Tags.Language, stream.Tags.Title) {
+			extractData.ChtSubPath = subtitlePath
+		}
+		err = ExtractSubtitleStream(videoPath, subtitlePath, stream.Index)
+		if err != nil {
+			fiberlog.Error("Failed to extract subtitle stream %d: %v\n", stream.Index, err)
+		} else {
+			fiberlog.Info("Subtitle stream %d extracted successfully: %s\n", stream.Index, subtitlePath)
+		}
+	}
+
+	return extractData, nil
+}
 
 func ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
 	ffprobePath, err := exec.LookPath("ffprobe")
@@ -38,7 +104,7 @@ func ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
 		if stream.CodecType != "subtitle" {
 			continue
 		}
-		if !common.IsEng(stream.Tags.Language, stream.Tags.Title) && !common.IsCHT(stream.Tags.Language, stream.Tags.Title) && !common.IsCHS(stream.Tags.Language, stream.Tags.Title) {
+		if !common.IsEng(stream.Tags.Language, stream.Tags.Title) && !common.IsCht(stream.Tags.Language, stream.Tags.Title) && !common.IsChs(stream.Tags.Language, stream.Tags.Title) {
 			continue
 		}
 
@@ -51,12 +117,12 @@ func ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
 		if common.IsEng(stream.Tags.Language, stream.Tags.Title) && len(extractData.EngSubPath) == 0 {
 			extractData.EngSubPath = subtitlePath
 		}
-		if common.IsCHS(stream.Tags.Language, stream.Tags.Title) {
+		if common.IsChs(stream.Tags.Language, stream.Tags.Title) {
 			subtitlePath, _ = common.GetTmpSubtitleFullPath(common.ExtractFilenameWithoutExtension(videoPath) + "." + consts.CHS_LAN)
-			extractData.CHSSubPath = subtitlePath
+			extractData.ChsSubPath = subtitlePath
 		}
-		if common.IsCHT(stream.Tags.Language, stream.Tags.Title) {
-			extractData.CHTSubPath = subtitlePath
+		if common.IsCht(stream.Tags.Language, stream.Tags.Title) {
+			extractData.ChtSubPath = subtitlePath
 		}
 		err = ExtractSubtitleStream(videoPath, subtitlePath, stream.Index)
 		if err != nil {
@@ -73,6 +139,11 @@ func ExtractSubtitleStream(videoPath, subtitlePath string, streamIndex int) erro
 	ffmpegPath, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		return fmt.Errorf("ffmpeg not found: %v", err)
+	}
+
+	err = os.Remove(subtitlePath)
+	if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove file %s: %v", subtitlePath, err)
 	}
 
 	cmd := exec.Command(ffmpegPath, "-i", videoPath, "-v", "quiet", "-map", fmt.Sprintf("0:%d", streamIndex), subtitlePath)

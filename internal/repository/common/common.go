@@ -50,13 +50,13 @@ func ExtractPathWithoutExtension(filePath string) string {
 	return pathWithoutExtension
 }
 
-func IsCHS(lan string, title string) bool {
+func IsChs(lan string, title string) bool {
 	var simplifiedRegex = regexp.MustCompile(`(?i)(simplified|简体|简|chi)`)
 	isCHSTitle := simplifiedRegex.MatchString(title)
 	return (lan == consts.CHS_LAN || lan == consts.CHI_LAN) || isCHSTitle
 }
 
-func IsCHT(lan string, title string) bool {
+func IsCht(lan string, title string) bool {
 	var traditionalRegex = regexp.MustCompile(`(?i)(traditional|繁體|繁|chi)`)
 	isCHTTitle := traditionalRegex.MatchString(title)
 	return (lan == consts.CHT_LAN || lan == consts.CHI_LAN) || isCHTTitle
@@ -66,6 +66,11 @@ func IsEng(lan string, title string) bool {
 	var englishRegex = regexp.MustCompile(`(?i)english\(sdh\)|sdh|english|^$`)
 	isEngTitle := englishRegex.MatchString(title)
 	return (lan == consts.ENG_LAN) && isEngTitle
+}
+
+func IsSdh(title string) bool {
+	var sdhRegex = regexp.MustCompile(`(?i)english\(sdh\)|sdh`)
+	return sdhRegex.MatchString(title)
 }
 
 func Floor(num int) int {

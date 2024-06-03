@@ -16,6 +16,5 @@ func main() {
 		return c.SendString("Hello, World 👋!")
 	})
 	v1.Post("/extract", processor.Extract)
-	v1.Post("/merge", processor.Merge)
 	app.Listen("0.0.0.0:4664")
 }
