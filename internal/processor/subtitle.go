@@ -3,11 +3,8 @@ package processor
 import (
 	"errors"
 	"fusionn/internal/entity"
-	"fusionn/internal/repository/algo"
+	"fusionn/internal/repository"
 	"fusionn/internal/repository/common"
-	"fusionn/internal/repository/convertor"
-	"fusionn/internal/repository/ffmpeg"
-	"fusionn/internal/repository/parser"
 	"time"
 
 	"github.com/asticode/go-astisub"
@@ -15,18 +12,32 @@ import (
 	"github.com/gofiber/fiber/v2/log"
 )
 
-type Merge interface {
+type ISubtitle interface {
 	Merge(c *fiber.Ctx) error
 }
 
-type merge struct {
-	ffmpeg    ffmpeg.FFMPEG
-	parser    parser.Parser
-	convertor convertor.Convertor
-	algo      algo.Algo
+type Subtitle struct {
+	ffmpeg    repository.IFFMPEG
+	parser    repository.IParser
+	convertor repository.IConvertor
+	algo      repository.IAlgo
 }
 
-func (m *merge) Merge(c *fiber.Ctx) error {
+func NewSubtitle(
+	ffmpeg repository.IFFMPEG,
+	parser repository.IParser,
+	convertor repository.IConvertor,
+	algo repository.IAlgo,
+) *Subtitle {
+	return &Subtitle{
+		ffmpeg:    ffmpeg,
+		parser:    parser,
+		convertor: convertor,
+		algo:      algo,
+	}
+}
+
+func (m *Subtitle) Merge(c *fiber.Ctx) error {
 	req := &entity.ExtractRequest{}
 	if err := c.BodyParser(req); err != nil {
 		return err

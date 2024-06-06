@@ -6,16 +6,16 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-type MergeHandler struct {
-	MergeProcessor processor.Merge
+type Handler struct {
+	MergeProcessor processor.ISubtitle
 }
 
-func NewMergeHandler(mp processor.Merge) *MergeHandler {
-	return &MergeHandler{
-		MergeProcessor: mp,
+func NewHandler(p processor.ISubtitle) *Handler {
+	return &Handler{
+		MergeProcessor: p,
 	}
 }
 
-func (mh *MergeHandler) Merge(c *fiber.Ctx) error {
-	return c.JSON(mh.MergeProcessor.Merge(c))
+func (h *Handler) Merge(c *fiber.Ctx) error {
+	return c.JSON(h.MergeProcessor.Merge(c))
 }

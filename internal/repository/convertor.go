@@ -1,21 +1,27 @@
-package convertor
+package repository
 
 import (
 	"errors"
-	"fusionn/pkg/deepl"
+	"fusionn/pkg"
 	"sync"
 
 	"github.com/asticode/go-astisub"
 	"github.com/longbridgeapp/opencc"
 )
 
-type Convertor interface {
+type IConvertor interface {
 	ConvertToSimplified(sub *astisub.Subtitles) (*astisub.Subtitles, error)
 	TranslateToSimplified(sub *astisub.Subtitles) (*astisub.Subtitles, error)
 }
 
 type convertor struct {
-	deepl deepl.DeepL
+	deepl pkg.IDeepL
+}
+
+func NewConvertor(d pkg.IDeepL) *convertor {
+	return &convertor{
+		deepl: d,
+	}
 }
 
 var (

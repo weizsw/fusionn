@@ -1,19 +1,23 @@
-package deepl
+package pkg
 
 import (
 	"bytes"
 	"encoding/json"
 	"fusionn/internal/consts"
 	"io"
-	"log"
 	"net/http"
+
+	"github.com/gofiber/fiber/v2/log"
 )
 
-type DeepL struct {
+type IDeepL interface {
+	Translate(text []string, targetLang, sourceLang string) (*deepLTranslateResp, error)
+}
+type deepL struct {
 }
 
-func NewDeepL() *DeepL {
-	return &DeepL{}
+func NewDeepL() *deepL {
+	return &deepL{}
 }
 
 type deepLTranslateReq struct {
@@ -33,7 +37,7 @@ type translations struct {
 	Text                   string `json:"text"`
 }
 
-func (d *DeepL) Translate(text []string, targetLang, sourceLang string) (*deepLTranslateResp, error) {
+func (d *deepL) Translate(text []string, targetLang, sourceLang string) (*deepLTranslateResp, error) {
 	cmd := consts.CMDDeepLTranslate
 
 	reqBody := deepLTranslateReq{

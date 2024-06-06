@@ -1,4 +1,4 @@
-package ffmpeg
+package repository
 
 import (
 	"encoding/json"
@@ -6,18 +6,21 @@ import (
 	"fusionn/internal/consts"
 	"fusionn/internal/entity"
 	"fusionn/internal/repository/common"
-	"log"
 	"os"
 	"os/exec"
 
-	fiberlog "github.com/gofiber/fiber/v2/log"
+	"github.com/gofiber/fiber/v2/log"
 )
 
-type FFMPEG interface {
+type IFFMPEG interface {
 	ExtractSubtitles(videoPath string) (*entity.ExtractData, error)
 }
 
 type ffmpeg struct{}
+
+func NewFFMPEG() *ffmpeg {
+	return &ffmpeg{}
+}
 
 func (f *ffmpeg) ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
 	ffprobePath, err := exec.LookPath("ffprobe")
@@ -52,7 +55,7 @@ func (f *ffmpeg) ExtractSubtitles(videoPath string) (*entity.ExtractData, error)
 
 		subtitlePath, err := common.GetTmpSubtitleFullPath(filename + "." + stream.Tags.Language)
 		if err != nil {
-			fiberlog.Error("Failed to get subtitle path: %w", err)
+			log.Error("Failed to get subtitle path: %w", err)
 			continue
 		}
 
@@ -68,9 +71,9 @@ func (f *ffmpeg) ExtractSubtitles(videoPath string) (*entity.ExtractData, error)
 		}
 		err = ExtractSubtitleStream(videoPath, subtitlePath, stream.Index)
 		if err != nil {
-			fiberlog.Error("Failed to extract subtitle stream %d: %v\n", stream.Index, err)
+			log.Error("Failed to extract subtitle stream %d: %v\n", stream.Index, err)
 		} else {
-			fiberlog.Info("Subtitle stream %d extracted successfully: %s\n", stream.Index, subtitlePath)
+			log.Info("Subtitle stream %d extracted successfully: %s\n", stream.Index, subtitlePath)
 		}
 	}
 
@@ -110,7 +113,7 @@ func ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
 
 		subtitlePath, err := common.GetTmpSubtitleFullPath(common.ExtractFilenameWithoutExtension(videoPath) + "." + stream.Tags.Language)
 		if err != nil {
-			log.Printf("Failed to get subtitle path: %v\n", err)
+			log.Info("Failed to get subtitle path: %v\n", err)
 			continue
 		}
 
@@ -126,9 +129,9 @@ func ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
 		}
 		err = ExtractSubtitleStream(videoPath, subtitlePath, stream.Index)
 		if err != nil {
-			log.Printf("Failed to extract subtitle stream %d: %v\n", stream.Index, err)
+			log.Error("Failed to extract subtitle stream %d: %v\n", stream.Index, err)
 		} else {
-			log.Printf("Subtitle stream %d extracted successfully: %s\n", stream.Index, subtitlePath)
+			log.Info("Subtitle stream %d extracted successfully: %s\n", stream.Index, subtitlePath)
 		}
 	}
 

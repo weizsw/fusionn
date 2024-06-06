@@ -1,12 +1,16 @@
-package parser
+package repository
 
 import astisub "github.com/asticode/go-astisub"
 
-type Parser interface {
+type IParser interface {
 	Parse(input string) (*astisub.Subtitles, error)
 }
 
 type parser struct{}
+
+func NewParser() *parser {
+	return &parser{}
+}
 
 func (p *parser) Parse(input string) (*astisub.Subtitles, error) {
 	s, err := astisub.OpenFile(input)

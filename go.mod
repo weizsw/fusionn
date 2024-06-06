@@ -4,17 +4,24 @@ go 1.21
 
 require (
 	github.com/asticode/go-astisub v0.26.0
+	github.com/gofiber/cors v0.2.2
 	github.com/gofiber/fiber/v2 v2.49.2
+	github.com/google/wire v0.6.0
 	github.com/longbridgeapp/opencc v0.3.3
 	github.com/valyala/fasthttp v1.50.0
 )
 
-require github.com/stretchr/testify v1.8.1 // indirect
+require (
+	github.com/gofiber/utils v0.0.10 // indirect
+	github.com/gorilla/schema v1.1.0 // indirect
+	github.com/stretchr/testify v1.8.1 // indirect
+)
 
 require (
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/asticode/go-astikit v0.20.0 // indirect
 	github.com/asticode/go-astits v1.8.0 // indirect
+	github.com/gofiber/fiber v1.14.6 // indirect
 	github.com/google/uuid v1.3.1 // indirect
 	github.com/klauspost/compress v1.17.0 // indirect
 	github.com/liuzl/cedar-go v0.0.0-20170805034717-80a9c64b256d // indirect
@@ -25,8 +32,7 @@ require (
 	github.com/rivo/uniseg v0.4.4 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
-	golang.org/x/net v0.8.0 // indirect
-	golang.org/x/sys v0.13.0 // indirect
-	golang.org/x/text v0.8.0 // indirect
-	google.golang.org/protobuf v1.31.0
+	golang.org/x/net v0.20.0 // indirect
+	golang.org/x/sys v0.16.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
 )

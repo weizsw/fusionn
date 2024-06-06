@@ -1,4 +1,4 @@
-package algo
+package repository
 
 import (
 	"fmt"
@@ -7,11 +7,15 @@ import (
 	"github.com/asticode/go-astisub"
 )
 
-type Algo interface {
+type IAlgo interface {
 	MatchSubtitlesCueClustering(englishItems, chineseItems []*astisub.Item, timeTolerance time.Duration) []*astisub.Item
 }
 
 type algo struct{}
+
+func NewAlgo() *algo {
+	return &algo{}
+}
 
 func overlapDuration(start1, end1, start2, end2 time.Duration) time.Duration {
 	if start1 < start2 {

@@ -1,20 +1,12 @@
 package main
 
 import (
-	"fusionn/internal/processor"
-	"log"
+	server "fusionn/internal"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/log"
 )
 
 func main() {
-	app := fiber.New()
-	api := app.Group("/api")
-	v1 := api.Group("/v1")
-	v1.Get("/helloworld", func(c *fiber.Ctx) error {
-		log.Println("Hello, World 👋!")
-		return c.SendString("Hello, World 👋!")
-	})
-	v1.Post("/extract", processor.Extract)
-	app.Listen("0.0.0.0:4664")
+	server, _ := server.New()
+	log.Fatal(server.Listen(":4664"))
 }

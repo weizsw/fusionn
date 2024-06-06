@@ -4,19 +4,20 @@ import (
 	"bufio"
 	"fmt"
 	"fusionn/internal/consts"
-	"log"
 	"math"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/gofiber/fiber/v2/log"
 )
 
 func GetTmpSubtitleFullPath(filename string) (string, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
-		log.Println("Error:", err)
+		log.Error("Error:", err)
 		return "", err
 	}
 	return fmt.Sprintf("%s%s%s.srt", currentDir, consts.TMP_DIR, filename), nil
@@ -25,7 +26,7 @@ func GetTmpSubtitleFullPath(filename string) (string, error) {
 func GetTmpDirPath() (string, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
-		log.Println("Error:", err)
+		log.Error("Error:", err)
 		return "", err
 	}
 	return fmt.Sprintf("%s%s", currentDir, consts.TMP_DIR), nil
@@ -94,7 +95,7 @@ func ReadFile(filePath string) ([]string, error) {
 	// Open the file
 	file, err := os.Open(filePath)
 	if err != nil {
-		log.Println("Error opening file:", err)
+		log.Error("Error opening file:", err)
 		return nil, err
 	}
 	defer file.Close()
@@ -111,7 +112,7 @@ func ReadFile(filePath string) ([]string, error) {
 
 	// Check for any scanning errors
 	if err := scanner.Err(); err != nil {
-		log.Println("Error scanning file:", err)
+		log.Error("Error scanning file:", err)
 		return nil, err
 	}
 
@@ -122,7 +123,7 @@ func WriteFile(lines []string, filePath string) error {
 	// Open the file for writing
 	file, err := os.Create(filePath)
 	if err != nil {
-		log.Println("Error creating file:", err)
+		log.Error("Error creating file:", err)
 		return err
 	}
 	defer file.Close()
@@ -134,7 +135,7 @@ func WriteFile(lines []string, filePath string) error {
 	for _, line := range lines {
 		_, err := writer.WriteString(line + "\n")
 		if err != nil {
-			log.Println("Error writing line:", err)
+			log.Error("Error writing line:", err)
 			return err
 		}
 	}
@@ -142,11 +143,11 @@ func WriteFile(lines []string, filePath string) error {
 	// Flush the writer to ensure all data is written to the file
 	err = writer.Flush()
 	if err != nil {
-		log.Println("Error flushing writer:", err)
+		log.Error("Error flushing writer:", err)
 		return err
 	}
 
-	log.Println("File written successfully:", filePath)
+	log.Info("File written successfully:", filePath)
 	return nil
 }
 
@@ -183,7 +184,7 @@ func DeleteFilesInDirectory(dirPath, fileName string) error {
 			if err != nil {
 				return err
 			}
-			log.Printf("Deleted file: %s\n", filePath)
+			log.Info("Deleted file: %s\n", filePath)
 		}
 	}
 

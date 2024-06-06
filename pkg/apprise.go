@@ -1,4 +1,4 @@
-package apprise
+package pkg
 
 import "github.com/valyala/fasthttp"
 
