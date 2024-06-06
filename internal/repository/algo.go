@@ -8,7 +8,7 @@ import (
 )
 
 type IAlgo interface {
-	MatchSubtitlesCueClustering(englishItems, chineseItems []*astisub.Item, timeTolerance time.Duration) []*astisub.Item
+	MatchSubtitlesCueClustering(chineseItems, englishItems []*astisub.Item, timeTolerance time.Duration) []*astisub.Item
 }
 
 type algo struct{}
@@ -42,7 +42,10 @@ func (a *algo) MatchSubtitlesCueClustering(chineseItems, englishItems []*astisub
 	usedEnglish := make(map[int]bool)
 
 	for _, cnItem := range chineseItems {
-		var matchedEnglishItems []*astisub.Item
+		var bestMatch *astisub.Item
+		var bestMatchIdx int
+		var bestOverlap time.Duration
+		var bestTimeDiff time.Duration
 
 		for idx, enItem := range englishItems {
 			if usedEnglish[idx] {
@@ -50,15 +53,27 @@ func (a *algo) MatchSubtitlesCueClustering(chineseItems, englishItems []*astisub
 			}
 
 			overlap := overlapDuration(cnItem.StartAt, cnItem.EndAt, enItem.StartAt, enItem.EndAt)
-			if overlap > 0 || absDuration(cnItem.StartAt-enItem.StartAt) <= timeTolerance {
-				matchedEnglishItems = append(matchedEnglishItems, enItem)
-				usedEnglish[idx] = true
+			timeDiff := absDuration(cnItem.StartAt - enItem.StartAt)
+
+			if overlap > 0 || timeDiff <= timeTolerance {
+				enItemDuration := enItem.EndAt - enItem.StartAt
+
+				if bestMatch == nil ||
+					overlap > bestOverlap ||
+					(overlap == bestOverlap && timeDiff < bestTimeDiff) ||
+					(overlap == bestOverlap && timeDiff == bestTimeDiff && enItemDuration < bestMatch.EndAt-bestMatch.StartAt) {
+					bestMatch = enItem
+					bestMatchIdx = idx
+					bestOverlap = overlap
+					bestTimeDiff = timeDiff
+				}
 			}
 		}
 
 		mergedText := cnItem.String()
-		for _, enItem := range matchedEnglishItems {
-			mergedText += fmt.Sprintf("\n%s", enItem.String())
+		if bestMatch != nil {
+			mergedText += fmt.Sprintf("\n%s", bestMatch.String())
+			usedEnglish[bestMatchIdx] = true
 		}
 
 		newItem := &astisub.Item{
@@ -86,4 +101,11 @@ func (a *algo) MatchSubtitlesCueClustering(chineseItems, englishItems []*astisub
 	}
 
 	return mergedItems
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

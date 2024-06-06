@@ -88,7 +88,7 @@ func (m *Subtitle) Merge(c *fiber.Ctx) error {
 		}
 	}
 
-	mergedItems := m.algo.MatchSubtitlesCueClustering(engSub.Items, chsSub.Items, 500*time.Millisecond)
+	mergedItems := m.algo.MatchSubtitlesCueClustering(chsSub.Items, engSub.Items, 500*time.Millisecond)
 
 	chsSub.Items = mergedItems
 	dstpath := common.ExtractPathWithoutExtension(req.SonarrEpisodefilePath) + ".chi.ass"

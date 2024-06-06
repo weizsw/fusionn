@@ -59,21 +59,29 @@ func (f *ffmpeg) ExtractSubtitles(videoPath string) (*entity.ExtractData, error)
 			continue
 		}
 
-		if common.IsEng(stream.Tags.Language, stream.Tags.Title) && (len(extractData.EngSubPath) == 0 || extractData.IsSdh) {
+		if common.IsEng(stream.Tags.Language, stream.Tags.Title) && common.IsSdh(stream.Tags.Title) && len(extractData.EngSubPath) != 0 {
+			continue
+		}
+
+		if common.IsEng(stream.Tags.Language, stream.Tags.Title) && (len(extractData.EngSubPath) == 0) {
 			extractData.EngSubPath = subtitlePath
+			log.Infof("Eng subtitle %s %s %s", stream.Tags.Language, stream.Tags.Title, subtitlePath)
 		}
 		if common.IsChs(stream.Tags.Language, stream.Tags.Title) {
 			subtitlePath, _ = common.GetTmpSubtitleFullPath(filename + "." + consts.CHS_LAN)
 			extractData.ChsSubPath = subtitlePath
+			log.Infof("Chs subtitle %s %s %s", stream.Tags.Language, stream.Tags.Title, subtitlePath)
 		}
-		if common.IsCht(stream.Tags.Language, stream.Tags.Title) {
+		if common.IsCht(stream.Tags.Language, stream.Tags.Title) && len(extractData.ChtSubPath) == 0 {
 			extractData.ChtSubPath = subtitlePath
+			log.Infof("Cht subtitle %s %s %s", stream.Tags.Language, stream.Tags.Title, subtitlePath)
 		}
+
 		err = ExtractSubtitleStream(videoPath, subtitlePath, stream.Index)
 		if err != nil {
-			log.Error("Failed to extract subtitle stream %d: %v\n", stream.Index, err)
+			log.Error(err)
 		} else {
-			log.Info("Subtitle stream %d extracted successfully: %s\n", stream.Index, subtitlePath)
+			log.Info(fmt.Sprintf("Subtitle stream %d extracted successfully: %s\n", stream.Index, subtitlePath))
 		}
 	}
 
@@ -83,19 +91,19 @@ func (f *ffmpeg) ExtractSubtitles(videoPath string) (*entity.ExtractData, error)
 func ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
 	ffprobePath, err := exec.LookPath("ffprobe")
 	if err != nil {
-		return nil, fmt.Errorf("ffprobe not found: %v", err)
+		return nil, fmt.Errorf("ffprobe not found: %w", err)
 	}
 
 	cmd := exec.Command(ffprobePath, "-i", videoPath, "-v", "quiet", "-print_format", "json", "-show_streams")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to run ffprobe: %v", err)
+		return nil, fmt.Errorf("failed to run ffprobe: %w", err)
 	}
 
 	var ffprobeData entity.FFprobeData
 	err = json.Unmarshal(output, &ffprobeData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse ffprobe output: %v", err)
+		return nil, fmt.Errorf("failed to parse ffprobe output: %w", err)
 	}
 
 	filename := common.ExtractFilenameWithoutExtension(videoPath)
@@ -129,9 +137,9 @@ func ExtractSubtitles(videoPath string) (*entity.ExtractData, error) {
 		}
 		err = ExtractSubtitleStream(videoPath, subtitlePath, stream.Index)
 		if err != nil {
-			log.Error("Failed to extract subtitle stream %d: %v\n", stream.Index, err)
+			log.Error(err)
 		} else {
-			log.Info("Subtitle stream %d extracted successfully: %s\n", stream.Index, subtitlePath)
+			log.Info(fmt.Sprintf("Subtitle stream %d extracted successfully: %s\n", stream.Index, subtitlePath))
 		}
 	}
 
@@ -144,9 +152,21 @@ func ExtractSubtitleStream(videoPath, subtitlePath string, streamIndex int) erro
 		return fmt.Errorf("ffmpeg not found: %v", err)
 	}
 
-	err = os.Remove(subtitlePath)
-	if !os.IsNotExist(err) {
-		return fmt.Errorf("failed to remove file %s: %v", subtitlePath, err)
+	_, err = os.Stat(subtitlePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// The file does not exist, handle this case if necessary
+			log.Warnf("File %s does not exist.\n", subtitlePath)
+		} else {
+			// Some other error occurred, handle it
+			return fmt.Errorf("error checking file existence for %s: %w", subtitlePath, err)
+		}
+	} else {
+		// The file exists
+		err = os.Remove(subtitlePath)
+		if err != nil {
+			return fmt.Errorf("failed to remove file %s: %w", subtitlePath, err)
+		}
 	}
 
 	cmd := exec.Command(ffmpegPath, "-i", videoPath, "-v", "quiet", "-map", fmt.Sprintf("0:%d", streamIndex), subtitlePath)
