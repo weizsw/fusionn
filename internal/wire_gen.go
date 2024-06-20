@@ -23,7 +23,8 @@ func New() (*fiber.App, error) {
 	deepL := pkg.NewDeepL()
 	convertor := repository.NewConvertor(deepL)
 	algo := repository.NewAlgo()
-	subtitle := processor.NewSubtitle(ffmpeg, parser, convertor, algo)
+	apprise := pkg.NewApprise()
+	subtitle := processor.NewSubtitle(ffmpeg, parser, convertor, algo, apprise)
 	handler := handlers.NewHandler(subtitle)
 	app := NewApp(handler)
 	return app, nil

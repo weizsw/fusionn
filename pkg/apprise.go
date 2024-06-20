@@ -2,7 +2,18 @@ package pkg
 
 import "github.com/valyala/fasthttp"
 
-func SendBasicMessage(url string, data []byte) ([]byte, error) {
+type IApprise interface {
+	SendBasicMessage(url string, data []byte) ([]byte, error)
+}
+
+type apprise struct {
+}
+
+func NewApprise() *apprise {
+	return &apprise{}
+}
+
+func (a *apprise) SendBasicMessage(url string, data []byte) ([]byte, error) {
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 

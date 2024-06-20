@@ -2,9 +2,12 @@ package processor
 
 import (
 	"errors"
+	"fmt"
+	"fusionn/internal/consts"
 	"fusionn/internal/entity"
 	"fusionn/internal/repository"
 	"fusionn/internal/repository/common"
+	"fusionn/pkg"
 	"time"
 
 	"github.com/asticode/go-astisub"
@@ -21,6 +24,7 @@ type Subtitle struct {
 	parser    repository.IParser
 	convertor repository.IConvertor
 	algo      repository.IAlgo
+	apprise   pkg.IApprise
 }
 
 func NewSubtitle(
@@ -28,23 +32,27 @@ func NewSubtitle(
 	parser repository.IParser,
 	convertor repository.IConvertor,
 	algo repository.IAlgo,
+	apprise pkg.IApprise,
 ) *Subtitle {
 	return &Subtitle{
 		ffmpeg:    ffmpeg,
 		parser:    parser,
 		convertor: convertor,
 		algo:      algo,
+		apprise:   apprise,
 	}
 }
 
-func (m *Subtitle) Merge(c *fiber.Ctx) error {
+var msgFormat = `{"title":"Fusionn notification","body":"%s"}`
+
+func (s *Subtitle) Merge(c *fiber.Ctx) error {
 	req := &entity.ExtractRequest{}
 	if err := c.BodyParser(req); err != nil {
 		return err
 	}
 	log.Info("extracting subtitles from ->", req.SonarrEpisodefilePath)
 
-	extractedData, err := m.ffmpeg.ExtractSubtitles(req.SonarrEpisodefilePath)
+	extractedData, err := s.ffmpeg.ExtractSubtitles(req.SonarrEpisodefilePath)
 	if err != nil {
 		return err
 	}
@@ -54,45 +62,51 @@ func (m *Subtitle) Merge(c *fiber.Ctx) error {
 		chtSub *astisub.Subtitles
 		engSub *astisub.Subtitles
 	)
+	mode := "generated"
 
-	if extractedData.EngSubPath == "" {
+	switch {
+	case extractedData.EngSubPath == "":
 		return errors.New("no english subtitles found")
-	}
-
-	if extractedData.ChsSubPath == "" && extractedData.ChtSubPath == "" && extractedData.EngSubPath == "" {
+	case extractedData.ChsSubPath == "" && extractedData.ChtSubPath == "" && extractedData.EngSubPath == "":
 		return errors.New("no subtitles found")
+	case extractedData.ChsSubPath == "" && extractedData.ChtSubPath == "" && extractedData.EngSubPath != "":
+		engSub, err = s.parser.Parse(extractedData.EngSubPath)
+		if err != nil {
+			return err
+		}
+
+		chsSub, err = s.convertor.TranslateToSimplified(engSub)
+		if err != nil {
+			return err
+		}
+		mode = "translated"
+	case extractedData.ChsSubPath == "" && extractedData.ChtSubPath != "" && extractedData.EngSubPath != "":
+		engSub, err = s.parser.Parse(extractedData.EngSubPath)
+		if err != nil {
+			return err
+		}
+
+		chtSub, err = s.parser.Parse(extractedData.ChtSubPath)
+		if err != nil {
+			return err
+		}
+
+		chsSub, err = s.convertor.ConvertToSimplified(chtSub)
+		if err != nil {
+			return err
+		}
+	default:
+		engSub, err = s.parser.Parse(extractedData.EngSubPath)
+		if err != nil {
+			return err
+		}
+		chsSub, err = s.parser.Parse(extractedData.ChsSubPath)
+		if err != nil {
+			return err
+		}
 	}
 
-	if extractedData.ChsSubPath == "" && extractedData.ChtSubPath == "" && extractedData.EngSubPath != "" {
-		engSub, err = m.parser.Parse(extractedData.EngSubPath)
-		if err != nil {
-			return err
-		}
-
-		chsSub, err = m.convertor.TranslateToSimplified(engSub)
-		if err != nil {
-			return err
-		}
-	}
-
-	if extractedData.ChsSubPath == "" && extractedData.ChtSubPath != "" && extractedData.EngSubPath != "" {
-		engSub, err = m.parser.Parse(extractedData.EngSubPath)
-		if err != nil {
-			return err
-		}
-
-		chtSub, err = m.parser.Parse(extractedData.ChtSubPath)
-		if err != nil {
-			return err
-		}
-
-		chsSub, err = m.convertor.ConvertToSimplified(chtSub)
-		if err != nil {
-			return err
-		}
-	}
-
-	mergedItems := m.algo.MatchSubtitlesCueClustering(chsSub.Items, engSub.Items, 500*time.Millisecond)
+	mergedItems := s.algo.MatchSubtitlesCueClustering(chsSub.Items, engSub.Items, 500*time.Millisecond)
 
 	chsSub.Items = mergedItems
 	dstpath := common.ExtractPathWithoutExtension(req.SonarrEpisodefilePath) + ".chi.ass"
@@ -100,6 +114,7 @@ func (m *Subtitle) Merge(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	s.apprise.SendBasicMessage(consts.APPRISE, []byte(fmt.Sprintf(msgFormat, fmt.Sprintf("Subtitle for %s %s successfully", extractedData.FileName, mode))))
 
 	return nil
 }
