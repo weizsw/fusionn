@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/asticode/go-astisub"
@@ -72,7 +73,7 @@ func (a *algo) MatchSubtitlesCueClustering(chineseItems, englishItems []*astisub
 
 		mergedText := cnItem.String()
 		if bestMatch != nil {
-			mergedText += fmt.Sprintf("\n%s", bestMatch.String())
+			mergedText += fmt.Sprintf(" %s", bestMatch.String())
 			usedEnglish[bestMatchIdx] = true
 		}
 
@@ -86,17 +87,28 @@ func (a *algo) MatchSubtitlesCueClustering(chineseItems, englishItems []*astisub
 		mergedItems = append(mergedItems, newItem)
 	}
 
-	// Append remaining unmatched English subtitles
+	// Append remaining unmatched English subtitles to the best-matched item
 	for idx, enItem := range englishItems {
 		if !usedEnglish[idx] {
-			newItem := &astisub.Item{
-				StartAt: enItem.StartAt,
-				EndAt:   enItem.EndAt,
-				Lines: []astisub.Line{
-					{Items: []astisub.LineItem{{Text: enItem.String()}}},
-				},
+			// Find the best-matched item to append this English subtitle
+			appendIndex := sort.Search(len(mergedItems), func(i int) bool {
+				return mergedItems[i].StartAt > enItem.StartAt
+			}) - 1
+
+			// Append the English subtitle to the best-matched item
+			if appendIndex >= 0 {
+				mergedItems[appendIndex].Lines[0].Items[0].Text += fmt.Sprintf(" %s", enItem.String())
+			} else {
+				// If no best-matched item is found, add as a new item
+				newItem := &astisub.Item{
+					StartAt: enItem.StartAt,
+					EndAt:   enItem.EndAt,
+					Lines: []astisub.Line{
+						{Items: []astisub.LineItem{{Text: enItem.String()}}},
+					},
+				}
+				mergedItems = append(mergedItems, newItem)
 			}
-			mergedItems = append(mergedItems, newItem)
 		}
 	}
 
