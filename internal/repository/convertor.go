@@ -83,18 +83,18 @@ func (c *convertor) ConvertToSimplified(sub *astisub.Subtitles) (*astisub.Subtit
 	}
 
 	for _, item := range sub.Items {
-		item.Lines = convertLines(item.Lines)
+		convertLines(item.Lines)
 	}
+
 	return sub, nil
 }
 
-func convertLines(lines []astisub.Line) []astisub.Line {
-	for _, line := range lines {
-		for _, item := range line.Items {
-			item.Text = convertText(item.Text)
+func convertLines(lines []astisub.Line) {
+	for i := range lines {
+		for j := range lines[i].Items {
+			lines[i].Items[j].Text = convertText(lines[i].Items[j].Text)
 		}
 	}
-	return lines
 }
 
 func convertText(text string) string {
