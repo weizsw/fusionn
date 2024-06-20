@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/asticode/go-astisub"
+	"github.com/bytedance/sonic"
 	"github.com/longbridgeapp/opencc"
 )
 
@@ -41,8 +42,12 @@ func (c *convertor) TranslateToSimplified(sub *astisub.Subtitles) (*astisub.Subt
 		return nil, errors.New("subtitles is nil")
 	}
 
+	newSub := &astisub.Subtitles{}
 	var texts []string
 	itemIndexMap := make(map[int][]int)
+
+	b, _ := sonic.Marshal(sub)
+	_ = sonic.Unmarshal(b, newSub)
 
 	for i, item := range sub.Items {
 		for j, line := range item.Lines {
@@ -72,9 +77,9 @@ func (c *convertor) TranslateToSimplified(sub *astisub.Subtitles) (*astisub.Subt
 
 	for i, translatedText := range translatedTexts {
 		indices := itemIndexMap[i]
-		sub.Items[indices[0]].Lines[indices[1]].Items[indices[2]].Text = translatedText
+		newSub.Items[indices[0]].Lines[indices[1]].Items[indices[2]].Text = translatedText
 	}
-	return sub, nil
+	return newSub, nil
 }
 
 func (c *convertor) ConvertToSimplified(sub *astisub.Subtitles) (*astisub.Subtitles, error) {

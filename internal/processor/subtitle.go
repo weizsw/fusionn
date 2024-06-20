@@ -55,6 +55,10 @@ func (m *Subtitle) Merge(c *fiber.Ctx) error {
 		engSub *astisub.Subtitles
 	)
 
+	if extractedData.EngSubPath == "" {
+		return errors.New("no english subtitles found")
+	}
+
 	if extractedData.ChsSubPath == "" && extractedData.ChtSubPath == "" && extractedData.EngSubPath == "" {
 		return errors.New("no subtitles found")
 	}

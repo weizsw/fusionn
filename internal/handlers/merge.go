@@ -17,5 +17,5 @@ func NewHandler(p processor.ISubtitle) *Handler {
 }
 
 func (h *Handler) Merge(c *fiber.Ctx) error {
-	return c.JSON(h.MergeProcessor.Merge(c))
+	return h.MergeProcessor.Merge(c)
 }
