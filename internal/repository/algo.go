@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"fmt"
 	"sort"
 	"time"
 
@@ -40,16 +39,20 @@ func absDuration(d time.Duration) time.Duration {
 
 func (a *algo) MatchSubtitlesCueClustering(chineseItems, englishItems []*astisub.Item, timeTolerance time.Duration) []*astisub.Item {
 	mergedItems := make([]*astisub.Item, 0, max(len(chineseItems), len(englishItems)))
+	usedChinese := make(map[int]bool)
 	usedEnglish := make(map[int]bool)
 
-	for _, cnItem := range chineseItems {
-		var bestMatch *astisub.Item
-		var bestMatchIdx int
-		var bestOverlap time.Duration
-		var bestTimeDiff time.Duration
+	// First pass: Match Chinese to English
+	for cnIdx, cnItem := range chineseItems {
+		if usedChinese[cnIdx] {
+			continue
+		}
 
-		for idx, enItem := range englishItems {
-			if usedEnglish[idx] {
+		matchedEnItems := make([]*astisub.Item, 0)
+		matchedEnIndices := make([]int, 0)
+
+		for enIdx, enItem := range englishItems {
+			if usedEnglish[enIdx] {
 				continue
 			}
 
@@ -57,60 +60,105 @@ func (a *algo) MatchSubtitlesCueClustering(chineseItems, englishItems []*astisub
 			timeDiff := absDuration(cnItem.StartAt - enItem.StartAt)
 
 			if overlap > 0 || timeDiff <= timeTolerance {
-				enItemDuration := enItem.EndAt - enItem.StartAt
-
-				if bestMatch == nil ||
-					overlap > bestOverlap ||
-					(overlap == bestOverlap && timeDiff < bestTimeDiff) ||
-					(overlap == bestOverlap && timeDiff == bestTimeDiff && enItemDuration < bestMatch.EndAt-bestMatch.StartAt) {
-					bestMatch = enItem
-					bestMatchIdx = idx
-					bestOverlap = overlap
-					bestTimeDiff = timeDiff
-				}
+				matchedEnItems = append(matchedEnItems, enItem)
+				matchedEnIndices = append(matchedEnIndices, enIdx)
 			}
 		}
 
-		mergedText := cnItem.String()
-		if bestMatch != nil {
-			mergedText += fmt.Sprintf(" %s", bestMatch.String())
-			usedEnglish[bestMatchIdx] = true
-		}
+		if len(matchedEnItems) > 0 {
+			mergedText := cnItem.String()
+			for _, enItem := range matchedEnItems {
+				mergedText += " " + enItem.String()
+			}
 
-		newItem := &astisub.Item{
-			StartAt: cnItem.StartAt,
-			EndAt:   cnItem.EndAt,
-			Lines: []astisub.Line{
-				{Items: []astisub.LineItem{{Text: mergedText}}},
-			},
+			endAt := cnItem.EndAt
+			if len(matchedEnItems) > 1 {
+				endAt = matchedEnItems[len(matchedEnItems)-1].EndAt
+			}
+
+			newItem := &astisub.Item{
+				StartAt: cnItem.StartAt,
+				EndAt:   endAt,
+				Lines: []astisub.Line{
+					{Items: []astisub.LineItem{{Text: mergedText}}},
+				},
+			}
+			mergedItems = append(mergedItems, newItem)
+
+			usedChinese[cnIdx] = true
+			for _, idx := range matchedEnIndices {
+				usedEnglish[idx] = true
+			}
 		}
-		mergedItems = append(mergedItems, newItem)
 	}
 
-	// Append remaining unmatched English subtitles to the best-matched item
-	for idx, enItem := range englishItems {
+	// Second pass: Match English to remaining Chinese
+	for enIdx, enItem := range englishItems {
+		if usedEnglish[enIdx] {
+			continue
+		}
+
+		matchedCnItems := make([]*astisub.Item, 0)
+		matchedCnIndices := make([]int, 0)
+
+		for cnIdx, cnItem := range chineseItems {
+			if usedChinese[cnIdx] {
+				continue
+			}
+
+			overlap := overlapDuration(enItem.StartAt, enItem.EndAt, cnItem.StartAt, cnItem.EndAt)
+			timeDiff := absDuration(enItem.StartAt - cnItem.StartAt)
+
+			if overlap > 0 || timeDiff <= timeTolerance {
+				matchedCnItems = append(matchedCnItems, cnItem)
+				matchedCnIndices = append(matchedCnIndices, cnIdx)
+			}
+		}
+
+		if len(matchedCnItems) > 0 {
+			mergedText := enItem.String()
+			for _, cnItem := range matchedCnItems {
+				mergedText = cnItem.String() + " " + mergedText
+			}
+
+			startAt := enItem.StartAt
+			if len(matchedCnItems) > 0 {
+				startAt = matchedCnItems[0].StartAt
+			}
+
+			newItem := &astisub.Item{
+				StartAt: startAt,
+				EndAt:   enItem.EndAt,
+				Lines: []astisub.Line{
+					{Items: []astisub.LineItem{{Text: mergedText}}},
+				},
+			}
+			mergedItems = append(mergedItems, newItem)
+
+			usedEnglish[enIdx] = true
+			for _, idx := range matchedCnIndices {
+				usedChinese[idx] = true
+			}
+		}
+	}
+
+	// Add remaining unmatched subtitles
+	for idx, item := range chineseItems {
+		if !usedChinese[idx] {
+			mergedItems = append(mergedItems, item)
+		}
+	}
+
+	for idx, item := range englishItems {
 		if !usedEnglish[idx] {
-			// Find the best-matched item to append this English subtitle
-			appendIndex := sort.Search(len(mergedItems), func(i int) bool {
-				return mergedItems[i].StartAt > enItem.StartAt
-			}) - 1
-
-			// Append the English subtitle to the best-matched item
-			if appendIndex >= 0 {
-				mergedItems[appendIndex].Lines[0].Items[0].Text += fmt.Sprintf(" %s", enItem.String())
-			} else {
-				// If no best-matched item is found, add as a new item
-				newItem := &astisub.Item{
-					StartAt: enItem.StartAt,
-					EndAt:   enItem.EndAt,
-					Lines: []astisub.Line{
-						{Items: []astisub.LineItem{{Text: enItem.String()}}},
-					},
-				}
-				mergedItems = append(mergedItems, newItem)
-			}
+			mergedItems = append(mergedItems, item)
 		}
 	}
+
+	// Sort the merged items by start time
+	sort.Slice(mergedItems, func(i, j int) bool {
+		return mergedItems[i].StartAt < mergedItems[j].StartAt
+	})
 
 	return mergedItems
 }

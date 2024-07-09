@@ -109,6 +109,7 @@ func (s *Subtitle) Merge(c *fiber.Ctx) error {
 	mergedItems := s.algo.MatchSubtitlesCueClustering(chsSub.Items, engSub.Items, 500*time.Millisecond)
 
 	chsSub.Items = mergedItems
+	chsSub = common.AddingStyleToAss(chsSub)
 	dstpath := common.ExtractPathWithoutExtension(req.SonarrEpisodefilePath) + ".chi.ass"
 	err = chsSub.Write(dstpath)
 	if err != nil {
