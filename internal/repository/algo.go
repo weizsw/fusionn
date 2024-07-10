@@ -53,8 +53,8 @@ func (a *algo) MatchSubtitlesCueClustering(chineseItems, englishItems []*astisub
 		if abs(chineseItems[i].StartAt-englishItems[j].StartAt) <= timeTolerance ||
 			abs(chineseItems[i].EndAt-englishItems[j].EndAt) <= timeTolerance {
 			// Merge the subtitles
-			mergedItem := mergeItems(chineseItems[i], englishItems[j])
-			mergedItems = append(mergedItems, mergedItem)
+			merged := mergeItems(chineseItems[i], englishItems[j])
+			mergedItems = append(mergedItems, merged)
 			i++
 			j++
 		} else if chineseItems[i].StartAt < englishItems[j].StartAt {
@@ -74,30 +74,14 @@ func (a *algo) MatchSubtitlesCueClustering(chineseItems, englishItems []*astisub
 }
 
 func mergeItems(chinese, english *astisub.Item) *astisub.Item {
-	merged := &astisub.Item{
-		Index:   chinese.Index, // Or you could use a new index
-		StartAt: chinese.StartAt,
-		EndAt:   chinese.EndAt,
-		Style:   chinese.Style, // You might want to decide which style to use
-	}
+	merged := *chinese // Create a copy of the Chinese item
 
-	// Merge lines
-	for _, chineseLine := range chinese.Lines {
-		mergedLine := astisub.Line{VoiceName: chineseLine.VoiceName}
-		for _, chineseLineItem := range chineseLine.Items {
-			mergedLine.Items = append(mergedLine.Items, chineseLineItem)
-		}
-		merged.Lines = append(merged.Lines, mergedLine)
-	}
+	// Append English lines to the existing Chinese lines
 	for _, englishLine := range english.Lines {
-		mergedLine := astisub.Line{VoiceName: englishLine.VoiceName}
-		for _, englishLineItem := range englishLine.Items {
-			mergedLine.Items = append(mergedLine.Items, englishLineItem)
-		}
-		merged.Lines = append(merged.Lines, mergedLine)
+		merged.Lines = append(merged.Lines, englishLine)
 	}
 
-	return merged
+	return &merged
 }
 
 func abs(d time.Duration) time.Duration {
@@ -105,11 +89,4 @@ func abs(d time.Duration) time.Duration {
 		return -d
 	}
 	return d
-}
-
-func max(a, b time.Duration) time.Duration {
-	if a > b {
-		return a
-	}
-	return b
 }
