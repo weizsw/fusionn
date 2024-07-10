@@ -106,7 +106,7 @@ func (s *Subtitle) Merge(c *fiber.Ctx) error {
 		}
 	}
 
-	mergedItems := s.algo.MatchSubtitlesCueClustering(chsSub.Items, engSub.Items, 500*time.Millisecond)
+	mergedItems := s.algo.MatchSubtitlesCueClustering(chsSub.Items, engSub.Items, 1000*time.Millisecond)
 
 	chsSub.Items = mergedItems
 	chsSub = common.AddingStyleToAss(chsSub)

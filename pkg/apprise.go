@@ -1,6 +1,9 @@
 package pkg
 
-import "github.com/valyala/fasthttp"
+import (
+	"github.com/gofiber/fiber/v2/log"
+	"github.com/valyala/fasthttp"
+)
 
 type IApprise interface {
 	SendBasicMessage(url string, data []byte) ([]byte, error)
@@ -29,6 +32,7 @@ func (a *apprise) SendBasicMessage(url string, data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Info("send apprise message success")
 
 	return resp.Body(), nil
 }
