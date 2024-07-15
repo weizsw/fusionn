@@ -4,19 +4,22 @@ import (
 	"bufio"
 	"fmt"
 	"fusionn/internal/consts"
-	"log"
 	"math"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/asticode/go-astisub"
+	"github.com/gofiber/fiber/v2/log"
+	"google.golang.org/protobuf/proto"
 )
 
 func GetTmpSubtitleFullPath(filename string) (string, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
-		log.Println("Error:", err)
+		log.Error("Error:", err)
 		return "", err
 	}
 	return fmt.Sprintf("%s%s%s.srt", currentDir, consts.TMP_DIR, filename), nil
@@ -25,7 +28,7 @@ func GetTmpSubtitleFullPath(filename string) (string, error) {
 func GetTmpDirPath() (string, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
-		log.Println("Error:", err)
+		log.Error("Error:", err)
 		return "", err
 	}
 	return fmt.Sprintf("%s%s", currentDir, consts.TMP_DIR), nil
@@ -50,22 +53,27 @@ func ExtractPathWithoutExtension(filePath string) string {
 	return pathWithoutExtension
 }
 
-func IsCHS(lan string, title string) bool {
+func IsChs(lan string, title string) bool {
 	var simplifiedRegex = regexp.MustCompile(`(?i)(simplified|简体|简|chi)`)
 	isCHSTitle := simplifiedRegex.MatchString(title)
-	return (lan == consts.CHS_LAN || lan == consts.CHI_LAN) || isCHSTitle
+	return (lan == consts.CHS_LAN || lan == consts.CHI_LAN) && isCHSTitle
 }
 
-func IsCHT(lan string, title string) bool {
-	var traditionalRegex = regexp.MustCompile(`(?i)(traditional|繁體|繁|chi)`)
+func IsCht(lan string, title string) bool {
+	var traditionalRegex = regexp.MustCompile(`(?i)(traditional|繁體|繁|chi|hong kong)`)
 	isCHTTitle := traditionalRegex.MatchString(title)
-	return (lan == consts.CHT_LAN || lan == consts.CHI_LAN) || isCHTTitle
+	return (lan == consts.CHT_LAN || lan == consts.CHI_LAN) && isCHTTitle
 }
 
 func IsEng(lan string, title string) bool {
 	var englishRegex = regexp.MustCompile(`(?i)english\(sdh\)|sdh|english|^$`)
 	isEngTitle := englishRegex.MatchString(title)
 	return (lan == consts.ENG_LAN) && isEngTitle
+}
+
+func IsSdh(title string) bool {
+	var sdhRegex = regexp.MustCompile(`(?i)english\(sdh\)|sdh`)
+	return sdhRegex.MatchString(title)
 }
 
 func Floor(num int) int {
@@ -89,7 +97,7 @@ func ReadFile(filePath string) ([]string, error) {
 	// Open the file
 	file, err := os.Open(filePath)
 	if err != nil {
-		log.Println("Error opening file:", err)
+		log.Error("Error opening file:", err)
 		return nil, err
 	}
 	defer file.Close()
@@ -106,7 +114,7 @@ func ReadFile(filePath string) ([]string, error) {
 
 	// Check for any scanning errors
 	if err := scanner.Err(); err != nil {
-		log.Println("Error scanning file:", err)
+		log.Error("Error scanning file:", err)
 		return nil, err
 	}
 
@@ -117,7 +125,7 @@ func WriteFile(lines []string, filePath string) error {
 	// Open the file for writing
 	file, err := os.Create(filePath)
 	if err != nil {
-		log.Println("Error creating file:", err)
+		log.Error("Error creating file:", err)
 		return err
 	}
 	defer file.Close()
@@ -129,7 +137,7 @@ func WriteFile(lines []string, filePath string) error {
 	for _, line := range lines {
 		_, err := writer.WriteString(line + "\n")
 		if err != nil {
-			log.Println("Error writing line:", err)
+			log.Error("Error writing line:", err)
 			return err
 		}
 	}
@@ -137,11 +145,11 @@ func WriteFile(lines []string, filePath string) error {
 	// Flush the writer to ensure all data is written to the file
 	err = writer.Flush()
 	if err != nil {
-		log.Println("Error flushing writer:", err)
+		log.Error("Error flushing writer:", err)
 		return err
 	}
 
-	log.Println("File written successfully:", filePath)
+	log.Info("File written successfully:", filePath)
 	return nil
 }
 
@@ -178,9 +186,145 @@ func DeleteFilesInDirectory(dirPath, fileName string) error {
 			if err != nil {
 				return err
 			}
-			log.Printf("Deleted file: %s\n", filePath)
+			log.Info("Deleted file: %s\n", filePath)
 		}
 	}
 
 	return nil
+}
+
+func AddingStyleToAss(assSub *astisub.Subtitles) *astisub.Subtitles {
+	if assSub == nil {
+		return assSub
+	}
+
+	resX := 3840
+	resY := 2160
+	assSub.Metadata = &astisub.Metadata{}
+	assSub.Metadata.Title = "Default Aegisub file"
+	assSub.Metadata.SSAScriptType = "v4.00+"
+	assSub.Metadata.SSAWrapStyle = "0"
+	assSub.Metadata.SSAPlayResX = &resX
+	assSub.Metadata.SSAPlayResY = &resY
+	var (
+		primaryColor   *astisub.Color
+		secondaryColor *astisub.Color
+		outlineColor   *astisub.Color
+		backColor      *astisub.Color
+		err            error
+	)
+
+	primaryColor, err = ParseASSColor("&H00FFFFFF")
+	if err != nil {
+		log.Error("Error parsing primarycolor:", err)
+		primaryColor = &astisub.Color{
+			Alpha: 0,
+			Blue:  255,
+			Green: 255,
+			Red:   255,
+		}
+	}
+	secondaryColor, err = ParseASSColor("&H000000FF")
+	if err != nil {
+		log.Error("Error parsing secondarycolor:", err)
+		secondaryColor = &astisub.Color{
+			Alpha: 0,
+			Blue:  0,
+			Green: 0,
+			Red:   255,
+		}
+	}
+	outlineColor, err = ParseASSColor("&H00000000")
+	if err != nil {
+		log.Error("Error parsing outlinecolor:", err)
+		outlineColor = &astisub.Color{
+			Alpha: 0,
+			Blue:  0,
+			Green: 0,
+			Red:   0,
+		}
+	}
+	backColor, err = ParseASSColor("&H00000000")
+	if err != nil {
+		log.Error("Error parsing backcolor:", err)
+		backColor = &astisub.Color{
+			Alpha: 0,
+			Blue:  0,
+			Green: 0,
+			Red:   0,
+		}
+	}
+	boarderStyle := 1
+	alignment := 2
+	marginLeft, marginRight := 15, 15
+	marginVertical := 11
+	encoding := 1
+	defaultStyle := &astisub.StyleAttributes{
+		SSAFontName:        "方正黑体简体",
+		SSAFontSize:        proto.Float64(65),
+		SSAPrimaryColour:   primaryColor,
+		SSASecondaryColour: secondaryColor,
+		SSAOutlineColour:   outlineColor,
+		SSABackColour:      backColor,
+		SSABold:            proto.Bool(false),
+		SSAItalic:          proto.Bool(false),
+		SSAUnderline:       proto.Bool(false),
+		SSAStrikeout:       proto.Bool(false),
+		SSAScaleX:          proto.Float64(104.046),
+		SSAScaleY:          proto.Float64(100),
+		SSASpacing:         proto.Float64(0),
+		SSAAngle:           proto.Float64(0),
+		SSABorderStyle:     &boarderStyle,
+		SSAOutline:         proto.Float64(0.9975),
+		SSAShadow:          proto.Float64(0.9975),
+		SSAAlignment:       &alignment,
+		SSAMarginLeft:      &marginLeft,
+		SSAMarginRight:     &marginRight,
+		SSAMarginVertical:  &marginVertical,
+		SSAEncoding:        &encoding,
+	}
+	assSub.Styles = map[string]*astisub.Style{
+		"Default": {
+			ID:          "Default",
+			InlineStyle: defaultStyle,
+		},
+	}
+	for _, item := range assSub.Items {
+		item.Style = &astisub.Style{
+			ID: "Default",
+		}
+	}
+	return assSub
+}
+
+func ParseASSColor(assColor string) (*astisub.Color, error) {
+	// Remove the "&H" prefix if present
+	if len(assColor) > 2 && assColor[:2] == "&H" {
+		assColor = assColor[2:]
+	}
+
+	// Pad with zeros if necessary
+	for len(assColor) < 8 {
+		assColor = "0" + assColor
+	}
+
+	// Parse the hexadecimal string
+	value, err := strconv.ParseUint(assColor, 16, 32)
+	if err != nil {
+		return &astisub.Color{}, fmt.Errorf("invalid color format: %v", err)
+	}
+
+	// Extract color components
+	alpha := uint8((value >> 24) & 0xFF)
+	blue := uint8((value >> 16) & 0xFF)
+	green := uint8((value >> 8) & 0xFF)
+	red := uint8(value & 0xFF)
+
+	// ASS format uses ABGR, but we want ARGB, so we need to swap blue and red
+	return &astisub.Color{
+		Alpha: alpha,
+		Blue:  red,
+		Green: green,
+		Red:   blue,
+	}, nil
 }

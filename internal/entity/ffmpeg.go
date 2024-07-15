@@ -78,6 +78,7 @@ type Stream struct {
 type ExtractData struct {
 	FileName   string
 	EngSubPath string
-	CHSSubPath string
-	CHTSubPath string
+	ChsSubPath string
+	ChtSubPath string
+	IsSdh      bool
 }

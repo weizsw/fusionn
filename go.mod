@@ -1,21 +1,24 @@
 module fusionn
 
-go 1.20
+go 1.21
 
 require (
 	github.com/asticode/go-astisub v0.26.0
-	github.com/bytedance/sonic v1.10.2
+	github.com/bytedance/sonic v1.11.9
 	github.com/gofiber/fiber/v2 v2.49.2
+	github.com/google/wire v0.6.0
 	github.com/longbridgeapp/opencc v0.3.3
 	github.com/valyala/fasthttp v1.50.0
+	google.golang.org/protobuf v1.33.0
 )
 
 require (
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/asticode/go-astikit v0.20.0 // indirect
 	github.com/asticode/go-astits v1.8.0 // indirect
-	github.com/chenzhuoyu/base64x v0.0.0-20230717121745-296ad89f973d // indirect
-	github.com/chenzhuoyu/iasm v0.9.0 // indirect
+	github.com/bytedance/sonic/loader v0.1.1 // indirect
+	github.com/cloudwego/base64x v0.1.4 // indirect
+	github.com/cloudwego/iasm v0.2.0 // indirect
 	github.com/google/uuid v1.3.1 // indirect
 	github.com/klauspost/compress v1.17.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
@@ -29,8 +32,7 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
-	golang.org/x/net v0.8.0 // indirect
-	golang.org/x/sys v0.13.0 // indirect
-	golang.org/x/text v0.8.0 // indirect
-	google.golang.org/protobuf v1.31.0
+	golang.org/x/net v0.20.0 // indirect
+	golang.org/x/sys v0.16.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
 )
