@@ -5,7 +5,7 @@
     <h1 align="center">FUSIONN</h1>
 </p>
 <p align="center">
-    <em>Versatile Multi-Language Video Processing System</em>
+    <em>Code harmony, seamless media flow 🌐️⚡️🚀</em>
 </p>
 <p align="center">
  <!-- local repository, no metadata badges. -->
@@ -24,33 +24,33 @@
 <details>
   <summary>Table of Contents</summary><br>
 
-- [Overview](#overview)
-- [Features](#features)
-- [Repository Structure](#repository-structure)
-- [Modules](#modules)
-- [Getting Started](#getting-started)
-  - [Installation](#installation)
-  - [Usage](#usage)
-  - [Tests](#tests)
-- [Project Roadmap](#project-roadmap)
-- [Contributing](#contributing)
-- [License](#license)
-- [Acknowledgments](#acknowledgments)
+- [📍 Overview](#-overview)
+- [🧩 Features](#-features)
+- [🗂️ Repository Structure](#️-repository-structure)
+- [📦 Modules](#-modules)
+- [🚀 Getting Started](#-getting-started)
+  - [⚙️ Installation](#️-installation)
+  - [🤖 Usage](#-usage)
+  - [🧪 Tests](#-tests)
+- [🛠 Project Roadmap](#-project-roadmap)
+- [🤝 Contributing](#-contributing)
+- [🎗 License](#-license)
+- [🔗 Acknowledgments](#-acknowledgments)
 
 </details>
 <hr>
 
-## Overview
+## 📍 Overview
 
-FusionN is a media management system that leverages various subsystems for seamless media processing. It handles data extraction (ExtractRequest), video/audio property analysis (FFprobeData), subtitle translation or merging (SubtitleProcessor), and efficient communication between these services (ProcessorSet). The application uses dependency injection (Wire) for flexibility and modularity. Notable features include a DeepL Translation API integration, automation of Docker container release, and efficient messaging service using Apprise and FastHTTP. FusionN also supports internationalization and cross-linguistic data exchange, ensuring smooth media processing across multiple environments.
-
----
-
-## Features
+FusionN is a versatile media management application designed to enhance user experiences by seamlessly handling multimedia operations. Key functionalities include data structuring with `ffmpeg.go`, subtitle processing via `subtitle.go`, coordinated processing orchestrated in `processor_set.go`, subtitle merging managed by merge.go, handler organization using handlers_set.go, and constant definitions within consts.go for multilingual support. It utilizes DeepL API translations and third-party notifications services like Apprise. The application adopts a modular architecture with efficient dependency management through Google's wire library, FastHTTP for communication, and automates Docker image building and publishing via GitHub workflows.
 
 ---
 
-## Repository Structure
+## 🧩 Features
+
+---
+
+## 🗂️ Repository Structure
 
 ```sh
 └── fusionn/
@@ -85,127 +85,127 @@ FusionN is a media management system that leverages various subsystems for seaml
 
 ---
 
-## Modules
+## 📦 Modules
 
 <details closed><summary>.</summary>
 
-| File                 | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ---                  | ---                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| [go.mod](go.mod)     | In the `fusionn` repository, this go.mod file specifies the projects dependencies for seamless execution. It includes various packages such as GoFiber, Wire, Protobuf, AstiSub, and Sonic, which are essential for application development, subtitle handling, server interaction, and other crucial functions, thereby orchestrating the repositorys core functionality.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| [Makefile](Makefile) | The Makefile optimizes this software projects architecture by setting up Go Get for Google Wire, a popular dependency injection library. By triggering the wire' command, it automates code generation, ensuring efficient and consistent setup across the entire project.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| [go.sum](go.sum)     | In the `fusionn` repository, this specific code file is located within the `cmd/fusionn` directory and is integral to the execution of commands from the command-line interface (CLI). The main purpose of this codefile is to serve as the entry point for interacting with FusionN, a data analysis tool.This code file acts as the bridge between user input (CLI arguments) and the various functionalities within the FusionN ecosystem, orchestrating the workflow across different components of the software stack. Critical features include support for data processing tasks like pre-processing, normalization, aggregation, and visualization, ultimately helping scientists and engineers make informed decisions based on their datasets. The file also integrates with other tools in the parent repository's architecture to extend its capabilities.Key components within the FusionN ecosystem are designed for ease of use, scalability, modularity, and compatibility with popular open-source data analysis libraries, making it an efficient and flexible solution for complex datasets. The repository structure provides clear separation between various elements such as documentation (`README.md`), workflow configurations (`.github/workflows`), license information (`LICENSE`), and a Makefile to facilitate building the software, ensuring maintainability and extensibility over time. |
+| File                 | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---                  | ---                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| [go.mod](go.mod)     | This `go.mod` file is the central manifest for dependencies of the fusionn project, which defines a software architecture for building an application. The file lists over three dozen external libraries such as Fasthttp, Go-astisub, Bytedance's Sonic, and Google's Wire, indicating the application leverages efficient networking, subtitling tools, audio processing frameworks, and dependency injection mechanisms respectively. By orchestrating these libraries, the fusionn project aims to deliver an advanced media processing solution with adaptive capabilities.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| [Makefile](Makefile) | The Makefile in this repository provides a setup task that automatically downloads Google Wire, a tool for dependency injection used throughout the project, and generates its associated files with a single command (wire). This promotes consistent and efficient coding within the Fusionn application architecture.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| [go.sum](go.sum)     | User-friendly command executionAllowing users to run various operations on their data by executing appropriate commands from the terminal.2. **Integration with other repository componentsEffectively ties together different modules within the FusionN project, leveraging their functionalities for seamless usage.3.**Parsing command arguments and flagsEnabling fine-tuned control of operation settings, ensuring optimal results for various datasets and use-cases.4. **Error handling and reportingProviding clear feedback to users in case of issues or exceptions during CLI interactions, promoting a user-friendly experience.5.**Help documentationGenerating detailed help information for each command, assisting users with correct syntax, usage examples, and additional tips on best practices.In summary, this CLI is instrumental in making the FusionN software easily accessible to end-users while serving as a unifying layer that interfaces between different components within the larger FusionN project architecture. |
 
 </details>
 
 <details closed><summary>cmd.fusionn</summary>
 
-| File                           | Summary                                                                                                                                                                                                                                                      |
-| ---                            | ---                                                                                                                                                                                                                                                          |
-| [main.go](cmd/fusionn/main.go) | This Go module bootstraps the Fusionn server application, providing a lightweight REST API gateway that serves as an entry point to the broader Fusionn ecosystem (fusionn/internal). The package imports and runs a server instance listening on port 4664. |
+| File                           | Summary                                                                                                                                                                                                                                                                                          |
+| ---                            | ---                                                                                                                                                                                                                                                                                              |
+| [main.go](cmd/fusionn/main.go) | The given Go file initiates the command-line execution of Fusionn server, listening on port 4664, ensuring seamless communication within the applications architecture. Its main role lies in setting up the server instance and kickstarting its functionality within this open-source project. |
 
 </details>
 
 <details closed><summary>deploy</summary>
 
-| File                            | Summary                                                                                                                                                                                                                                                                                                                                                                                                  |
-| ---                             | ---                                                                                                                                                                                                                                                                                                                                                                                                      |
-| [Dockerfile](deploy/Dockerfile) | This Dockerfile builds a lean Alpine Linux container optimized for go programming language, specifically for a project named `fusionn`. The container downloads required packages, sets the appropriate timezone (Asia/Shanghai), and constructs the Fusionn application. Once built, the containers default command runs Fusionn, enabling seamless deployment and scaling across various environments. |
+| File                            | Summary                                                                                                                                                                                                                                                                                                                                              |
+| ---                             | ---                                                                                                                                                                                                                                                                                                                                                  |
+| [Dockerfile](deploy/Dockerfile) | Builds Fusionn (repositorys primary app) using Alpine Linux container. Stages for faster dependency loading. Optimizes with-s-w' flags and copies build output to Docker image. Sets time zone to Asia/Shanghai and installs additional dependencies, including FFMPEG, inside the deployed container. Enables CMD to run Fusionn app on deployment. |
 
 </details>
 
 <details closed><summary>internal</summary>
 
-| File                                | Summary                                                                                                                                                                                                                                                                                                                                                                                               |
-| ---                                 | ---                                                                                                                                                                                                                                                                                                                                                                                                   |
-| [server.go](internal/server.go)     | In this `internal/server.go`, the software engineer utilizes dependency injection principles with Wire library to manage application setup (AppSet), ultimately configuring the Fiber web framework application, essential for executing API requests in our fusionn project architecture.                                                                                                            |
-| [wire_gen.go](internal/wire_gen.go) | In this `internal/wire_gen.go` file, we generate interdependent objects within our Fusionn application, ensuring they are correctly initialized and assembled. By combining key modules such as processors, repositories, and handlers, the file enables a seamless and structured construction of our core functionality for video processing and AI tasks.                                          |
-| [app.go](internal/app.go)           | Initialize and configure a Fiber web application (fusionn) for managing API requests, focusing on the merging function at /api/v1/merge path using handlers defined within the repository. This centralizes and modularizes our applications processing, while ensuring seamless integration with data processors, handlers, repositories, and external dependencies like DeepL and apprise packages. |
+| File                                | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---                                 | ---                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| [server.go](internal/server.go)     | Bootstraps Go application server with DI (Dependency Injection) using Wire library in this FusionN repositorys internal package, allowing seamless integration between various components like handlers, repositories, and more.                                                                                                                                                                                                               |
+| [wire_gen.go](internal/wire_gen.go) | This file `internal/wire_gen.go` generates dependencies for components within the FusionN application, ensuring theyre properly injected and managed during runtime. It ties together modules such as handlers, processors, repositories, and third-party packages like DeepL and Apprise to create a seamless workflow. This enables efficient interplay between application layers while fostering maintainable and scalable code structure. |
+| [app.go](internal/app.go)           | Manages core application functionality in Fusionns architecture by creating an app structure for handling API requests, particularly the /api/v1/merge' post operation. The package orchestrates the interaction between handlers, processors, and repositories within Fusionn's internal components, enhancing modularity and maintaining a well-structured application.                                                                      |
 
 </details>
 
 <details closed><summary>internal.repository</summary>
 
-| File                                                           | Summary                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ---                                                            | ---                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| [ffmpeg.go](internal/repository/ffmpeg.go)                     | Extracts subtitles from videos within the fusionn application architecture. It uses the ffmpeg command-line tool to identify and retrieve subtitle streams based on specific language criteria and stores their paths in relevant data structures. The function ExtractSubtitleStream aids in extracting a particular subtitle stream. If required, it can convert the subtitles into.ass format using ConvertSubtitleToAss function. |
-| [convertor.go](internal/repository/convertor.go)               | The convertor.go file within the FusionN repository handles the conversion and translation of subtitles from traditional to simplified Chinese using deep learning APIs. It breaks down text in batches, translates each batch using DeepL API, then simplifies the text using a trandositional tool (T2S). This enhancement ensures better readability for users.                                                                    |
-| [repositories_set.go](internal/repository/repositories_set.go) | Unifies and manages dependencies among core modules (Algo, Parser, FFMPEG, Convertor) within the application. This facilitates seamless interchangeability and modularity in our multimedia processing architecture (internal/repository/repositories_set.go).                                                                                                                                                                        |
-| [parser.go](internal/repository/parser.go)                     | The provided `parser.go` file serves as a subtitles parser within the Fusionn repositorys internal package. It utilizes the go-astisub package to process input strings into `*astisub.Subtitles`, streamlining subtitle parsing and enhancing video content management."                                                                                                                                                             |
-| [algo.go](internal/repository/algo.go)                         | This internal `algo.go` file houses a subtitles matching algorithm for video caption synchronization. It defines the IAlgo interface and its implementation to cluster subtitle chunks with tolerance time specified, ensuring seamless merging of Chinese and English captions. This contributes to the repositorys core functionality as a versatile video processing system for handling multi-language content.                   |
+| File                                                           | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---                                                            | ---                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| [ffmpeg.go](internal/repository/ffmpeg.go)                     | The ffmpeg.go file, situated within the `fusionn` projects repository structure, implements an interface for extracting and managing subtitles in videos. It uses external command-line tools like ffprobe and ffmpeg to parse and manipulate video streams, focusing on English, Chinese Simplified, and Traditional subtitle extraction, all while ensuring clean, manageable, and adaptable code within the larger project architecture. |
+| [convertor.go](internal/repository/convertor.go)               | Translates subtitles from Traditional Chinese to Simplified Chinese using DeepL API and OpenCC tool for the Fusionn video editing platform. Ensures efficient handling by processing text batches, facilitating seamless localization of content.                                                                                                                                                                                           |
+| [repositories_set.go](internal/repository/repositories_set.go) | Orchestrates a dynamic service registry, configuring modules such as Algorithms, Parser, FFmpeg, and Convertor in this applications architecture. Leverages Dependency Injection pattern using wire library to ensure flexible, modular, and testable design for the video processing pipeline.                                                                                                                                             |
+| [parser.go](internal/repository/parser.go)                     | In this `parser.go` file, we create a custom subtitle parser. By implementing an interface with the astisub package, our parser can read and analyze input subtitle files. This enables efficient subtitle handling within the FusionN media management system.                                                                                                                                                                             |
+| [algo.go](internal/repository/algo.go)                         | This internal repository function, located within `algo.go`, implements a clustering algorithm for merging subtitles. By matching Chinese and English captions based on start time, it groups related text, improving the accuracy and readability of multilingual transcripts in the parent Fusionn project.                                                                                                                               |
 
 </details>
 
 <details closed><summary>internal.repository.common</summary>
 
-| File                                              | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ---                                               | ---                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| [common.go](internal/repository/common/common.go) | Initializes an ASSubtitle struct for parsing SSA/ASS subtitles. The function takes care of default colors if an error occurs during color parsing and sets standard attributes like font size, style, and alignment. It also maps the Default style to all items within the structure and returns the initialized ASSubtitle object. The color-parsing function first normalizes the input and then converts it from hexadecimal to decimal for further decomposition. |
+| File                                              | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---                                               | ---                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| [common.go](internal/repository/common/common.go) | The function `GenerateASSSubtitle` creates an ASS subtitle struct with default style attributes, and applies these styles to all items. It first parses an input color in the format `&HColor` (omitting `&H` if present) into an `astisub.Color`. Then, it sets various style attributes such as font name, size, primary and secondary colors, outline color, background color, bold, italic, underline, strikeout, scaling, border style, outlines/shadows, alignment, margin, and encoding. These defaults are used for all items within the generated ASS subtitle structure. The function `ParseASSColor` prepares the input color by trimming the `&H` prefix, padding with zeros if necessary, and then parsing it as a hexadecimal string into individual RGBA components. |
 
 </details>
 
 <details closed><summary>internal.entity</summary>
 
-| File                                     | Summary                                                                                                                                                                                                                                                                                                                                             |
-| ---                                      | ---                                                                                                                                                                                                                                                                                                                                                 |
-| [request.go](internal/entity/request.go) | Empowers FusionNs media management system by defining an ExtractRequest structure for data extraction. This request is used when fetching sonarr episode file paths. Integral to the softwares core functionality, allowing seamless and efficient media processing within the application.                                                         |
-| [ffmpeg.go](internal/entity/ffmpeg.go)   | This FFprobeData entity type processes video/audio properties in a video file (StreamInfo & Stream structs), providing data on CodecType, Resolution, Aspect Ratio, ColorSpace, PixelFormat, among other characteristics. It prepares the data structure for downstream operations within the media processing pipeline of the FusionN application. |
+| File                                     | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---                                      | ---                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| [request.go](internal/entity/request.go) | Extracts a specified Sonarr episode file path from user requests within FusionN media management application, enriching its ability to seamlessly handle media operations and optimize user experiences.                                                                                                                                                                                                                                                         |
+| [ffmpeg.go](internal/entity/ffmpeg.go)   | The `ffmpeg.go` entity file within the `internal/entity` directory serves to structure data obtained from FFprobe, an essential component in the video processing pipeline of the FusionN project. It parses multimedia stream information and stores details such as codec type, resolution, duration, subtitles, and more. These data help optimize media handling during transmission or storage, enhancing overall functionality in the FusionN application. |
 
 </details>
 
 <details closed><summary>internal.processor</summary>
 
-| File                                                    | Summary                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ---                                                     | ---                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| [subtitle.go](internal/processor/subtitle.go)           | Translates or merges subtitles in an episode file within the Fusionn media processing pipeline. It parses, translates (if needed), and clusters English and Simplified Chinese subtitle tracks, writing the merged results as a separate ASS file while sending a notification upon completion. This is achieved by leveraging various external packages for subtitle manipulation, translation, and notification services. |
-| [processor_set.go](internal/processor/processor_set.go) | This processor sets up communication between various subsystems by defining interdependent services (ISubtitle, Subtitle). It is a vital part of the architecture that ensures efficient data processing within the FusionN application. By employing dependency injection, it enhances the codes flexibility and modularity.                                                                                               |
+| File                                                    | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---                                                     | ---                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| [subtitle.go](internal/processor/subtitle.go)           | This file, `internal/processor/subtitle.go`, handles merging, translating, and re-writing subtitles from a media file for the Fusionn application. It integrates multiple components such as parsers, convertors, and translation algorithms to deliver accurate subtitles in simplified Chinese (chs) or English (eng). The merged subtitle is then written to the specified output path and an apprise notification is sent upon successful execution. |
+| [processor_set.go](internal/processor/processor_set.go) | Coordinates processing operations within FusionNs core engine. The `processor_set.go` file houses a composition root that orchestrates creation and interaction between essential processing components such as Subtitle instances, adhering to the Dependency Inversion Principle by using Interface Segregation via Googles Wire framework.                                                                                                            |
 
 </details>
 
 <details closed><summary>internal.handlers</summary>
 
-| File                                                 | Summary                                                                                                                                                                                                                                                                                                  |
-| ---                                                  | ---                                                                                                                                                                                                                                                                                                      |
-| [merge.go](internal/handlers/merge.go)               | The `internal/handlers/merge.go` file defines a handler struct and its methods, acting as an interface to process subtitle merges within the FusionN application, integrating seamlessly with other system modules for efficient data integration.                                                       |
-| [handlers_set.go](internal/handlers/handlers_set.go) | In this codebase, the `handlers_set.go` file within the internal/handlers package serves as a registry. It initializes and manages a collection of handlers, referred to as `Set`, using wire dependency injection for efficient handling of various functionalities throughout the Fusionn application. |
+| File                                                 | Summary                                                                                                                                                                                                                                                                               |
+| ---                                                  | ---                                                                                                                                                                                                                                                                                   |
+| [merge.go](internal/handlers/merge.go)               | Manages subtitle merging for media content within the Fusionn platform by interacting with a specific subtitle processor, ensuring seamless consolidation and a unified user experience.                                                                                              |
+| [handlers_set.go](internal/handlers/handlers_set.go) | The `internal/handlers/handlers_set.go` file acts as a registry within the FusionN project. It initializes and organizes Handlers, essential components that process user requests, by employing Dependency Injection with Googles wire library for smooth application functionality. |
 
 </details>
 
 <details closed><summary>internal.consts</summary>
 
-| File                                     | Summary                                                                                                                                                                 |
-| ---                                      | ---                                                                                                                                                                     |
-| [command.go](internal/consts/command.go) | Empowers Fusionn application by defining a vital DeepL Translation API endpoint for seamless cross-linguistic data exchange within the platforms internal architecture. |
-| [consts.go](internal/consts/consts.go)   | Language configuration, Communication setup, Internationalization support.                                                                                              |
+| File                                     | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---                                      | ---                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| [command.go](internal/consts/command.go) | This file defines and exports a constant URL `CMDDeepLTranslate` used by the `fusionn` application for DeepL API translations. The `internal/consts` package consolidates application-specific URLs within the fusionn repository, streamlining access to third-party APIs like DeepL and maintaining a modular architecture.                                                                                                                                                   |
+| [consts.go](internal/consts/consts.go)   | This code file, located within the consts package, defines a set of global constants for use across the project. It outlines various language codes (Traditional Chinese, Simplified Chinese, and English) and associated titles, as well as specific patterns for handling timecode formats. Additionally, it specifies an external API address (Apprise). These values are crucial for facilitating multilingual support and notifications within the project's architecture. |
 
 </details>
 
 <details closed><summary>.github.workflows</summary>
 
-| File                                                       | Summary                                                                                                                                                                                                                                                                                  |
-| ---                                                        | ---                                                                                                                                                                                                                                                                                      |
-| [docker-publish.yml](.github/workflows/docker-publish.yml) | The `docker-publish.yml` workflow script automates the Docker container image build and release process within the Fusionn repository, streamlining application deployment to multiple environments. This simplifies scaling, ensuring smooth integration across platforms and services. |
+| File                                                       | Summary                                                                                                                                                                                                                                                                                                                |
+| ---                                                        | ---                                                                                                                                                                                                                                                                                                                    |
+| [docker-publish.yml](.github/workflows/docker-publish.yml) | In this GitHub repository, titled fusionn, the provided file, `docker-publish.yml`, orchestrates automated Docker image building and publishing events. This workflow is a crucial part of the Continuous Integration (CI) process in the repository, enabling efficient and seamless distribution of the application. |
 
 </details>
 
 <details closed><summary>pkg</summary>
 
-| File                         | Summary                                                                                                                                                                                                                                                                                                                                                                         |
-| ---                          | ---                                                                                                                                                                                                                                                                                                                                                                             |
-| [apprise.go](pkg/apprise.go) | In the FusionN repository, the pkg/apprise.go file contains an interface and implementation for a messaging service, called `Apprise`, using the `fasthttp` library for fast HTTP requests. The primary purpose of this component is to facilitate POSTing messages with JSON content to designated URLs, enabling efficient communication between system modules.              |
-| [pkg_set.go](pkg/pkg_set.go) | Orchestrates dependencies between modules using Googles Wire dependency injection system for efficient management, streamlining instantiation of DeepL translation API and Apprise notification services within the fusionn' application architecture.                                                                                                                          |
-| [deepl.go](pkg/deepl.go)     | This module, located at `pkg/deepl.go`, serves as a translator service for the FusionN application by interfacing with DeepLs Translate API. The Go package defines necessary types, implements an IDeepL interface, and encapsulates the API request and response structures to translate text from one language to another efficiently within FusionNs internal architecture. |
+| File                         | Summary                                                                                                                                                                                                                                                                                                                                                                    |
+| ---                          | ---                                                                                                                                                                                                                                                                                                                                                                        |
+| [apprise.go](pkg/apprise.go) | Enables external communication through the `apprise` interface, offering a function `SendBasicMessage` for delivering JSON data via POST requests to specified URLs using FastHTTP, ultimately facilitating seamless interaction with third-party services within the FusionN application ecosystem.                                                                       |
+| [pkg_set.go](pkg/pkg_set.go) | Converts and initializes application dependencies using wire, binding `deepL` and `apprise` instances within the main package for efficient use throughout the software. This fosters a modular design and streamlined dependency management within the fusionn application.                                                                                               |
+| [deepl.go](pkg/deepl.go)     | The `pkg/deepl.go` module acts as an interface for translating text within the Fusionn application, providing multilingual support by leveraging DeepLs API services. By instantiating this package, developers can effortlessly translate user-provided content between multiple languages, ensuring seamless cross-cultural communication in our diverse user community. |
 
 </details>
 
 ---
 
-## Getting Started
+## 🚀 Getting Started
 
 **System Requirements:**
 
 - **Go**: `version x.y.z`
 
-### Installation
+### ⚙️ Installation
 
 <h4>From <code>source</code></h4>
 
@@ -227,7 +227,7 @@ FusionN is a media management system that leverages various subsystems for seaml
 > $ go build -o myapp
 > ```
 
-### Usage
+### 🤖 Usage
 
 <h4>From <code>source</code></h4>
 
@@ -237,7 +237,7 @@ FusionN is a media management system that leverages various subsystems for seaml
 > $ ./myapp
 > ```
 
-### Tests
+### 🧪 Tests
 
 > Run the test suite using the command below:
 >
@@ -247,7 +247,7 @@ FusionN is a media management system that leverages various subsystems for seaml
 
 ---
 
-## Project Roadmap
+## 🛠 Project Roadmap
 
 - [X] `► INSERT-TASK-1`
 - [ ] `► INSERT-TASK-2`
@@ -255,7 +255,7 @@ FusionN is a media management system that leverages various subsystems for seaml
 
 ---
 
-## Contributing
+## 🤝 Contributing
 
 Contributions are welcome! Here are several ways you can contribute:
 
@@ -309,13 +309,13 @@ Contributions are welcome! Here are several ways you can contribute:
 
 ---
 
-## License
+## 🎗 License
 
 This project is protected under the [SELECT-A-LICENSE](https://choosealicense.com/licenses) License. For more details, refer to the [LICENSE](https://choosealicense.com/licenses/) file.
 
 ---
 
-## Acknowledgments
+## 🔗 Acknowledgments
 
 - List any resources, contributors, inspiration, etc. here.
 
