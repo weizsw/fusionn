@@ -11,3 +11,6 @@ setup: ## Install project dependencies
 
 wire: ## Generate wire_gen.go file
 	cd internal && go generate
+
+init-db: ## Initialize the database
+	sqlite3 ./sqlite.db < ./internal/dao/db/schema.sql

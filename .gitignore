@@ -5,3 +5,4 @@ main.go
 .vscode/
 .DS_Store
 .opencommitignore
+*.db
