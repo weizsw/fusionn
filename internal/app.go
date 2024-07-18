@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fusionn/internal/dao/db"
 	"fusionn/internal/handlers"
 	"fusionn/internal/processor"
 	"fusionn/internal/repository"
@@ -11,7 +12,7 @@ import (
 	"github.com/google/wire"
 )
 
-var AppSet = wire.NewSet(NewApp, repository.Set, handlers.Set, processor.Set, pkg.Set)
+var AppSet = wire.NewSet(NewApp, repository.Set, handlers.Set, processor.Set, pkg.Set, db.Set)
 
 func NewApp(handler *handlers.Handler) *fiber.App {
 	app := fiber.New()

@@ -8,6 +8,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.49.2
 	github.com/google/wire v0.6.0
 	github.com/longbridgeapp/opencc v0.3.3
+	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/spf13/viper v1.19.0
 	github.com/valyala/fasthttp v1.50.0
 	google.golang.org/protobuf v1.33.0

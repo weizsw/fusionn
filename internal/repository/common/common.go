@@ -72,7 +72,7 @@ func IsEng(lan string, title string) bool {
 }
 
 func IsSdh(title string) bool {
-	var sdhRegex = regexp.MustCompile(`(?i)english\(sdh\)|sdh`)
+	var sdhRegex = regexp.MustCompile(`(?i)english\(sdh\)|sdh|forced`)
 	return sdhRegex.MatchString(title)
 }
 
