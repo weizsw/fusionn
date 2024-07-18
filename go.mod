@@ -3,7 +3,7 @@ module fusionn
 go 1.21
 
 require (
-	github.com/asticode/go-astisub v0.26.0
+	github.com/asticode/go-astisub v0.26.2
 	github.com/bytedance/sonic v1.11.9
 	github.com/gofiber/fiber/v2 v2.49.2
 	github.com/google/wire v0.6.0

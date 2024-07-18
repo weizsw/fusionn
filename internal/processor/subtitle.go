@@ -107,7 +107,13 @@ func (s *Subtitle) Merge(c *fiber.Ctx) error {
 	}
 
 	mergedItems := s.algo.MatchSubtitlesCueClustering(chsSub.Items, engSub.Items, 1000*time.Millisecond)
-
+	for i := range mergedItems {
+		for j := range mergedItems[i].Lines {
+			for k := range mergedItems[i].Lines[j].Items {
+				mergedItems[i].Lines[j].Items[k].Text = common.ReplaceSpecialCharacters(mergedItems[i].Lines[j].Items[k].Text)
+			}
+		}
+	}
 	chsSub.Items = mergedItems
 	chsSub = common.AddingStyleToAss(chsSub)
 	dstpath := common.ExtractPathWithoutExtension(req.SonarrEpisodefilePath) + ".chi.ass"

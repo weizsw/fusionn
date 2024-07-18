@@ -75,11 +75,16 @@ func (a *algo) MatchSubtitlesCueClustering(chineseItems, englishItems []*astisub
 
 func mergeItems(chinese, english *astisub.Item) *astisub.Item {
 	merged := *chinese // Create a copy of the Chinese item
-
+	merged.Lines = append(merged.Lines, astisub.Line{
+		Items: []astisub.LineItem{
+			{
+				Text: "\\N",
+			},
+		},
+	})
 	// Append English lines to the existing Chinese lines
-	for _, englishLine := range english.Lines {
-		merged.Lines = append(merged.Lines, englishLine)
-	}
+
+	merged.Lines = append(merged.Lines, english.Lines...)
 
 	return &merged
 }
