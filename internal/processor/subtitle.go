@@ -3,7 +3,7 @@ package processor
 import (
 	"errors"
 	"fmt"
-	"fusionn/internal/consts"
+	"fusionn/configs"
 	"fusionn/internal/entity"
 	"fusionn/internal/repository"
 	"fusionn/internal/repository/common"
@@ -115,7 +115,10 @@ func (s *Subtitle) Merge(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	s.apprise.SendBasicMessage(consts.APPRISE, []byte(fmt.Sprintf(msgFormat, fmt.Sprintf("Subtitle for %s %s successfully", extractedData.FileName, mode))))
+
+	if configs.C.GetBool("apprise.enabled") {
+		s.apprise.SendBasicMessage(configs.C.GetString("apprise.url"), []byte(fmt.Sprintf(msgFormat, fmt.Sprintf("Subtitle for %s %s successfully", extractedData.FileName, mode))))
+	}
 
 	return nil
 }

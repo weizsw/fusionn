@@ -36,6 +36,7 @@
 - [🤝 Contributing](#-contributing)
 - [🎗 License](#-license)
 - [🔗 Acknowledgments](#-acknowledgments)
+- [Star History](#star-history)
 
 </details>
 <hr>
