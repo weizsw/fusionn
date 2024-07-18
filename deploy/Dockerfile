@@ -27,6 +27,6 @@ COPY --from=builder /app/fusionn /app/fusionn
 RUN apk update --no-cache && apk add --no-cache ffmpeg
 RUN mkdir tmp
 
-COPY config.yaml /app/configs/config.yaml
+COPY config.yml /app/configs/config.yml
 
 CMD ["./fusionn"]
