@@ -27,8 +27,9 @@ func init() {
 
 func (c *Config) Load() {
 	c.viper.SetConfigName("config")
-	c.viper.SetConfigType("yaml")
+	c.viper.SetConfigType("yml")
 	c.viper.AddConfigPath(".")
+	c.viper.AddConfigPath("./configs")
 	err := c.viper.ReadInConfig()
 	if err != nil {
 		panic(err)
