@@ -66,16 +66,16 @@ func (f *ffmpeg) ExtractSubtitles(videoPath string) (*entity.ExtractData, error)
 
 		if common.IsEng(stream.Tags.Language, stream.Tags.Title) && (len(extractData.EngSubPath) == 0) {
 			extractData.EngSubPath = subtitlePath
-			log.Infof("Eng subtitle %s %s %s", stream.Tags.Language, stream.Tags.Title, subtitlePath)
+			log.Infof("Eng subtitle: language:(%s) title:(%s) path:(%s)", stream.Tags.Language, stream.Tags.Title, subtitlePath)
 		}
-		if common.IsChs(stream.Tags.Language, stream.Tags.Title) {
+		if common.IsChs(stream.Tags.Language, stream.Tags.Title) && len(extractData.ChsSubPath) == 0 {
 			subtitlePath, _ = common.GetTmpSubtitleFullPath(filename + "." + consts.CHS_LAN)
 			extractData.ChsSubPath = subtitlePath
-			log.Infof("Chs subtitle %s %s %s", stream.Tags.Language, stream.Tags.Title, subtitlePath)
+			log.Infof("Chs subtitle: language:(%s) title:(%s) path:(%s)", stream.Tags.Language, stream.Tags.Title, subtitlePath)
 		}
 		if common.IsCht(stream.Tags.Language, stream.Tags.Title) && len(extractData.ChtSubPath) == 0 {
 			extractData.ChtSubPath = subtitlePath
-			log.Infof("Cht subtitle %s %s %s", stream.Tags.Language, stream.Tags.Title, subtitlePath)
+			log.Infof("Cht subtitle: language(%s) title:(%s) path:(%s)", stream.Tags.Language, stream.Tags.Title, subtitlePath)
 		}
 
 		err = ExtractSubtitleStream(videoPath, subtitlePath, stream.Index)
