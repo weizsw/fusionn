@@ -198,8 +198,8 @@ func AddingStyleToAss(assSub *astisub.Subtitles) *astisub.Subtitles {
 		return assSub
 	}
 
-	resX := 3840
-	resY := 2160
+	resX := 1920
+	resY := 1080
 	assSub.Metadata = &astisub.Metadata{}
 	assSub.Metadata.Title = "Default Aegisub file"
 	assSub.Metadata.SSAScriptType = "v4.00+"
@@ -327,4 +327,17 @@ func ParseASSColor(assColor string) (*astisub.Color, error) {
 		Green: green,
 		Red:   blue,
 	}, nil
+}
+
+func ReplaceSpecialCharacters(inputString string) string {
+	// Remove "\n"
+	modifiedString := strings.ReplaceAll(inputString, "\\n", "")
+
+	// Replace "<i>" with "{\i1}"
+	modifiedString = strings.ReplaceAll(modifiedString, "<i>", "{\\i1}")
+
+	// Replace "</i>" with "{\i0}"
+	modifiedString = strings.ReplaceAll(modifiedString, "</i>", "{\\i0}")
+
+	return modifiedString
 }
