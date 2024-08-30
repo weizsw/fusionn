@@ -80,5 +80,6 @@ type ExtractData struct {
 	EngSubPath string
 	ChsSubPath string
 	ChtSubPath string
+	SdhSubPath string
 	IsSdh      bool
 }
