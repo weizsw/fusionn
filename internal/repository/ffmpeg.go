@@ -46,6 +46,8 @@ func (f *ffmpeg) ExtractSubtitles(videoPath string) (*entity.ExtractData, error)
 		FileName: filename,
 	}
 
+	var sdhSubtitlePath string
+
 	for _, stream := range ffprobeData.Streams {
 		if stream.CodecType != "subtitle" {
 			continue
@@ -60,12 +62,13 @@ func (f *ffmpeg) ExtractSubtitles(videoPath string) (*entity.ExtractData, error)
 			continue
 		}
 
-		if common.IsEng(stream.Tags.Language, stream.Tags.Title) && common.IsSdh(stream.Tags.Title) && len(extractData.EngSubPath) != 0 {
-			continue
-		}
-
 		if common.IsEng(stream.Tags.Language, stream.Tags.Title) && (len(extractData.EngSubPath) == 0) {
-			extractData.EngSubPath = subtitlePath
+			if common.IsSdh(stream.Tags.Title) {
+				subtitlePath, _ = common.GetTmpSubtitleFullPath(filename + "." + consts.SDH_LAN)
+				sdhSubtitlePath = subtitlePath
+			} else {
+				extractData.EngSubPath = subtitlePath
+			}
 			log.Infof("Eng subtitle: language:(%s) title:(%s) path:(%s)", stream.Tags.Language, stream.Tags.Title, subtitlePath)
 		}
 		if common.IsChs(stream.Tags.Language, stream.Tags.Title) && len(extractData.ChsSubPath) == 0 {
@@ -84,6 +87,10 @@ func (f *ffmpeg) ExtractSubtitles(videoPath string) (*entity.ExtractData, error)
 		} else {
 			log.Info(fmt.Sprintf("Subtitle stream %d extracted successfully: %s\n", stream.Index, subtitlePath))
 		}
+	}
+
+	if extractData.EngSubPath == "" && sdhSubtitlePath != "" {
+		extractData.EngSubPath = sdhSubtitlePath
 	}
 
 	return extractData, nil

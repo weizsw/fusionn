@@ -17,6 +17,7 @@ const (
 	CHI_LAN               = "chi"
 	CHS_LAN               = "chs"
 	ENG_LAN               = "eng"
+	SDH_LAN               = "sdh"
 	DUAL_LAN              = "dual"
 	TIME_CODE_PATTERN     = `(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})`
 	TIME_CODE_PATTERN_II  = `(\d{2}:\d{2}:\d{2},)(1000) --> (\d{2}:\d{2}:\d{2},\d{3})`
