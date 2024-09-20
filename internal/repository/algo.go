@@ -54,7 +54,7 @@ func (a *algo) MatchSubtitlesCueClustering(chineseItems, englishItems []*astisub
 			abs(chineseItems[i].EndAt-englishItems[j].EndAt) <= timeTolerance {
 			// Merge the subtitles
 			merged := mergeItems(chineseItems[i], englishItems[j])
-			mergedItems = append(mergedItems, merged)
+			mergedItems = append(mergedItems, merged...)
 			i++
 			j++
 		} else if chineseItems[i].StartAt < englishItems[j].StartAt {
@@ -73,20 +73,26 @@ func (a *algo) MatchSubtitlesCueClustering(chineseItems, englishItems []*astisub
 	return mergedItems
 }
 
-func mergeItems(chinese, english *astisub.Item) *astisub.Item {
-	merged := *chinese // Create a copy of the Chinese item
-	merged.Lines = append(merged.Lines, astisub.Line{
-		Items: []astisub.LineItem{
-			{
-				Text: "\\N",
-			},
-		},
-	})
-	// Append English lines to the existing Chinese lines
+func mergeItems(chinese, english *astisub.Item) []*astisub.Item {
+	// Create a copy of the English item
+	eng := *chinese
+	eng.Style = &astisub.Style{
+		ID: "Eng",
+	}
+	// Clear the Lines slice of the English copy
+	eng.Lines = nil
 
-	merged.Lines = append(merged.Lines, english.Lines...)
-
-	return &merged
+	// Copy English lines to eng, setting the SSAFontName to "Eng"
+	for _, englishLine := range english.Lines {
+		newLine := astisub.Line{
+			Items: make([]astisub.LineItem, len(englishLine.Items)),
+		}
+		for i, item := range englishLine.Items {
+			newLine.Items[i] = item
+		}
+		eng.Lines = append(eng.Lines, newLine)
+	}
+	return []*astisub.Item{chinese, &eng}
 }
 
 func abs(d time.Duration) time.Duration {

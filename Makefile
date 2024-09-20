@@ -14,3 +14,6 @@ wire: ## Generate wire_gen.go file
 
 init-db: ## Initialize the database
 	sqlite3 ./sqlite.db < ./internal/dao/db/schema.sql
+
+build: ## Build the project
+	go build -o ./tmp/main ./cmd/fusionn/main.go

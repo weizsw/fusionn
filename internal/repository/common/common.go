@@ -198,14 +198,15 @@ func AddingStyleToAss(assSub *astisub.Subtitles) *astisub.Subtitles {
 		return assSub
 	}
 
-	resX := 1920
-	resY := 1080
+	resX := 384
+	resY := 288
 	assSub.Metadata = &astisub.Metadata{}
 	assSub.Metadata.Title = "Default Aegisub file"
 	assSub.Metadata.SSAScriptType = "v4.00+"
 	assSub.Metadata.SSAWrapStyle = "0"
 	assSub.Metadata.SSAPlayResX = &resX
 	assSub.Metadata.SSAPlayResY = &resY
+	assSub.Metadata.SSATimer = proto.Float64(100)
 	var (
 		primaryColor   *astisub.Color
 		secondaryColor *astisub.Color
@@ -214,24 +215,24 @@ func AddingStyleToAss(assSub *astisub.Subtitles) *astisub.Subtitles {
 		err            error
 	)
 
-	primaryColor, err = ParseASSColor("&H00FFFFFF")
+	primaryColor, err = ParseASSColor("&H00C5C5C5")
 	if err != nil {
 		log.Error("Error parsing primarycolor:", err)
 		primaryColor = &astisub.Color{
 			Alpha: 0,
-			Blue:  255,
-			Green: 255,
-			Red:   255,
+			Blue:  197,
+			Green: 197,
+			Red:   197,
 		}
 	}
-	secondaryColor, err = ParseASSColor("&H000000FF")
+	secondaryColor, err = ParseASSColor("&H0000FFFF")
 	if err != nil {
 		log.Error("Error parsing secondarycolor:", err)
 		secondaryColor = &astisub.Color{
 			Alpha: 0,
-			Blue:  0,
-			Green: 0,
-			Red:   255,
+			Blue:  255,
+			Green: 255,
+			Red:   0,
 		}
 	}
 	outlineColor, err = ParseASSColor("&H00000000")
@@ -244,24 +245,24 @@ func AddingStyleToAss(assSub *astisub.Subtitles) *astisub.Subtitles {
 			Red:   0,
 		}
 	}
-	backColor, err = ParseASSColor("&H00000000")
+	backColor, err = ParseASSColor("&H80000000")
 	if err != nil {
 		log.Error("Error parsing backcolor:", err)
 		backColor = &astisub.Color{
-			Alpha: 0,
+			Alpha: 128,
 			Blue:  0,
 			Green: 0,
 			Red:   0,
 		}
 	}
-	boarderStyle := 1
+	borderStyle := 1
 	alignment := 2
-	marginLeft, marginRight := 15, 15
-	marginVertical := 11
+	marginLeft, marginRight := 20, 20
+	marginVertical := 10
 	encoding := 1
 	defaultStyle := &astisub.StyleAttributes{
-		SSAFontName:        "方正黑体简体",
-		SSAFontSize:        proto.Float64(65),
+		SSAFontName:        "Microsoft YaHei",
+		SSAFontSize:        proto.Float64(16),
 		SSAPrimaryColour:   primaryColor,
 		SSASecondaryColour: secondaryColor,
 		SSAOutlineColour:   outlineColor,
@@ -270,28 +271,109 @@ func AddingStyleToAss(assSub *astisub.Subtitles) *astisub.Subtitles {
 		SSAItalic:          proto.Bool(false),
 		SSAUnderline:       proto.Bool(false),
 		SSAStrikeout:       proto.Bool(false),
-		SSAScaleX:          proto.Float64(104.046),
+		SSAScaleX:          proto.Float64(100),
 		SSAScaleY:          proto.Float64(100),
 		SSASpacing:         proto.Float64(0),
 		SSAAngle:           proto.Float64(0),
-		SSABorderStyle:     &boarderStyle,
-		SSAOutline:         proto.Float64(0.9975),
-		SSAShadow:          proto.Float64(0.9975),
+		SSABorderStyle:     &borderStyle,
+		SSAOutline:         proto.Float64(2),
+		SSAShadow:          proto.Float64(0),
 		SSAAlignment:       &alignment,
 		SSAMarginLeft:      &marginLeft,
 		SSAMarginRight:     &marginRight,
 		SSAMarginVertical:  &marginVertical,
 		SSAEncoding:        &encoding,
 	}
+
+	// Create English style
+	engPrimaryColor, err := ParseASSColor("&H0000A0DC")
+	if err != nil {
+		log.Error("Error parsing Eng primarycolor:", err)
+		engPrimaryColor = &astisub.Color{
+			Alpha: 0,
+			Blue:  220,
+			Green: 160,
+			Red:   0,
+		}
+	}
+	engSecondaryColor, err := ParseASSColor("&H0000FFFF")
+	if err != nil {
+		log.Error("Error parsing Eng secondarycolor:", err)
+		engSecondaryColor = &astisub.Color{
+			Alpha: 0,
+			Blue:  255,
+			Green: 255,
+			Red:   0,
+		}
+	}
+	engOutlineColor, err := ParseASSColor("&H00000000")
+	if err != nil {
+		log.Error("Error parsing Eng outlinecolor:", err)
+		engOutlineColor = &astisub.Color{
+			Alpha: 0,
+			Blue:  0,
+			Green: 0,
+			Red:   0,
+		}
+	}
+	engBackColor, err := ParseASSColor("&H80000000")
+	if err != nil {
+		log.Error("Error parsing Eng backcolor:", err)
+		engBackColor = &astisub.Color{
+			Alpha: 128,
+			Blue:  0,
+			Green: 0,
+			Red:   0,
+		}
+	}
+
+	engBorderStyle := 1
+	engAlignment := 2
+	engMarginLeft, engMarginRight := 20, 20
+	engMarginVertical := 10
+	engEncoding := 1
+
+	engStyle := &astisub.StyleAttributes{
+		SSAFontName:        "Arial",
+		SSAFontSize:        proto.Float64(10),
+		SSAPrimaryColour:   engPrimaryColor,
+		SSASecondaryColour: engSecondaryColor,
+		SSAOutlineColour:   engOutlineColor,
+		SSABackColour:      engBackColor,
+		SSABold:            proto.Bool(false),
+		SSAItalic:          proto.Bool(false),
+		SSAUnderline:       proto.Bool(false),
+		SSAStrikeout:       proto.Bool(false),
+		SSAScaleX:          proto.Float64(100),
+		SSAScaleY:          proto.Float64(100),
+		SSASpacing:         proto.Float64(0),
+		SSAAngle:           proto.Float64(0),
+		SSABorderStyle:     &engBorderStyle,
+		SSAOutline:         proto.Float64(1),
+		SSAShadow:          proto.Float64(0),
+		SSAAlignment:       &engAlignment,
+		SSAMarginLeft:      &engMarginLeft,
+		SSAMarginRight:     &engMarginRight,
+		SSAMarginVertical:  &engMarginVertical,
+		SSAEncoding:        &engEncoding,
+	}
+
 	assSub.Styles = map[string]*astisub.Style{
 		"Default": {
 			ID:          "Default",
 			InlineStyle: defaultStyle,
 		},
+		"Eng": {
+			ID:          "Eng",
+			InlineStyle: engStyle,
+		},
 	}
+
 	for _, item := range assSub.Items {
-		item.Style = &astisub.Style{
-			ID: "Default",
+		if item.Style == nil {
+			item.Style = &astisub.Style{
+				ID: "Default",
+			}
 		}
 	}
 	return assSub
@@ -311,7 +393,7 @@ func ParseASSColor(assColor string) (*astisub.Color, error) {
 	// Parse the hexadecimal string
 	value, err := strconv.ParseUint(assColor, 16, 32)
 	if err != nil {
-		return &astisub.Color{}, fmt.Errorf("invalid color format: %v", err)
+		return nil, fmt.Errorf("invalid color format: %v", err)
 	}
 
 	// Extract color components
@@ -320,12 +402,12 @@ func ParseASSColor(assColor string) (*astisub.Color, error) {
 	green := uint8((value >> 8) & 0xFF)
 	red := uint8(value & 0xFF)
 
-	// ASS format uses ABGR, but we want ARGB, so we need to swap blue and red
+	// Return the color in the correct order (no swapping needed)
 	return &astisub.Color{
 		Alpha: alpha,
-		Blue:  red,
+		Blue:  blue,
 		Green: green,
-		Red:   blue,
+		Red:   red,
 	}, nil
 }
 

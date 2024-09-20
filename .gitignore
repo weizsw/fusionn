@@ -6,3 +6,5 @@ main.go
 .DS_Store
 .opencommitignore
 *.db
+.air.toml
+/tmp
