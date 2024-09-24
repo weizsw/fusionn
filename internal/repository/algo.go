@@ -92,7 +92,7 @@ func mergeItems(chinese, english *astisub.Item) []*astisub.Item {
 		}
 		eng.Lines = append(eng.Lines, newLine)
 	}
-	return []*astisub.Item{chinese, &eng}
+	return []*astisub.Item{&eng, chinese}
 }
 
 func abs(d time.Duration) time.Duration {
