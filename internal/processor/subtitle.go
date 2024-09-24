@@ -57,53 +57,25 @@ func (s *Subtitle) Merge(c *fiber.Ctx) error {
 		return err
 	}
 
-	var (
-		chsSub *astisub.Subtitles
-		chtSub *astisub.Subtitles
-		engSub *astisub.Subtitles
-	)
 	mode := "generated"
 
-	switch {
-	case extractedData.EngSubPath == "":
-		return errors.New("no english subtitles found")
-	case extractedData.ChsSubPath == "" && extractedData.ChtSubPath == "" && extractedData.EngSubPath == "":
+	chsSub, chtSub, engSub, sdhSub, err := s.parseSubtitles(extractedData)
+	if err != nil {
+		return err
+	}
+
+	engSub, err = s.handleSDHSubtitles(engSub, sdhSub)
+	if err != nil {
+		return err
+	}
+
+	chsSub, err = s.handleChineseSubtitles(chsSub, chtSub, engSub)
+	if err != nil {
+		return err
+	}
+
+	if chsSub == nil {
 		return errors.New("no subtitles found")
-	case extractedData.ChsSubPath == "" && extractedData.ChtSubPath == "" && extractedData.EngSubPath != "":
-		engSub, err = s.parser.Parse(extractedData.EngSubPath)
-		if err != nil {
-			return err
-		}
-
-		chsSub, err = s.convertor.TranslateToSimplified(engSub)
-		if err != nil {
-			return err
-		}
-		mode = "translated"
-	case extractedData.ChsSubPath == "" && extractedData.ChtSubPath != "" && extractedData.EngSubPath != "":
-		engSub, err = s.parser.Parse(extractedData.EngSubPath)
-		if err != nil {
-			return err
-		}
-
-		chtSub, err = s.parser.Parse(extractedData.ChtSubPath)
-		if err != nil {
-			return err
-		}
-
-		chsSub, err = s.convertor.ConvertToSimplified(chtSub)
-		if err != nil {
-			return err
-		}
-	default:
-		engSub, err = s.parser.Parse(extractedData.EngSubPath)
-		if err != nil {
-			return err
-		}
-		chsSub, err = s.parser.Parse(extractedData.ChsSubPath)
-		if err != nil {
-			return err
-		}
 	}
 
 	mergedItems := s.algo.MatchSubtitlesCueClustering(chsSub.Items, engSub.Items, 1000*time.Millisecond)
@@ -127,4 +99,57 @@ func (s *Subtitle) Merge(c *fiber.Ctx) error {
 	}
 
 	return nil
+}
+
+func (s *Subtitle) parseSubtitles(data *entity.ExtractedData) (*astisub.Subtitles, *astisub.Subtitles, *astisub.Subtitles, *astisub.Subtitles, error) {
+	chsSub, err := s.parser.Parse(data.ChsSubPath)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	chtSub, err := s.parser.Parse(data.ChtSubPath)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	engSub, err := s.parser.Parse(data.EngSubPath)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	sdhSub, err := s.parser.Parse(data.SdhSubPath)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	return chsSub, chtSub, engSub, sdhSub, nil
+}
+
+func (s *Subtitle) handleSDHSubtitles(engSub, sdhSub *astisub.Subtitles) (*astisub.Subtitles, error) {
+	if engSub == nil && sdhSub != nil {
+		log.Info("removing sdh")
+		engSub = s.parser.RemoveSDH(sdhSub)
+	}
+	return engSub, nil
+}
+
+func (s *Subtitle) handleChineseSubtitles(chsSub, chtSub, engSub *astisub.Subtitles) (*astisub.Subtitles, error) {
+	var err error
+	if chsSub == nil && chtSub != nil {
+		log.Info("converting cht to chs")
+		chsSub, err = s.convertor.ConvertToSimplified(chtSub)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if chsSub == nil && engSub != nil {
+		log.Info("translating eng to chs")
+		chsSub, err = s.convertor.TranslateToSimplified(engSub)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return chsSub, nil
 }
