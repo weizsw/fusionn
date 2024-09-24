@@ -75,11 +75,10 @@ type Stream struct {
 	} `json:"tags"`
 }
 
-type ExtractData struct {
+type ExtractedData struct {
 	FileName   string
 	EngSubPath string
 	ChsSubPath string
 	ChtSubPath string
 	SdhSubPath string
-	IsSdh      bool
 }
