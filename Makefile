@@ -1,30 +1,34 @@
 # Simple Makefile for a Go project
-
+help: ## Show available options
+	@echo "Available options:"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 # Build the application
-all: build test
+all: ## Build and test the application
+	@make build
+	@make test
 
-build:
+build: ## Build the application
 	@echo "Building..."
-	
-	
+
+
 	@go build -o main cmd/api/main.go
 
 # Run the application
-run:
+run: ## Run the application
 	@go run cmd/api/main.go
 
 # Test the application
-test:
+test: ## Test the application
 	@echo "Testing..."
 	@go test ./... -v
 
 # Clean the binary
-clean:
+clean: ## Clean the binary
 	@echo "Cleaning..."
 	@rm -f main
 
 # Live Reload
-watch:
+watch: ## Watch the application
 	@if command -v air > /dev/null; then \
             air; \
             echo "Watching...";\
@@ -40,4 +44,10 @@ watch:
             fi; \
         fi
 
-.PHONY: all build run test clean watch
+init-db: ## Initialize the database
+	sqlite3 ./sqlite.db < ./internal/database/schema.sql
+
+wire: ## Generate the wire dependencies
+	wire ./internal/wire
+
+.PHONY: help all build run test clean watch init-db wire

@@ -4,11 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
-	"os"
+	"fusionn/config"
+	"fusionn/logger"
 	"strconv"
 	"time"
 
+	"github.com/google/wire"
 	_ "github.com/joho/godotenv/autoload"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -29,7 +30,6 @@ type service struct {
 }
 
 var (
-	dburl      = os.Getenv("BLUEPRINT_DB_URL")
 	dbInstance *service
 )
 
@@ -39,11 +39,11 @@ func New() Service {
 		return dbInstance
 	}
 
-	db, err := sql.Open("sqlite3", dburl)
+	db, err := sql.Open("sqlite3", config.C.GetString("sqlite.path"))
 	if err != nil {
 		// This will not be a connection error, but a DSN parse error or
 		// another initialization error.
-		log.Fatal(err)
+		logger.Sugar.Fatalf("failed to connect database: %v", err)
 	}
 
 	dbInstance = &service{
@@ -65,7 +65,7 @@ func (s *service) Health() map[string]string {
 	if err != nil {
 		stats["status"] = "down"
 		stats["error"] = fmt.Sprintf("db down: %v", err)
-		log.Fatalf("db down: %v", err) // Log the error and terminate the program
+		logger.Sugar.Fatalf("db down: %v", err) // Log the error and terminate the program
 		return stats
 	}
 
@@ -108,6 +108,8 @@ func (s *service) Health() map[string]string {
 // If the connection is successfully closed, it returns nil.
 // If an error occurs while closing the connection, it returns the error.
 func (s *service) Close() error {
-	log.Printf("Disconnected from database: %s", dburl)
+	logger.Sugar.Infof("Disconnected from database: %s", config.C.GetString("sqlite.path"))
 	return s.db.Close()
 }
+
+var Set = wire.NewSet(New)

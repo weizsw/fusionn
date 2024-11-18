@@ -32,3 +32,9 @@ main
 # OS X generated file
 .DS_Store
 
+.opencommitignore
+*.db
+
+*.mkv
+*.srt
+*.ass

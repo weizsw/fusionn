@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS series_overview_tab (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    imdb_id TEXT UNIQUE NOT NULL,
+    overview TEXT NOT NULL
+);

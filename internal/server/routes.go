@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
-	r := gin.Default()
+	r := gin.New()
 
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:5173"}, // Add your frontend URL
@@ -17,11 +17,32 @@ func (s *Server) RegisterRoutes() http.Handler {
 		AllowCredentials: true, // Enable cookies/auth
 	}))
 
+	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{
+		SkipPaths: []string{"/health"}, // Skip logging for health checks
+	}))
+	r.Use(gin.Recovery())
+
 	r.GET("/", s.HelloWorldHandler)
 
 	r.GET("/health", s.healthHandler)
 
+	r.POST("/api/v1/merge", wrapHandler(s.handler.Merge))
+
 	return r
+}
+
+// HandlerFunc is a custom type that returns an error
+type HandlerFunc func(*gin.Context) error
+
+// wrapHandler converts our HandlerFunc to gin.HandlerFunc
+func wrapHandler(h HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := h(c); err != nil {
+			statusCode := http.StatusBadRequest
+			c.JSON(statusCode, gin.H{"error": err.Error()})
+			return
+		}
+	}
 }
 
 func (s *Server) HelloWorldHandler(c *gin.Context) {
