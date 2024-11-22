@@ -180,7 +180,7 @@ func (p *parser) Clean(subs *astisub.Subtitles) *astisub.Subtitles {
 		prevItem := cleanedItems[len(cleanedItems)-1]
 
 		// Check for overlap with previous item
-		if item.StartAt <= prevItem.EndAt {
+		if item.StartAt < prevItem.EndAt {
 			// Merge overlapping subtitles into previous item
 			mergedText := prevItem.Lines[0].Items[0].Text + " " + item.Lines[0].Items[0].Text
 			prevItem.Lines[0].Items[0].Text = strings.TrimSpace(mergedText)
