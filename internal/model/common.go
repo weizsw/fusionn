@@ -1,5 +1,7 @@
 package model
 
+import "github.com/asticode/go-astisub"
+
 type StreamInfo struct {
 	Index       int    `json:"index"`
 	CodecType   string `json:"codec_type"`
@@ -81,4 +83,24 @@ type ExtractedData struct {
 	ChsSubPath string
 	ChtSubPath string
 	SdhSubPath string
+}
+
+type ExtractedStream struct {
+	FileName     string
+	FilePath     string
+	EngSubBuffer []byte
+	ChsSubBuffer []byte
+	ChtSubBuffer []byte
+	SdhSubBuffer []byte
+}
+
+type ParsedSubtitles struct {
+	FileName      string
+	FilePath      string
+	EngSubtitle   *astisub.Subtitles
+	ChsSubtitle   *astisub.Subtitles
+	ChtSubtitle   *astisub.Subtitles
+	SdhSubtitle   *astisub.Subtitles
+	MergeSubtitle *astisub.Subtitles
+	Translated    bool
 }

@@ -9,6 +9,7 @@ package wire
 import (
 	"fusionn/internal/database"
 	"fusionn/internal/handler"
+	"fusionn/internal/processor"
 	"fusionn/internal/server"
 	"fusionn/internal/service"
 	"fusionn/pkg"
@@ -22,12 +23,20 @@ import (
 func NewServer() (*http.Server, error) {
 	databaseService := database.New()
 	ffmpeg := service.NewFFMPEG()
-	parser := service.NewParser()
 	deepL := pkg.NewDeepL()
 	convertor := service.NewConvertor(deepL)
+	parser := service.NewParser(convertor)
 	algo := service.NewAlgo()
 	apprise := pkg.NewApprise()
-	handlerHandler := handler.NewHandler(ffmpeg, parser, convertor, algo, apprise)
+	extractStage := processor.NewExtractStage(ffmpeg)
+	parseStage := processor.NewParseStage(parser)
+	cleanStage := processor.NewCleanStage(parser)
+	mergeStage := processor.NewMergeStage(algo)
+	styleStage := processor.NewStyleStage()
+	exportStage := processor.NewExportStage()
+	notiStage := processor.NewNotiStage(apprise)
+	pipeline := handler.ProvidePipeline(extractStage, parseStage, cleanStage, mergeStage, styleStage, exportStage, notiStage)
+	handlerHandler := handler.NewHandler(ffmpeg, parser, convertor, algo, apprise, pipeline)
 	httpServer := server.NewServer(databaseService, handlerHandler)
 	return httpServer, nil
 }

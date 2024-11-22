@@ -11,6 +11,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/longbridgeapp/opencc v0.3.13
 	github.com/mattn/go-sqlite3 v1.14.24
+	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826
 	github.com/spf13/viper v1.19.0
 	github.com/valyala/fasthttp v1.57.0
 	go.uber.org/zap v1.27.0
