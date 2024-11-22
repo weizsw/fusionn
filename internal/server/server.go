@@ -3,8 +3,6 @@ package server
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/google/wire"
@@ -22,9 +20,8 @@ type Server struct {
 }
 
 func NewServer(db database.Service, h *handler.Handler) *http.Server {
-	port, _ := strconv.Atoi(os.Getenv("PORT"))
 	NewServer := &Server{
-		port:    port,
+		port:    4664,
 		db:      db,
 		handler: h,
 	}
