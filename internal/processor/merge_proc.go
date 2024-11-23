@@ -31,7 +31,7 @@ func (s *MergeStage) Process(ctx context.Context, input any) (any, error) {
 	if !ok {
 		return nil, ErrInvalidInput
 	}
-	mergedSubs.Items = s.algo.MatchSubtitlesCueClustering(req.ChsSubtitle.Items, req.EngSubtitle.Items, 1000*time.Millisecond)
+	mergedSubs.Items = s.algo.MatchSubtitleCueClustering(req.ChsSubtitle.Items, req.EngSubtitle.Items, 1000*time.Millisecond)
 	req.MergeSubtitle = mergedSubs
 
 	return req, nil
