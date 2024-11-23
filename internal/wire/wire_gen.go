@@ -31,17 +31,20 @@ func NewServer() (*http.Server, error) {
 	extractStage := processor.NewExtractStage(ffmpeg)
 	parseStage := processor.NewParseStage(parser)
 	cleanStage := processor.NewCleanStage(parser)
-	mergeStage := processor.NewMergeStage(algo)
+	segMergeStage := processor.NewSegMergeStage(algo)
 	styleStage := processor.NewStyleStage()
 	exportStage := processor.NewExportStage()
 	notiStage := processor.NewNotiStage(apprise)
-	pipeline := handler.ProvidePipeline(extractStage, parseStage, cleanStage, mergeStage, styleStage, exportStage, notiStage)
-	handlerHandler := handler.NewHandler(ffmpeg, parser, convertor, algo, apprise, pipeline)
-	httpServer := server.NewServer(databaseService, handlerHandler)
+	mergePipeline := handler.ProvideMergePipeline(extractStage, parseStage, cleanStage, segMergeStage, styleStage, exportStage, notiStage)
+	mergeHandler := handler.NewMergeHandler(ffmpeg, parser, convertor, algo, apprise, mergePipeline)
+	mergeStage := processor.NewMergeStage(algo)
+	batchPipeline := handler.ProvideBatchPipeline(extractStage, parseStage, cleanStage, mergeStage, styleStage, exportStage)
+	batchHandler := handler.NewBatchHandler(batchPipeline)
+	httpServer := server.NewServer(databaseService, mergeHandler, batchHandler)
 	return httpServer, nil
 }
 
 // wire.go:
 
 // ServerSet is a Wire provider set that includes all server dependencies
-var ServerSet = wire.NewSet(pkg.Set, service.Set, database.Set, handler.Set, server.Set)
+var ServerSet = wire.NewSet(pkg.Set, service.Set, database.Set, handler.Set, server.Set, processor.Set)

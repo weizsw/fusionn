@@ -6,6 +6,7 @@ package wire
 import (
 	"fusionn/internal/database"
 	"fusionn/internal/handler"
+	"fusionn/internal/processor"
 	"fusionn/internal/server"
 	"fusionn/internal/service"
 	"fusionn/pkg"
@@ -21,6 +22,7 @@ var ServerSet = wire.NewSet(
 	database.Set,
 	handler.Set,
 	server.Set,
+	processor.Set,
 )
 
 // NewServer creates a new HTTP server with all its dependencies
