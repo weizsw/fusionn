@@ -26,8 +26,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.GET("/health", s.healthHandler)
 
-	r.POST("/api/v1/merge", wrapHandler(s.handler.Merge))
-
+	r.POST("/api/v1/merge", wrapHandler(s.mergeHandler.Merge))
+	r.POST("/api/v1/batch", wrapHandler(s.batchHandler.Batch))
 	return r
 }
 
@@ -42,6 +42,7 @@ func wrapHandler(h HandlerFunc) gin.HandlerFunc {
 			c.JSON(statusCode, gin.H{"error": err.Error()})
 			return
 		}
+		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	}
 }
 
