@@ -9,38 +9,40 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func ProvidePipeline(
+func ProvideMergePipeline(
 	extractStage *processor.ExtractStage,
 	parseStage *processor.ParseStage,
 	cleanStage *processor.CleanStage,
-	mergeStage *processor.MergeStage,
+	segMergeStage *processor.SegMergeStage,
 	styleStage *processor.StyleStage,
 	exportStage *processor.ExportStage,
 	notiStage *processor.NotiStage,
-) *processor.Pipeline {
+) *MergePipeline {
 	stages := []processor.Stage{
 		extractStage,
 		parseStage,
 		cleanStage,
-		mergeStage,
+		segMergeStage,
 		styleStage,
 		exportStage,
 		notiStage,
 	}
-	return processor.NewPipeline(stages...)
+	return &MergePipeline{
+		Pipeline: processor.NewPipeline(stages...),
+	}
 }
 
-type Handler struct {
+type MergeHandler struct {
 	ffmpeg    service.FFMPEG
 	parser    service.Parser
 	convertor service.Convertor
 	algo      service.Algo
 	apprise   pkg.Apprise
-	pipeline  *processor.Pipeline
+	pipeline  *MergePipeline
 }
 
-func NewHandler(ffmpeg service.FFMPEG, parser service.Parser, convertor service.Convertor, algo service.Algo, apprise pkg.Apprise, pipeline *processor.Pipeline) *Handler {
-	return &Handler{
+func NewMergeHandler(ffmpeg service.FFMPEG, parser service.Parser, convertor service.Convertor, algo service.Algo, apprise pkg.Apprise, pipeline *MergePipeline) *MergeHandler {
+	return &MergeHandler{
 		ffmpeg:    ffmpeg,
 		parser:    parser,
 		convertor: convertor,
@@ -52,7 +54,7 @@ func NewHandler(ffmpeg service.FFMPEG, parser service.Parser, convertor service.
 
 var msgFormat = `{"title":"Fusionn notification","body":"%s"}`
 
-func (h *Handler) Merge(c *gin.Context) error {
+func (h *MergeHandler) Merge(c *gin.Context) error {
 	req := &model.ExtractRequest{}
 	if err := c.ShouldBindJSON(req); err != nil {
 		return err
