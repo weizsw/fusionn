@@ -128,11 +128,6 @@ func (f *ffmpeg) ExtractStreamToBuffer(videoPath string) (*model.ExtractedStream
 	}
 
 	for lan, index := range lanIndexMap {
-		subtitlePath, err := utils.GetTmpSubtitleFullPath(filename + "." + lan)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get subtitle path: %w", err)
-		}
-
 		buffer, err := f.extractStreamToBuffer(videoPath, index)
 		if err != nil {
 			return nil, fmt.Errorf("failed to extract subtitle stream: %w", err)
@@ -149,7 +144,7 @@ func (f *ffmpeg) ExtractStreamToBuffer(videoPath string) (*model.ExtractedStream
 			extractData.SdhSubBuffer = buffer
 		}
 
-		logger.L.Info("[FFMPEG] subtitle stream extracted successfully", zap.String("lan", lan), zap.Int("index", index), zap.String("subtitle_path", subtitlePath))
+		logger.L.Info("[FFMPEG] subtitle stream extracted successfully", zap.String("lan", lan), zap.Int("index", index))
 	}
 
 	return extractData, nil

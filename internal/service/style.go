@@ -25,9 +25,11 @@ func NewStyleService() *styleService {
 }
 
 func (s *styleService) ReplaceSpecialCharacters(sub *astisub.Subtitles) *astisub.Subtitles {
-	for _, item := range sub.Items {
-		for _, line := range item.Lines {
-			line.Items[0].Text = utils.ReplaceSpecialCharacters(line.Items[0].Text)
+	for i := range sub.Items {
+		for j := range sub.Items[i].Lines {
+			for k := range sub.Items[i].Lines[j].Items {
+				sub.Items[i].Lines[j].Items[k].Text = utils.ReplaceSpecialCharacters(sub.Items[i].Lines[j].Items[k].Text)
+			}
 		}
 	}
 	return sub
@@ -169,7 +171,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 		SSASpacing:         proto.Float64(0),
 		SSAAngle:           proto.Float64(0),
 		SSABorderStyle:     &borderStyle,
-		SSAOutline:         proto.Float64(1),
+		SSAOutline:         proto.Float64(0.5),
 		SSAShadow:          proto.Float64(0),
 		SSAAlignment:       &alignment,
 		SSAMarginLeft:      &marginLeft,
@@ -242,7 +244,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 		SSASpacing:         proto.Float64(0),
 		SSAAngle:           proto.Float64(0),
 		SSABorderStyle:     &engBorderStyle,
-		SSAOutline:         proto.Float64(1),
+		SSAOutline:         proto.Float64(0.5),
 		SSAShadow:          proto.Float64(0),
 		SSAAlignment:       &engAlignment,
 		SSAMarginLeft:      &engMarginLeft,
