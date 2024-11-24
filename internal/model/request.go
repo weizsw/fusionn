@@ -7,3 +7,8 @@ type ExtractRequest struct {
 type BatchRequest struct {
 	Path string `json:"path"`
 }
+
+type AsyncMergeRequest struct {
+	ChsSubtilePath string `json:"chs_subtitle_path"`
+	EngSubtilePath string `json:"eng_subtitle_path"`
+}
