@@ -28,7 +28,7 @@ func NewServer(db database.Service, h *handler.MergeHandler, b *handler.BatchHan
 		batchHandler: b,
 	}
 
-	logger.Sugar.Info("Server initialized")
+	logger.S.Info("Server initialized")
 	// Declare Server config
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", NewServer.port),

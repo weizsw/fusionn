@@ -33,7 +33,6 @@ func ProvideBatchPipeline(
 	stages := []processor.Stage{
 		extractStage,
 		parseStage,
-		cleanStage,
 		mergeStage,
 		styleStage,
 		exportStage,

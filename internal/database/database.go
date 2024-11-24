@@ -43,7 +43,7 @@ func New() Service {
 	if err != nil {
 		// This will not be a connection error, but a DSN parse error or
 		// another initialization error.
-		logger.Sugar.Fatalf("failed to connect database: %v", err)
+		logger.S.Fatalf("failed to connect database: %v", err)
 	}
 
 	dbInstance = &service{
@@ -65,7 +65,7 @@ func (s *service) Health() map[string]string {
 	if err != nil {
 		stats["status"] = "down"
 		stats["error"] = fmt.Sprintf("db down: %v", err)
-		logger.Sugar.Fatalf("db down: %v", err) // Log the error and terminate the program
+		logger.S.Fatalf("db down: %v", err) // Log the error and terminate the program
 		return stats
 	}
 
@@ -108,7 +108,7 @@ func (s *service) Health() map[string]string {
 // If the connection is successfully closed, it returns nil.
 // If an error occurs while closing the connection, it returns the error.
 func (s *service) Close() error {
-	logger.Sugar.Infof("Disconnected from database: %s", config.C.GetString("sqlite.path"))
+	logger.S.Infof("Disconnected from database: %s", config.C.GetString("sqlite.path"))
 	return s.db.Close()
 }
 
