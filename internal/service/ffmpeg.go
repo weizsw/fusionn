@@ -10,6 +10,8 @@ import (
 
 	"os"
 	"os/exec"
+
+	"go.uber.org/zap"
 )
 
 type FFMPEG interface {
@@ -82,7 +84,7 @@ func (f *ffmpeg) ExtractSubtitles(videoPath string) (*model.ExtractedData, error
 			extractData.SdhSubPath = subtitlePath
 		}
 
-		logger.Sugar.Infof("Subtitle stream %d extracted successfully: %s\n", index, subtitlePath)
+		logger.L.Info("[FFMPEG] subtitle stream extracted successfully", zap.String("lan", lan), zap.Int("index", index), zap.String("subtitle_path", subtitlePath))
 	}
 
 	return extractData, nil
@@ -147,7 +149,7 @@ func (f *ffmpeg) ExtractStreamToBuffer(videoPath string) (*model.ExtractedStream
 			extractData.SdhSubBuffer = buffer
 		}
 
-		logger.Sugar.Infof("Subtitle stream %d extracted successfully: %s\n", index, subtitlePath)
+		logger.L.Info("[FFMPEG] subtitle stream extracted successfully", zap.String("lan", lan), zap.Int("index", index), zap.String("subtitle_path", subtitlePath))
 	}
 
 	return extractData, nil
@@ -162,7 +164,7 @@ func (f *ffmpeg) detectStream(videoPath string) (*model.FFprobeData, error) {
 	cmd := exec.Command(ffprobePath, "-i", videoPath, "-v", "quiet", "-print_format", "json", "-show_streams")
 	cmd.Stderr = os.Stderr
 
-	logger.Sugar.Debug(cmd.String())
+	logger.S.Debug(cmd.String())
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to run ffprobe: %w", err)
@@ -193,7 +195,7 @@ func (f *ffmpeg) extractStream(videoPath, subtitlePath string, streamIndex int) 
 
 	cmd := exec.Command(ffmpegPath, "-y", "-i", videoPath, "-v", "quiet", "-map", fmt.Sprintf("0:%d", streamIndex), subtitlePath)
 	cmd.Stderr = os.Stderr
-	logger.Sugar.Debug(cmd.String())
+	logger.S.Debug(cmd.String())
 	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("failed to extract subtitle stream %d: %w", streamIndex, err)
@@ -210,7 +212,7 @@ func (f *ffmpeg) extractStreamToBuffer(videoPath string, streamIndex int) ([]byt
 
 	cmd := exec.Command(ffmpegPath, "-y", "-i", videoPath, "-v", "quiet", "-map", fmt.Sprintf("0:%d", streamIndex), "-f", "srt", "-")
 	cmd.Stderr = os.Stderr
-	logger.Sugar.Debug(cmd.String())
+	logger.S.Debug(cmd.String())
 
 	output, err := cmd.Output()
 	if err != nil {

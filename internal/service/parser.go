@@ -29,7 +29,7 @@ func NewParser(c Convertor) *parser {
 
 func (p *parser) Parse(input string) (*astisub.Subtitles, error) {
 	if input == "" {
-		logger.Sugar.Infof("input is empty")
+		logger.S.Infof("input is empty")
 		return nil, nil
 	}
 	s, err := astisub.OpenFile(input)
@@ -58,7 +58,7 @@ func (p *parser) Parse(input string) (*astisub.Subtitles, error) {
 
 func (p *parser) ParseFromBytes(stream *model.ExtractedStream) (*model.ParsedSubtitles, error) {
 	if len(stream.EngSubBuffer) == 0 && len(stream.SdhSubBuffer) == 0 {
-		logger.Sugar.Info("input data is empty")
+		logger.S.Info("input data is empty")
 		return nil, nil
 	}
 

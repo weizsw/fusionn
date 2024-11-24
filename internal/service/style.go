@@ -110,7 +110,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 
 	primaryColor, err = s.parseASSColor("&H00C5C5C5")
 	if err != nil {
-		logger.Sugar.Error("Error parsing primarycolor:", err)
+		logger.S.Error("Error parsing primarycolor:", err)
 		primaryColor = &astisub.Color{
 			Alpha: 0,
 			Blue:  197,
@@ -120,7 +120,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	}
 	secondaryColor, err = s.parseASSColor("&H0000FFFF")
 	if err != nil {
-		logger.Sugar.Error("Error parsing secondarycolor:", err)
+		logger.S.Error("Error parsing secondarycolor:", err)
 		secondaryColor = &astisub.Color{
 			Alpha: 0,
 			Blue:  255,
@@ -130,7 +130,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	}
 	outlineColor, err = s.parseASSColor("&H00000000")
 	if err != nil {
-		logger.Sugar.Error("Error parsing outlinecolor:", err)
+		logger.S.Error("Error parsing outlinecolor:", err)
 		outlineColor = &astisub.Color{
 			Alpha: 0,
 			Blue:  0,
@@ -140,7 +140,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	}
 	backColor, err = s.parseASSColor("&H80000000")
 	if err != nil {
-		logger.Sugar.Error("Error parsing backcolor:", err)
+		logger.S.Error("Error parsing backcolor:", err)
 		backColor = &astisub.Color{
 			Alpha: 128,
 			Blue:  0,
@@ -181,7 +181,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	// Create English style
 	engPrimaryColor, err := s.parseASSColor("&H0000A0DC")
 	if err != nil {
-		logger.Sugar.Error("Error parsing Eng primarycolor:", err)
+		logger.S.Error("Error parsing Eng primarycolor:", err)
 		engPrimaryColor = &astisub.Color{
 			Alpha: 0,
 			Blue:  220,
@@ -191,7 +191,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	}
 	engSecondaryColor, err := s.parseASSColor("&H0000FFFF")
 	if err != nil {
-		logger.Sugar.Error("Error parsing Eng secondarycolor:", err)
+		logger.S.Error("Error parsing Eng secondarycolor:", err)
 		engSecondaryColor = &astisub.Color{
 			Alpha: 0,
 			Blue:  255,
@@ -201,7 +201,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	}
 	engOutlineColor, err := s.parseASSColor("&H00000000")
 	if err != nil {
-		logger.Sugar.Error("Error parsing Eng outlinecolor:", err)
+		logger.S.Error("Error parsing Eng outlinecolor:", err)
 		engOutlineColor = &astisub.Color{
 			Alpha: 0,
 			Blue:  0,
@@ -211,7 +211,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	}
 	engBackColor, err := s.parseASSColor("&H80000000")
 	if err != nil {
-		logger.Sugar.Error("Error parsing Eng backcolor:", err)
+		logger.S.Error("Error parsing Eng backcolor:", err)
 		engBackColor = &astisub.Color{
 			Alpha: 128,
 			Blue:  0,
