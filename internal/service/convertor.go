@@ -66,7 +66,7 @@ func (c *convertor) TranslateToSimplified(sub *astisub.Subtitles) (*astisub.Subt
 		}
 
 		batch := texts[i:end]
-		translatedBatch, err := c.deepl.Translate(batch, "zh", "en")
+		translatedBatch, err := c.deepl.TranslateDeepLX(batch, "zh", "en")
 		if err != nil {
 			return nil, err
 		}
