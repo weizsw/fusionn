@@ -1,8 +1,6 @@
 package pkg
 
 import (
-	"fusionn/logger"
-
 	"github.com/valyala/fasthttp"
 )
 
@@ -33,7 +31,6 @@ func (a *apprise) SendBasicMessage(url string, data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	logger.Sugar.Info("send apprise message success")
 
 	return resp.Body(), nil
 }

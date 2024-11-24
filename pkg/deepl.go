@@ -48,13 +48,13 @@ func (d *deepL) Translate(text []string, targetLang, sourceLang string) (*deepLT
 	}
 	reqBodyByte, err := sonic.Marshal(reqBody)
 	if err != nil {
-		logger.Sugar.Fatalf("Error marshaling request body: %s", err)
+		logger.S.Fatalf("Error marshaling request body: %s", err)
 		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", cmd, bytes.NewBuffer(reqBodyByte))
 	if err != nil {
-		logger.Sugar.Fatalf("Error creating request: %s", err)
+		logger.S.Fatalf("Error creating request: %s", err)
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -63,21 +63,21 @@ func (d *deepL) Translate(text []string, targetLang, sourceLang string) (*deepLT
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
-		logger.Sugar.Fatalf("Error sending request: %s", err)
+		logger.S.Fatalf("Error sending request: %s", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Sugar.Fatalf("Error reading response body: %s", err)
+		logger.S.Fatalf("Error reading response body: %s", err)
 		return nil, err
 	}
 
 	var translateResp deepLTranslateResp
 	err = sonic.Unmarshal(body, &translateResp)
 	if err != nil {
-		logger.Sugar.Fatalf("Error unmarshaling response body: %s", err)
+		logger.S.Fatalf("Error unmarshaling response body: %s", err)
 		return nil, err
 	}
 
