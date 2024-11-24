@@ -178,7 +178,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	encoding := 1
 	defaultStyle := &astisub.StyleAttributes{
 		SSAFontName:        "WenQuanYiMicroHei",
-		SSAFontSize:        proto.Float64(19),
+		SSAFontSize:        proto.Float64(22),
 		SSAPrimaryColour:   primaryColor,
 		SSASecondaryColour: secondaryColor,
 		SSAOutlineColour:   outlineColor,
