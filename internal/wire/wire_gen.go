@@ -39,8 +39,7 @@ func NewServer() (*http.Server, error) {
 	notiStage := processor.NewNotiStage(apprise)
 	mergePipeline := handler.ProvideMergePipeline(extractStage, parseStage, cleanStage, segMergeStage, styleStage, exportStage, subsetStage, notiStage)
 	mergeHandler := handler.NewMergeHandler(ffmpeg, parser, convertor, algo, apprise, mergePipeline)
-	mergeStage := processor.NewMergeStage(algo)
-	batchPipeline := handler.ProvideBatchPipeline(extractStage, parseStage, cleanStage, mergeStage, styleStage, exportStage, subsetStage)
+	batchPipeline := handler.ProvideBatchPipeline(extractStage, parseStage, cleanStage, segMergeStage, styleStage, exportStage, subsetStage)
 	batchHandler := handler.NewBatchHandler(batchPipeline)
 	httpServer := server.NewServer(databaseService, mergeHandler, batchHandler)
 	return httpServer, nil
