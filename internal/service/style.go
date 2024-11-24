@@ -51,12 +51,28 @@ func (s *styleService) ReduceMargin(sub *astisub.Subtitles, engMargin, defaultMa
 		if engItem.Style != nil && engItem.Style.ID == "Eng" {
 			for _, line := range engItem.Lines {
 				if len(line.Items) > 0 {
-					// Skip if the text contains {\an8}
+					// Handle {\an8} case differently
 					if strings.Contains(line.Items[0].Text, "{\\an8}") {
-						continue
+						line.Items[0].Text = defaultMargin + line.Items[0].Text
+
+						// Find matching default line
+						for _, defaultItem := range sub.Items {
+							if defaultItem.Style == nil || defaultItem.Style.ID != "Eng" {
+								if defaultItem.StartAt == engItem.StartAt && defaultItem.EndAt == engItem.EndAt {
+									for _, defaultLine := range defaultItem.Lines {
+										if len(defaultLine.Items) > 0 {
+											defaultLine.Items[0].Text = engMargin + defaultLine.Items[0].Text
+											break
+										}
+									}
+									break
+								}
+							}
+						}
+						break
 					}
 
-					// Calculate English line length
+					// Regular case (existing code)
 					var textLength float64
 					for _, lineItem := range line.Items {
 						textLength += float64(len(lineItem.Text)) * pixelsPerCharEng
