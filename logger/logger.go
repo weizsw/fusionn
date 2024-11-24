@@ -11,9 +11,9 @@ import (
 )
 
 var (
-	Logger *zap.Logger
-	Sugar  *zap.SugaredLogger
-	once   sync.Once
+	L    *zap.Logger
+	S    *zap.SugaredLogger
+	once sync.Once
 )
 
 func init() {
@@ -41,11 +41,11 @@ func init() {
 		if err != nil {
 			panic(err)
 		}
-		Logger = logger
-		Sugar = logger.Sugar()
+		L = logger
+		S = logger.Sugar()
 
 		// Replace Gin's default logger
-		gin.DefaultWriter = &zapWriter{sugar: Sugar}
+		gin.DefaultWriter = &zapWriter{sugar: S}
 	})
 }
 
