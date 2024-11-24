@@ -12,4 +12,5 @@ var Set = wire.NewSet(
 	NewExportStage,
 	NewNotiStage,
 	NewSegMergeStage,
+	NewSubsetStage,
 )
