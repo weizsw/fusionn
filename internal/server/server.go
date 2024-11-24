@@ -14,18 +14,20 @@ import (
 )
 
 type Server struct {
-	port         int
-	mergeHandler *handler.MergeHandler
-	batchHandler *handler.BatchHandler
-	db           database.Service
+	port              int
+	mergeHandler      *handler.MergeHandler
+	asyncMergeHandler *handler.AsyncMergeHandler
+	batchHandler      *handler.BatchHandler
+	db                database.Service
 }
 
-func NewServer(db database.Service, h *handler.MergeHandler, b *handler.BatchHandler) *http.Server {
+func NewServer(db database.Service, m *handler.MergeHandler, am *handler.AsyncMergeHandler, b *handler.BatchHandler) *http.Server {
 	NewServer := &Server{
-		port:         4664,
-		db:           db,
-		mergeHandler: h,
-		batchHandler: b,
+		port:              4664,
+		db:                db,
+		mergeHandler:      m,
+		asyncMergeHandler: am,
+		batchHandler:      b,
 	}
 
 	logger.S.Info("Server initialized")

@@ -28,6 +28,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.POST("/api/v1/merge", wrapHandler(s.mergeHandler.Merge))
 	r.POST("/api/v1/batch", wrapHandler(s.batchHandler.Batch))
+	r.POST("/api/v1/async_merge", wrapHandler(s.asyncMergeHandler.AsyncMerge))
 	return r
 }
 
