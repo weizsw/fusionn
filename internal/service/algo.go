@@ -148,14 +148,24 @@ func (a *algo) MatchSubtitleSegment(chineseItems, englishItems []*astisub.Item) 
 		// Collect English lines that overlap with this segment
 		for _, eng := range englishItems {
 			if eng.EndAt > seg.Start && eng.StartAt < seg.End {
-				engLines = append(engLines, eng.Lines...)
+				if len(engLines) == 0 {
+					engLines = append(engLines, astisub.Line{})
+				}
+				for _, line := range eng.Lines {
+					engLines[0].Items = append(engLines[0].Items, line.Items...)
+				}
 			}
 		}
 
 		// Collect Chinese lines that overlap with this segment
 		for _, ch := range chineseItems {
 			if ch.EndAt > seg.Start && ch.StartAt < seg.End {
-				chiLines = append(chiLines, ch.Lines...)
+				if len(chiLines) == 0 {
+					chiLines = append(chiLines, astisub.Line{})
+				}
+				for _, line := range ch.Lines {
+					chiLines[0].Items = append(chiLines[0].Items, line.Items...)
+				}
 			}
 		}
 
