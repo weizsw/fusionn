@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"fusionn/logger"
+	"fusionn/utils"
 	"strconv"
 	"strings"
 
@@ -12,12 +13,77 @@ import (
 
 type StyleService interface {
 	AddStyle(sub *astisub.Subtitles) *astisub.Subtitles
+	FontSubSet(path string) error
+	ReduceMargin(sub *astisub.Subtitles, engMargin, defaultMargin string) *astisub.Subtitles
+	ReplaceSpecialCharacters(sub *astisub.Subtitles) *astisub.Subtitles
 }
 
 type styleService struct{}
 
 func NewStyleService() *styleService {
 	return &styleService{}
+}
+
+func (s *styleService) ReplaceSpecialCharacters(sub *astisub.Subtitles) *astisub.Subtitles {
+	for _, item := range sub.Items {
+		for _, line := range item.Lines {
+			line.Items[0].Text = utils.ReplaceSpecialCharacters(line.Items[0].Text)
+		}
+	}
+	return sub
+}
+
+func (s *styleService) ReduceMargin(sub *astisub.Subtitles, engMargin, defaultMargin string) *astisub.Subtitles {
+	if sub == nil {
+		return sub
+	}
+
+	// Calculate available width based on resolution and margins
+	availableWidth := 1920 - 40 // 40 is total horizontal margins (20 left + 20 right)
+
+	// Based on known max length of 93 chars at font size 12
+	pixelsPerCharEng := 20.2 // 1880/93 pixels per character for English text
+
+	// First pass: process English lines and find matching default lines
+	for _, engItem := range sub.Items {
+		if engItem.Style != nil && engItem.Style.ID == "Eng" {
+			for _, line := range engItem.Lines {
+				if len(line.Items) > 0 {
+					// Calculate English line length
+					var textLength float64
+					for _, lineItem := range line.Items {
+						textLength += float64(len(lineItem.Text)) * pixelsPerCharEng
+					}
+
+					// Only proceed if English margin won't cause wrapping
+					if textLength <= float64(availableWidth) {
+						line.Items[0].Text = engMargin + line.Items[0].Text
+
+						// Find matching default line
+						for _, defaultItem := range sub.Items {
+							if defaultItem.Style == nil || defaultItem.Style.ID != "Eng" {
+								if defaultItem.StartAt == engItem.StartAt && defaultItem.EndAt == engItem.EndAt {
+									for _, defaultLine := range defaultItem.Lines {
+										if len(defaultLine.Items) > 0 {
+											defaultLine.Items[0].Text = defaultMargin + defaultLine.Items[0].Text
+											break
+										}
+									}
+									break
+								}
+							}
+						}
+					}
+					break
+				}
+			}
+		}
+	}
+	return sub
+}
+
+func (s *styleService) FontSubSet(path string) error {
+	return nil
 }
 
 func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
@@ -88,8 +154,8 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	marginVertical := 10
 	encoding := 1
 	defaultStyle := &astisub.StyleAttributes{
-		SSAFontName:        "Microsoft YaHei",
-		SSAFontSize:        proto.Float64(16),
+		SSAFontName:        "WenQuanYiMicroHei",
+		SSAFontSize:        proto.Float64(19),
 		SSAPrimaryColour:   primaryColor,
 		SSASecondaryColour: secondaryColor,
 		SSAOutlineColour:   outlineColor,
@@ -103,7 +169,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 		SSASpacing:         proto.Float64(0),
 		SSAAngle:           proto.Float64(0),
 		SSABorderStyle:     &borderStyle,
-		SSAOutline:         proto.Float64(2),
+		SSAOutline:         proto.Float64(1),
 		SSAShadow:          proto.Float64(0),
 		SSAAlignment:       &alignment,
 		SSAMarginLeft:      &marginLeft,
@@ -161,8 +227,8 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	engEncoding := 1
 
 	engStyle := &astisub.StyleAttributes{
-		SSAFontName:        "Arial",
-		SSAFontSize:        proto.Float64(10),
+		SSAFontName:        "WenQuanYiMicroHei",
+		SSAFontSize:        proto.Float64(12),
 		SSAPrimaryColour:   engPrimaryColor,
 		SSASecondaryColour: engSecondaryColor,
 		SSAOutlineColour:   engOutlineColor,
