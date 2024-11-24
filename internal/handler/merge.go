@@ -53,15 +53,15 @@ func NewMergeHandler(ffmpeg service.FFMPEG, parser service.Parser, convertor ser
 	}
 }
 
-var msgFormat = `{"title":"Fusionn notification","body":"%s"}`
-
 func (h *MergeHandler) Merge(c *gin.Context) error {
 	req := &model.ExtractRequest{}
 	if err := c.ShouldBindJSON(req); err != nil {
 		return err
 	}
 
-	_, err := h.pipeline.Execute(c.Request.Context(), req)
+	ctx := c.Request.Context()
+
+	_, err := h.pipeline.Execute(ctx, req)
 	if err != nil {
 		return err
 	}

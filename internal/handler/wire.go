@@ -16,9 +16,15 @@ type BatchPipeline struct {
 	*processor.Pipeline
 }
 
+type AsyncMergePipeline struct {
+	*processor.Pipeline
+}
+
 var Set = wire.NewSet(
 	NewMergeHandler,
 	NewBatchHandler,
+	NewAsyncMergeHandler,
 	ProvideMergePipeline,
 	ProvideBatchPipeline,
+	ProvideAsyncMergePipeline,
 )
