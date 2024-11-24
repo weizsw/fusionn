@@ -20,6 +20,7 @@ func (s *ExportStage) Process(ctx context.Context, input any) (any, error) {
 	}
 
 	dstpath := utils.ExtractPathWithoutExtension(req.FilePath) + ".chi.ass"
+	req.ExportedPath = dstpath
 	err := req.MergeSubtitle.Write(dstpath)
 	if err != nil {
 		return nil, err
