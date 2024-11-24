@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"bytes"
+	"errors"
 	"fusionn/config"
 	"fusionn/internal/consts"
 	"fusionn/logger"
@@ -106,13 +107,20 @@ func (d *deepL) TranslateDeepLX(text []string, targetLang, sourceLang string) (*
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "DeepL-Auth-Key helloworld")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil {
 		logger.S.Fatalf("Error sending request: %s", err)
 		return nil, err
 	}
+
+	if resp.StatusCode != 200 {
+		logger.S.Fatalf("Error sending request: %s", resp.Status)
+		return nil, errors.New(resp.Status)
+	}
+
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
