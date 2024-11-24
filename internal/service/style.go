@@ -171,7 +171,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 		SSAItalic:          proto.Bool(false),
 		SSAUnderline:       proto.Bool(false),
 		SSAStrikeout:       proto.Bool(false),
-		SSAScaleX:          proto.Float64(100),
+		SSAScaleX:          proto.Float64(90),
 		SSAScaleY:          proto.Float64(100),
 		SSASpacing:         proto.Float64(0),
 		SSAAngle:           proto.Float64(0),
