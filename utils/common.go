@@ -19,7 +19,7 @@ import (
 func GetTmpSubtitleFullPath(filename string) (string, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
-		logger.Sugar.Error("Error:", err)
+		logger.S.Error("Error:", err)
 		return "", err
 	}
 	return fmt.Sprintf("%s%s%s.srt", currentDir, consts.TMP_DIR, filename), nil
@@ -28,7 +28,7 @@ func GetTmpSubtitleFullPath(filename string) (string, error) {
 func GetTmpDirPath() (string, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
-		logger.Sugar.Error("Error:", err)
+		logger.S.Error("Error:", err)
 		return "", err
 	}
 	return fmt.Sprintf("%s%s", currentDir, consts.TMP_DIR), nil
@@ -103,7 +103,7 @@ func ReadFile(filePath string) ([]string, error) {
 	// Open the file
 	file, err := os.Open(filePath)
 	if err != nil {
-		logger.Sugar.Error("Error opening file:", err)
+		logger.S.Error("Error opening file:", err)
 		return nil, err
 	}
 	defer file.Close()
@@ -120,7 +120,7 @@ func ReadFile(filePath string) ([]string, error) {
 
 	// Check for any scanning errors
 	if err := scanner.Err(); err != nil {
-		logger.Sugar.Error("Error scanning file:", err)
+		logger.S.Error("Error scanning file:", err)
 		return nil, err
 	}
 
@@ -131,7 +131,7 @@ func WriteFile(lines []string, filePath string) error {
 	// Open the file for writing
 	file, err := os.Create(filePath)
 	if err != nil {
-		logger.Sugar.Error("Error creating file:", err)
+		logger.S.Error("Error creating file:", err)
 		return err
 	}
 	defer file.Close()
@@ -143,7 +143,7 @@ func WriteFile(lines []string, filePath string) error {
 	for _, line := range lines {
 		_, err := writer.WriteString(line + "\n")
 		if err != nil {
-			logger.Sugar.Error("Error writing line:", err)
+			logger.S.Error("Error writing line:", err)
 			return err
 		}
 	}
@@ -151,11 +151,11 @@ func WriteFile(lines []string, filePath string) error {
 	// Flush the writer to ensure all data is written to the file
 	err = writer.Flush()
 	if err != nil {
-		logger.Sugar.Error("Error flushing writer:", err)
+		logger.S.Error("Error flushing writer:", err)
 		return err
 	}
 
-	logger.Sugar.Info("File written successfully:", filePath)
+	logger.S.Info("File written successfully:", filePath)
 	return nil
 }
 
@@ -192,7 +192,7 @@ func DeleteFilesInDirectory(dirPath, fileName string) error {
 			if err != nil {
 				return err
 			}
-			logger.Sugar.Info("Deleted file: %s\n", filePath)
+			logger.S.Info("Deleted file: %s\n", filePath)
 		}
 	}
 
@@ -223,7 +223,7 @@ func AddingStyleToAss(assSub *astisub.Subtitles) *astisub.Subtitles {
 
 	primaryColor, err = ParseASSColor("&H00C5C5C5")
 	if err != nil {
-		logger.Sugar.Error("Error parsing primarycolor:", err)
+		logger.S.Error("Error parsing primarycolor:", err)
 		primaryColor = &astisub.Color{
 			Alpha: 0,
 			Blue:  197,
@@ -233,7 +233,7 @@ func AddingStyleToAss(assSub *astisub.Subtitles) *astisub.Subtitles {
 	}
 	secondaryColor, err = ParseASSColor("&H0000FFFF")
 	if err != nil {
-		logger.Sugar.Error("Error parsing secondarycolor:", err)
+		logger.S.Error("Error parsing secondarycolor:", err)
 		secondaryColor = &astisub.Color{
 			Alpha: 0,
 			Blue:  255,
@@ -243,7 +243,7 @@ func AddingStyleToAss(assSub *astisub.Subtitles) *astisub.Subtitles {
 	}
 	outlineColor, err = ParseASSColor("&H00000000")
 	if err != nil {
-		logger.Sugar.Error("Error parsing outlinecolor:", err)
+		logger.S.Error("Error parsing outlinecolor:", err)
 		outlineColor = &astisub.Color{
 			Alpha: 0,
 			Blue:  0,
@@ -253,7 +253,7 @@ func AddingStyleToAss(assSub *astisub.Subtitles) *astisub.Subtitles {
 	}
 	backColor, err = ParseASSColor("&H80000000")
 	if err != nil {
-		logger.Sugar.Error("Error parsing backcolor:", err)
+		logger.S.Error("Error parsing backcolor:", err)
 		backColor = &astisub.Color{
 			Alpha: 128,
 			Blue:  0,
@@ -294,7 +294,7 @@ func AddingStyleToAss(assSub *astisub.Subtitles) *astisub.Subtitles {
 	// Create English style
 	engPrimaryColor, err := ParseASSColor("&H0000A0DC")
 	if err != nil {
-		logger.Sugar.Error("Error parsing Eng primarycolor:", err)
+		logger.S.Error("Error parsing Eng primarycolor:", err)
 		engPrimaryColor = &astisub.Color{
 			Alpha: 0,
 			Blue:  220,
@@ -304,7 +304,7 @@ func AddingStyleToAss(assSub *astisub.Subtitles) *astisub.Subtitles {
 	}
 	engSecondaryColor, err := ParseASSColor("&H0000FFFF")
 	if err != nil {
-		logger.Sugar.Error("Error parsing Eng secondarycolor:", err)
+		logger.S.Error("Error parsing Eng secondarycolor:", err)
 		engSecondaryColor = &astisub.Color{
 			Alpha: 0,
 			Blue:  255,
@@ -314,7 +314,7 @@ func AddingStyleToAss(assSub *astisub.Subtitles) *astisub.Subtitles {
 	}
 	engOutlineColor, err := ParseASSColor("&H00000000")
 	if err != nil {
-		logger.Sugar.Error("Error parsing Eng outlinecolor:", err)
+		logger.S.Error("Error parsing Eng outlinecolor:", err)
 		engOutlineColor = &astisub.Color{
 			Alpha: 0,
 			Blue:  0,
@@ -324,7 +324,7 @@ func AddingStyleToAss(assSub *astisub.Subtitles) *astisub.Subtitles {
 	}
 	engBackColor, err := ParseASSColor("&H80000000")
 	if err != nil {
-		logger.Sugar.Error("Error parsing Eng backcolor:", err)
+		logger.S.Error("Error parsing Eng backcolor:", err)
 		engBackColor = &astisub.Color{
 			Alpha: 128,
 			Blue:  0,
