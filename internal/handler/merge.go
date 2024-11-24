@@ -16,15 +16,16 @@ func ProvideMergePipeline(
 	segMergeStage *processor.SegMergeStage,
 	styleStage *processor.StyleStage,
 	exportStage *processor.ExportStage,
+	subsetStage *processor.SubsetStage,
 	notiStage *processor.NotiStage,
 ) *MergePipeline {
 	stages := []processor.Stage{
 		extractStage,
 		parseStage,
-		cleanStage,
 		segMergeStage,
 		styleStage,
 		exportStage,
+		subsetStage,
 		notiStage,
 	}
 	return &MergePipeline{
