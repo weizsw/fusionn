@@ -103,4 +103,5 @@ type ParsedSubtitles struct {
 	SdhSubtitle   *astisub.Subtitles
 	MergeSubtitle *astisub.Subtitles
 	Translated    bool
+	ExportedPath  string
 }
