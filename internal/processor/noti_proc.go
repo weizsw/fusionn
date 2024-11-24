@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"fusionn/config"
 	"fusionn/internal/model"
+	"fusionn/logger"
 	"fusionn/pkg"
 )
 
@@ -25,6 +26,8 @@ func (s *NotiStage) Process(ctx context.Context, input any) (any, error) {
 	if !ok {
 		return nil, ErrInvalidInput
 	}
+
+	logger.L.Info("[NotiStage] sending notification")
 
 	mode := "generated"
 	if req.Translated {

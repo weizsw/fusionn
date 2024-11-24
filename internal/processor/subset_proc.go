@@ -4,6 +4,9 @@ import (
 	"context"
 	"fusionn/internal/model"
 	"fusionn/internal/service"
+	"fusionn/logger"
+
+	"go.uber.org/zap"
 )
 
 type SubsetStage struct {
@@ -20,6 +23,7 @@ func (s *SubsetStage) Process(ctx context.Context, input any) (any, error) {
 		return nil, ErrInvalidInput
 	}
 
+	logger.L.Info("[SubsetStage] subsetting subtitles", zap.String("file_path", req.ExportedPath))
 	err := s.styleService.FontSubSet(req.ExportedPath)
 	if err != nil {
 		return nil, err

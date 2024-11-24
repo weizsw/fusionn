@@ -4,6 +4,7 @@ import (
 	"context"
 	"fusionn/internal/model"
 	"fusionn/internal/service"
+	"fusionn/logger"
 
 	"github.com/asticode/go-astisub"
 	"github.com/mohae/deepcopy"
@@ -24,6 +25,8 @@ func (s *SegMergeStage) Process(ctx context.Context, input any) (any, error) {
 	if !ok {
 		return nil, ErrInvalidInput
 	}
+
+	logger.L.Info("[SegMergeStage] merging subtitles")
 
 	merged := deepcopy.Copy(req.ChsSubtitle)
 	mergedSubs, ok := merged.(*astisub.Subtitles)

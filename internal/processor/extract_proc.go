@@ -4,6 +4,9 @@ import (
 	"context"
 	"fusionn/internal/model"
 	"fusionn/internal/service"
+	"fusionn/logger"
+
+	"go.uber.org/zap"
 )
 
 type ExtractStage struct {
@@ -19,6 +22,8 @@ func (s *ExtractStage) Process(ctx context.Context, input any) (any, error) {
 	if !ok {
 		return nil, ErrInvalidInput
 	}
+
+	logger.L.Info("[ExtractStage] starting subtitle extraction", zap.String("file_path", req.SonarrEpisodefilePath))
 
 	return s.ffmpeg.ExtractStreamToBuffer(req.SonarrEpisodefilePath)
 }

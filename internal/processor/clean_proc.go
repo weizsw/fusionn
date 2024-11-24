@@ -4,6 +4,7 @@ import (
 	"context"
 	"fusionn/internal/model"
 	"fusionn/internal/service"
+	"fusionn/logger"
 )
 
 type CleanStage struct {
@@ -19,6 +20,8 @@ func (c *CleanStage) Process(ctx context.Context, input any) (any, error) {
 	if !ok {
 		return nil, ErrInvalidInput
 	}
+
+	logger.L.Info("[CleanStage] cleaning subtitles")
 
 	req.ChsSubtitle = c.parser.Clean(req.ChsSubtitle)
 	req.EngSubtitle = c.parser.Clean(req.EngSubtitle)

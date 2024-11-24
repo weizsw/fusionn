@@ -4,6 +4,9 @@ import (
 	"context"
 	"fusionn/internal/model"
 	"fusionn/internal/service"
+	"fusionn/logger"
+
+	"go.uber.org/zap"
 )
 
 type ParseStage struct {
@@ -17,6 +20,11 @@ func NewParseStage(parser service.Parser) *ParseStage {
 }
 
 func (p *ParseStage) Process(ctx context.Context, input any) (any, error) {
-	stream := input.(*model.ExtractedStream)
+	stream, ok := input.(*model.ExtractedStream)
+	if !ok {
+		return nil, ErrInvalidInput
+	}
+
+	logger.L.Info("[ParseStage] parsing subtitles", zap.String("file_path", stream.FilePath))
 	return p.parser.ParseFromBytes(stream)
 }
