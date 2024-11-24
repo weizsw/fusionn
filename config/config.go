@@ -23,7 +23,7 @@ func MustLoad() {
 			viper: viper.New(),
 		}
 		if err := cfg.Load(); err != nil {
-			logger.Sugar.Fatalw("Failed to load config",
+			logger.S.Fatalw("Failed to load config",
 				"error", err)
 		}
 		C = cfg
@@ -32,7 +32,7 @@ func MustLoad() {
 
 // Load initializes the configuration
 func (c *Config) Load() error {
-	logger.Sugar.Debug("Loading configuration...")
+	logger.S.Debug("Loading configuration...")
 
 	c.viper.SetConfigName("config")
 	c.viper.SetConfigType("yml")
@@ -40,13 +40,13 @@ func (c *Config) Load() error {
 	c.viper.AddConfigPath("./configs")
 
 	if err := c.viper.ReadInConfig(); err != nil {
-		logger.Sugar.Errorw("Failed to read config file",
+		logger.S.Errorw("Failed to read config file",
 			"error", err,
 			"paths", []string{".", "./configs"})
 		return err
 	}
 
-	logger.Sugar.Infow("Config loaded successfully",
+	logger.S.Infow("Config loaded successfully",
 		"file", c.viper.ConfigFileUsed(),
 		"paths", []string{".", "./configs"})
 	return nil
