@@ -51,6 +51,11 @@ func (s *styleService) ReduceMargin(sub *astisub.Subtitles, engMargin, defaultMa
 		if engItem.Style != nil && engItem.Style.ID == "Eng" {
 			for _, line := range engItem.Lines {
 				if len(line.Items) > 0 {
+					// Skip if the text contains {\an8}
+					if strings.Contains(line.Items[0].Text, "{\\an8}") {
+						continue
+					}
+
 					// Calculate English line length
 					var textLength float64
 					for _, lineItem := range line.Items {
@@ -162,7 +167,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 		SSASecondaryColour: secondaryColor,
 		SSAOutlineColour:   outlineColor,
 		SSABackColour:      backColor,
-		SSABold:            proto.Bool(false),
+		SSABold:            proto.Bool(true),
 		SSAItalic:          proto.Bool(false),
 		SSAUnderline:       proto.Bool(false),
 		SSAStrikeout:       proto.Bool(false),
@@ -235,7 +240,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 		SSASecondaryColour: engSecondaryColor,
 		SSAOutlineColour:   engOutlineColor,
 		SSABackColour:      engBackColor,
-		SSABold:            proto.Bool(false),
+		SSABold:            proto.Bool(true),
 		SSAItalic:          proto.Bool(false),
 		SSAUnderline:       proto.Bool(false),
 		SSAStrikeout:       proto.Bool(false),
