@@ -53,6 +53,16 @@ func ExtractPathWithoutExtension(filePath string) string {
 	return pathWithoutExtension
 }
 
+func RemoveLanguageExtensions(filename string) string {
+	suffixes := []string{".chi", ".eng", ".chs", ".cht", ".sdh", ".Chinese", ".English"}
+	for _, suffix := range suffixes {
+		if len(filename) > len(suffix) && filename[len(filename)-len(suffix):] == suffix {
+			filename = filename[:len(filename)-len(suffix)]
+		}
+	}
+	return filename
+}
+
 func IsChs(lan string, title string) bool {
 	var simplifiedRegex = regexp.MustCompile(`(?i)(simplified|简体|简)`)
 	isCHSTitle := simplifiedRegex.MatchString(title)
