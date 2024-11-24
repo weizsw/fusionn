@@ -25,7 +25,7 @@ func ProvideBatchPipeline(
 	extractStage *processor.ExtractStage,
 	parseStage *processor.ParseStage,
 	cleanStage *processor.CleanStage,
-	mergeStage *processor.MergeStage,
+	segMergeStage *processor.SegMergeStage,
 	styleStage *processor.StyleStage,
 	exportStage *processor.ExportStage,
 	subsetStage *processor.SubsetStage,
@@ -33,7 +33,7 @@ func ProvideBatchPipeline(
 	stages := []processor.Stage{
 		extractStage,
 		parseStage,
-		mergeStage,
+		segMergeStage,
 		styleStage,
 		exportStage,
 		subsetStage,
