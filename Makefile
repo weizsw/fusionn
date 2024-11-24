@@ -2,7 +2,10 @@
 help: ## Show available options
 	@echo "Available options:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
-# Build the application
+setup: ## Setup the application
+	@go install github.com/air-verse/air@latest
+	@go install github.com/google/wire/cmd/wire@latest
+
 all: ## Build and test the application
 	@make build
 	@make test
