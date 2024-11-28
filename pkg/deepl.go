@@ -88,7 +88,7 @@ func (d *deepL) Translate(text []string, targetLang, sourceLang string) (*deepLT
 }
 
 func (d *deepL) TranslateDeepLX(text []string, targetLang, sourceLang string) (*deepLTranslateResp, error) {
-	cmd := config.C.GetString("deeplx.url")
+	cmd := config.C.GetString(config.DEEPLX_URL)
 	reqBody := deepLTranslateReq{
 		Text:       text,
 		TargetLang: targetLang,

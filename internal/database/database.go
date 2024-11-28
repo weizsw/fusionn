@@ -39,7 +39,7 @@ func New() Service {
 		return dbInstance
 	}
 
-	db, err := sql.Open("sqlite3", config.C.GetString("sqlite.path"))
+	db, err := sql.Open("sqlite3", config.C.GetString(config.SQLITE_PATH))
 	if err != nil {
 		// This will not be a connection error, but a DSN parse error or
 		// another initialization error.
@@ -108,7 +108,7 @@ func (s *service) Health() map[string]string {
 // If the connection is successfully closed, it returns nil.
 // If an error occurs while closing the connection, it returns the error.
 func (s *service) Close() error {
-	logger.S.Infof("Disconnected from database: %s", config.C.GetString("sqlite.path"))
+	logger.S.Infof("Disconnected from database: %s", config.C.GetString(config.SQLITE_PATH))
 	return s.db.Close()
 }
 
