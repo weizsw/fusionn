@@ -6,3 +6,9 @@ sqlite:
   path: ./sqlite.db
 deeplx:
   url: http://192.168.50.135:1188/v2/translate
+llm:
+  base: https://api.siliconflow.cn/v1
+  endpoint: /chat/completions
+  api_key: sk-proj-1234567890
+  model: deepseek-ai/DeepSeek-V2.5
+  language: Chinese
