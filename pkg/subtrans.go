@@ -36,6 +36,8 @@ func (s *subTrans) Translate(path string, targetLang string) error {
 		"--systemmessages",
 	)
 
+	logger.S.Debugf("llm-subtrans: %s", cmd.String())
+
 	// Create a pipe for the command's stdout
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
