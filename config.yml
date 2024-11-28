@@ -4,6 +4,9 @@ apprise:
 sqlite:
   enabled: true
   path: ./sqlite.db
+translate:
+  enabled: true
+  provider: deeplx
 deeplx:
   url: http://192.168.50.135:1188/v2/translate
 llm:
