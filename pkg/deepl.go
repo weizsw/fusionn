@@ -11,6 +11,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	remote "github.com/xiaoxuan6/deeplx"
+	"golang.org/x/sync/errgroup"
 )
 
 type DeepL interface {
@@ -91,17 +92,32 @@ func (d *deepL) Translate(text []string, targetLang, sourceLang string) (*deepLT
 func (d *deepL) TranslateDeepLX(text []string, targetLang, sourceLang string) (*deepLTranslateResp, error) {
 	local := config.C.GetBool(config.DEEPLX_LOCAL)
 	if !local {
-		translateResp := &deepLTranslateResp{}
-		for _, t := range text {
-			resp := remote.Translate(t, sourceLang, targetLang)
-			if resp.Code != 200 {
-				return nil, errors.New(resp.Msg)
-			}
-			translateResp.Translations = append(translateResp.Translations, &translations{
-				DetectedSourceLanguage: sourceLang,
-				Text:                   resp.Data,
+		translateResp := &deepLTranslateResp{
+			Translations: make([]*translations, len(text)),
+		}
+
+		g := new(errgroup.Group)
+
+		for i, t := range text {
+			i, t := i, t
+			g.Go(func() error {
+				resp := remote.Translate(t, sourceLang, targetLang)
+				if resp.Code != 200 {
+					resp.Data = t
+				}
+
+				translateResp.Translations[i] = &translations{
+					DetectedSourceLanguage: sourceLang,
+					Text:                   resp.Data,
+				}
+				return nil
 			})
 		}
+
+		if err := g.Wait(); err != nil {
+			return nil, err
+		}
+
 		return translateResp, nil
 	}
 
