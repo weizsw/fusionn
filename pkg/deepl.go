@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/bytedance/sonic"
+	remote "github.com/xiaoxuan6/deeplx"
 )
 
 type DeepL interface {
@@ -90,7 +91,18 @@ func (d *deepL) Translate(text []string, targetLang, sourceLang string) (*deepLT
 func (d *deepL) TranslateDeepLX(text []string, targetLang, sourceLang string) (*deepLTranslateResp, error) {
 	local := config.C.GetBool(config.DEEPLX_LOCAL)
 	if !local {
-		return d.Translate(text, targetLang, sourceLang)
+		translateResp := &deepLTranslateResp{}
+		for _, t := range text {
+			resp := remote.Translate(t, targetLang, sourceLang)
+			if resp.Code != 200 {
+				return nil, errors.New(resp.Msg)
+			}
+			translateResp.Translations = append(translateResp.Translations, &translations{
+				DetectedSourceLanguage: sourceLang,
+				Text:                   resp.Data,
+			})
+		}
+		return translateResp, nil
 	}
 
 	cmd := config.C.GetString(config.DEEPLX_URL)
