@@ -93,7 +93,7 @@ func (d *deepL) TranslateDeepLX(text []string, targetLang, sourceLang string) (*
 	if !local {
 		translateResp := &deepLTranslateResp{}
 		for _, t := range text {
-			resp := remote.Translate(t, targetLang, sourceLang)
+			resp := remote.Translate(t, sourceLang, targetLang)
 			if resp.Code != 200 {
 				return nil, errors.New(resp.Msg)
 			}
