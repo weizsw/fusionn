@@ -21,5 +21,6 @@ const (
 	TRANSLATE_PROVIDER = "translate.provider"
 
 	// DeepLX configuration keys
-	DEEPLX_URL = "deeplx.url"
+	DEEPLX_URL   = "deeplx.url"
+	DEEPLX_LOCAL = "deeplx.local"
 )
