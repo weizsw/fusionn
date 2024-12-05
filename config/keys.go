@@ -23,4 +23,9 @@ const (
 	// DeepLX configuration keys
 	DEEPLX_URL   = "deeplx.url"
 	DEEPLX_LOCAL = "deeplx.local"
+
+	// Redis configuration keys
+	REDIS_ADDR     = "redis.addr"
+	REDIS_PASSWORD = "redis.password"
+	REDIS_DB       = "redis.db"
 )

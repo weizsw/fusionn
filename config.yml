@@ -16,3 +16,7 @@ llm:
   api_key: sk-proj-1234567890
   model: deepseek-ai/DeepSeek-V2.5
   language: Chinese
+redis:
+  addr: 192.168.50.135:6379
+  password: 123456
+  db: 0
