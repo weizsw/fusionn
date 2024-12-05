@@ -92,6 +92,7 @@ type ExtractedStream struct {
 	ChsSubBuffer []byte
 	ChtSubBuffer []byte
 	SdhSubBuffer []byte
+	EngIndex     int
 }
 
 type ParsedSubtitles struct {
@@ -104,4 +105,5 @@ type ParsedSubtitles struct {
 	MergeSubtitle *astisub.Subtitles
 	Translated    bool
 	ExportedPath  string
+	EngIndex      int
 }
