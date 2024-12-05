@@ -17,6 +17,7 @@ import (
 type FFMPEG interface {
 	ExtractSubtitles(videoPath string) (*model.ExtractedData, error)
 	ExtractStreamToBuffer(videoPath string) (*model.ExtractedStream, error)
+	ExtractStream(videoPath, subtitlePath string, streamIndex int) error
 }
 
 type ffmpeg struct{}
@@ -68,7 +69,7 @@ func (f *ffmpeg) ExtractSubtitles(videoPath string) (*model.ExtractedData, error
 			return nil, fmt.Errorf("failed to get subtitle path: %w", err)
 		}
 
-		err = f.extractStream(videoPath, subtitlePath, index)
+		err = f.ExtractStream(videoPath, subtitlePath, index)
 		if err != nil {
 			return nil, fmt.Errorf("failed to extract subtitle stream: %w", err)
 		}
@@ -123,6 +124,7 @@ func (f *ffmpeg) ExtractStreamToBuffer(videoPath string) (*model.ExtractedStream
 		case utils.IsEng(stream.Tags.Language, stream.Tags.Title):
 			if _, ok := lanIndexMap[consts.ENG_LAN]; !ok {
 				lanIndexMap[consts.ENG_LAN] = stream.Index
+				extractData.EngIndex = stream.Index
 			}
 		}
 	}
@@ -182,7 +184,7 @@ func (f *ffmpeg) isRelevantSubtitleStream(stream model.Stream) bool {
 			utils.IsSdh(stream.Tags.Title))
 }
 
-func (f *ffmpeg) extractStream(videoPath, subtitlePath string, streamIndex int) error {
+func (f *ffmpeg) ExtractStream(videoPath, subtitlePath string, streamIndex int) error {
 	ffmpegPath, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		return fmt.Errorf("ffmpeg not found: %w", err)
