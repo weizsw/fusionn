@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"errors"
+	"fusionn/internal/consts"
 )
 
 var (
@@ -35,6 +36,11 @@ func (p *Pipeline) Execute(ctx context.Context, input any) (any, error) {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		default:
+			shouldStop, ok := ctx.Value(consts.KeyStop).(bool)
+			if ok && shouldStop {
+				return result, nil
+			}
+
 			var err error
 			result, err = stage.Process(ctx, result)
 			if err != nil {
