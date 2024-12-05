@@ -14,6 +14,7 @@ type RedisClient interface {
 	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error
 	Get(ctx context.Context, key string) (string, error)
 	Delete(ctx context.Context, key string) error
+	LPush(ctx context.Context, key string, values ...interface{}) error
 }
 
 // redisClient implements RedisClient interface
@@ -22,7 +23,7 @@ type redisClient struct {
 }
 
 // NewRedisClient creates a new Redis client instance
-func NewRedisClient() (RedisClient, error) {
+func NewRedisClient() (*redisClient, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:     config.C.GetString(config.REDIS_ADDR),
 		Password: config.C.GetString(config.REDIS_PASSWORD),
