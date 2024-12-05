@@ -4,8 +4,10 @@
 package wire
 
 import (
+	"fusionn/internal/cache.go"
 	"fusionn/internal/database"
 	"fusionn/internal/handler"
+	"fusionn/internal/mq"
 	"fusionn/internal/processor"
 	"fusionn/internal/server"
 	"fusionn/internal/service"
@@ -23,6 +25,8 @@ var ServerSet = wire.NewSet(
 	handler.Set,
 	server.Set,
 	processor.Set,
+	cache.Set,
+	mq.Set,
 )
 
 // NewServer creates a new HTTP server with all its dependencies

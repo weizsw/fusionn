@@ -7,8 +7,10 @@
 package wire
 
 import (
+	"fusionn/internal/cache.go"
 	"fusionn/internal/database"
 	"fusionn/internal/handler"
+	"fusionn/internal/mq"
 	"fusionn/internal/processor"
 	"fusionn/internal/server"
 	"fusionn/internal/service"
@@ -51,4 +53,4 @@ func NewServer() (*http.Server, error) {
 // wire.go:
 
 // ServerSet is a Wire provider set that includes all server dependencies
-var ServerSet = wire.NewSet(pkg.Set, service.Set, database.Set, handler.Set, server.Set, processor.Set)
+var ServerSet = wire.NewSet(pkg.Set, service.Set, database.Set, handler.Set, server.Set, processor.Set, cache.Set, mq.Set)
