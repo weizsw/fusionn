@@ -27,7 +27,12 @@ func NewServer() (*http.Server, error) {
 	ffmpeg := service.NewFFMPEG()
 	deepL := pkg.NewDeepL()
 	convertor := service.NewConvertor(deepL)
-	parser := service.NewParser(convertor)
+	redisClient, err := cache.NewRedisClient()
+	if err != nil {
+		return nil, err
+	}
+	messageQueue := mq.NewMessageQueue(redisClient)
+	parser := service.NewParser(convertor, ffmpeg, messageQueue)
 	algo := service.NewAlgo()
 	apprise := pkg.NewApprise()
 	extractStage := processor.NewExtractStage(ffmpeg)
