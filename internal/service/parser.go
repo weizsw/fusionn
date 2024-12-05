@@ -2,29 +2,37 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"fusionn/config"
+	"fusionn/internal/consts"
 	"fusionn/internal/model"
+	"fusionn/internal/mq"
 	"fusionn/logger"
+	"fusionn/utils"
 	"regexp"
 	"sort"
 	"strings"
 
 	astisub "github.com/asticode/go-astisub"
+	"go.uber.org/zap"
 )
 
 type Parser interface {
 	Parse(input string) (*astisub.Subtitles, error)
-	ParseFromBytes(stream *model.ExtractedStream) (*model.ParsedSubtitles, error)
+	ParseFromBytes(ctx context.Context, stream *model.ExtractedStream) (*model.ParsedSubtitles, error)
 	RemoveSDH(subs *astisub.Subtitles) *astisub.Subtitles
 	Clean(subs *astisub.Subtitles) *astisub.Subtitles
 }
 
 type parser struct {
 	convertor Convertor
+	ffmpeg    FFMPEG
+	q         mq.MessageQueue
 }
 
-func NewParser(c Convertor) *parser {
-	return &parser{convertor: c}
+func NewParser(c Convertor, f FFMPEG, q mq.MessageQueue) *parser {
+	return &parser{convertor: c, ffmpeg: f, q: q}
 }
 
 func (p *parser) Parse(input string) (*astisub.Subtitles, error) {
@@ -56,7 +64,7 @@ func (p *parser) Parse(input string) (*astisub.Subtitles, error) {
 	return s, nil
 }
 
-func (p *parser) ParseFromBytes(stream *model.ExtractedStream) (*model.ParsedSubtitles, error) {
+func (p *parser) ParseFromBytes(ctx context.Context, stream *model.ExtractedStream) (*model.ParsedSubtitles, error) {
 	if len(stream.EngSubBuffer) == 0 && len(stream.SdhSubBuffer) == 0 {
 		logger.S.Info("input data is empty")
 		return nil, nil
@@ -65,6 +73,7 @@ func (p *parser) ParseFromBytes(stream *model.ExtractedStream) (*model.ParsedSub
 	parsedSubtitles := &model.ParsedSubtitles{
 		FileName: stream.FileName,
 		FilePath: stream.FilePath,
+		EngIndex: stream.EngIndex,
 	}
 
 	var err error
@@ -95,7 +104,13 @@ func (p *parser) ParseFromBytes(stream *model.ExtractedStream) (*model.ParsedSub
 		}
 		parsedSubtitles.ChsSubtitle = chsSub
 	} else if len(stream.ChtSubBuffer) > 0 {
-		// If no CHS, try converting from CHT
+		if config.C.GetString(config.TRANSLATE_PROVIDER) == "llm" {
+			err := p.translateToSimplifiedAsync(ctx, stream)
+			if err != nil {
+				logger.L.Error("failed sending translate job to queue", zap.Error(err))
+			}
+			return parsedSubtitles, nil
+		}
 		chtSub, err = astisub.ReadFromSRT(bytes.NewReader(stream.ChtSubBuffer))
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse Chinese traditional subtitles: %w", err)
@@ -107,7 +122,6 @@ func (p *parser) ParseFromBytes(stream *model.ExtractedStream) (*model.ParsedSub
 		}
 		parsedSubtitles.ChsSubtitle = chsSub
 	} else if engSub != nil {
-		// If no CHS/CHT, translate from English
 		chsSub, err = p.convertor.TranslateToSimplified(engSub)
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate English to simplified: %w", err)
@@ -117,6 +131,23 @@ func (p *parser) ParseFromBytes(stream *model.ExtractedStream) (*model.ParsedSub
 	}
 
 	return parsedSubtitles, nil
+}
+
+func (p *parser) translateToSimplifiedAsync(ctx context.Context, info *model.ExtractedStream) error {
+	outputPath := utils.ReplaceExtension(info.FilePath, fmt.Sprintf("%s.srt", consts.ENG_LAN))
+	err := p.ffmpeg.ExtractStream(info.FilePath, outputPath, info.EngIndex)
+	if err != nil {
+		return err
+	}
+
+	p.q.Publish(ctx, consts.TRANSLATE_QUEUE, mq.Message{
+		FileName: info.FileName,
+		Path:     outputPath,
+	})
+
+	ctx = utils.SetStopKey(ctx)
+
+	return nil
 }
 
 func (p *parser) RemoveSDH(subs *astisub.Subtitles) *astisub.Subtitles {

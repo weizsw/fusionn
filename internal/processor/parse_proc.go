@@ -26,5 +26,5 @@ func (p *ParseStage) Process(ctx context.Context, input any) (any, error) {
 	}
 
 	logger.L.Info("[ParseStage] parsing subtitles", zap.String("file_path", stream.FilePath))
-	return p.parser.ParseFromBytes(stream)
+	return p.parser.ParseFromBytes(ctx, stream)
 }
