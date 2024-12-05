@@ -24,3 +24,12 @@ const (
 	TIME_CODE_PATTERN_III = `(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},)(1000)`
 	APPRISE               = "http://192.168.50.135:10000/notify/fusionn"
 )
+
+// Queue names
+const (
+	TRANSLATE_QUEUE = "translate_queue"
+)
+
+const (
+	KeyStop = "stop"
+)
