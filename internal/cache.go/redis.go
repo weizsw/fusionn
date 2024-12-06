@@ -25,9 +25,9 @@ type redisClient struct {
 // NewRedisClient creates a new Redis client instance
 func NewRedisClient() (*redisClient, error) {
 	client := redis.NewClient(&redis.Options{
-		Addr:     config.C.GetString(config.REDIS_ADDR),
-		Password: config.C.GetString(config.REDIS_PASSWORD),
-		DB:       config.C.GetInt(config.REDIS_DB),
+		Addr:     config.C.Redis.Addr,
+		Password: config.C.Redis.Password,
+		DB:       config.C.Redis.DB,
 	})
 
 	// Verify connection
