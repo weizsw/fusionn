@@ -27,10 +27,10 @@ func (s *subTrans) Translate(path string, targetLang string) error {
 
 	cmd := exec.Command(llmSubTransPath,
 		path, // input file
-		"-s", config.C.GetString(config.LLM_BASE),
-		"-e", config.C.GetString(config.LLM_ENDPOINT),
-		"-k", config.C.GetString(config.LLM_API_KEY),
-		"-m", config.C.GetString(config.LLM_MODEL),
+		"-s", config.C.LLM.Base,
+		"-e", config.C.LLM.Endpoint,
+		"-k", config.C.LLM.ApiKey,
+		"-m", config.C.LLM.Model,
 		"-l", targetLang,
 		"--chat",
 		"--systemmessages",
