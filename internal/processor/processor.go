@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"fusionn/errs"
+	"fusionn/logger"
 )
 
 // Stage represents a single processing stage
@@ -38,6 +39,7 @@ func (p *Pipeline) Execute(ctx context.Context, input any) (any, error) {
 			if err != nil {
 				if errors.Is(err, errs.ErrStopPipeline) {
 					// Return the current result without error if it's a stop signal
+					logger.L.Info("[Pipeline] stopping pipeline")
 					return result, nil
 				}
 				return nil, err
