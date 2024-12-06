@@ -2,9 +2,11 @@ package config
 
 import (
 	"fusionn/logger"
+	"strings"
 	"sync"
 
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 var (
@@ -58,9 +60,11 @@ func (c *Config) Load() error {
 		return err
 	}
 
-	logger.S.Infow("Config loaded successfully",
-		"file", c.viper.ConfigFileUsed(),
-		"paths", []string{".", "./configs"})
+	logger.L.Info("Config loaded successfully",
+		zap.String("file", c.viper.ConfigFileUsed()),
+		zap.String("paths", strings.Join([]string{".", "./configs"}, ",")),
+		zap.Any("config", c))
+
 	return nil
 }
 
