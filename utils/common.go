@@ -50,11 +50,9 @@ func ExtractFilenameWithoutExtension(path string) string {
 }
 
 func ExtractPathWithoutExtension(filePath string) string {
-	dir, file := filepath.Split(filePath)
-	extension := filepath.Ext(file)
-	fileWithoutExtension := strings.TrimSuffix(file, extension)
-	pathWithoutExtension := filepath.Join(dir, fileWithoutExtension)
-	return pathWithoutExtension
+	dir := filepath.Dir(filePath)
+	base := filepath.Base(filePath)
+	return filepath.Join(dir, base)
 }
 
 func RemoveLanguageExtensions(filename string) string {
