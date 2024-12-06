@@ -2,7 +2,6 @@ package utils
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"fusionn/internal/consts"
 	"fusionn/logger"
@@ -16,10 +15,6 @@ import (
 	"github.com/asticode/go-astisub"
 	"google.golang.org/protobuf/proto"
 )
-
-func SetStopKey(ctx context.Context) context.Context {
-	return context.WithValue(ctx, consts.KeyStop, true)
-}
 
 func GetTmpSubtitleFullPath(filename string) (string, error) {
 	currentDir, err := os.Getwd()
