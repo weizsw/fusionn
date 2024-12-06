@@ -104,7 +104,7 @@ func (p *parser) ParseFromBytes(ctx context.Context, stream *model.ExtractedStre
 		}
 		parsedSubtitles.ChsSubtitle = chsSub
 	} else if len(stream.ChtSubBuffer) > 0 {
-		if config.C.GetString(config.TRANSLATE_PROVIDER) == "llm" {
+		if config.C.Translate.Provider == "llm" {
 			err := p.translateToSimplifiedAsync(ctx, stream)
 			if err != nil {
 				logger.L.Error("failed sending translate job to queue", zap.Error(err))
