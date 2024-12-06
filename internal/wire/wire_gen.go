@@ -7,7 +7,7 @@
 package wire
 
 import (
-	"fusionn/internal/cache.go"
+	"fusionn/internal/cache"
 	"fusionn/internal/database"
 	"fusionn/internal/handler"
 	"fusionn/internal/mq"
