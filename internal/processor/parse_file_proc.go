@@ -48,5 +48,6 @@ func (p *ParseFileStage) Process(ctx context.Context, input any) (any, error) {
 		FileName:    filename,
 		ChsSubtitle: chsSub,
 		EngSubtitle: engSub,
+		Translated:  true,
 	}, nil
 }
