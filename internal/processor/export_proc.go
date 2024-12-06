@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"fusionn/errs"
 	"fusionn/internal/model"
 	"fusionn/logger"
 	"fusionn/utils"
@@ -19,7 +20,7 @@ func NewExportStage() *ExportStage {
 func (s *ExportStage) Process(ctx context.Context, input any) (any, error) {
 	req, ok := input.(*model.ParsedSubtitles)
 	if !ok {
-		return nil, ErrInvalidInput
+		return nil, errs.ErrInvalidInput
 	}
 
 	dstpath := utils.ExtractPathWithoutExtension(req.FilePath) + ".chi.ass"

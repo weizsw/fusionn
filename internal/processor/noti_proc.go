@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"fusionn/config"
+	"fusionn/errs"
 	"fusionn/internal/model"
 	"fusionn/logger"
 	"fusionn/pkg"
@@ -24,7 +25,7 @@ var msgFormat = `{"title":"Fusionn notification","body":"%s"}`
 func (s *NotiStage) Process(ctx context.Context, input any) (any, error) {
 	req, ok := input.(*model.ParsedSubtitles)
 	if !ok {
-		return nil, ErrInvalidInput
+		return nil, errs.ErrInvalidInput
 	}
 
 	logger.L.Info("[NotiStage] sending notification")

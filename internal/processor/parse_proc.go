@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"fusionn/errs"
 	"fusionn/internal/model"
 	"fusionn/internal/service"
 	"fusionn/logger"
@@ -22,7 +23,7 @@ func NewParseStage(parser service.Parser) *ParseStage {
 func (p *ParseStage) Process(ctx context.Context, input any) (any, error) {
 	stream, ok := input.(*model.ExtractedStream)
 	if !ok {
-		return nil, ErrInvalidInput
+		return nil, errs.ErrInvalidInput
 	}
 
 	logger.L.Info("[ParseStage] parsing subtitles", zap.String("file_path", stream.FilePath))

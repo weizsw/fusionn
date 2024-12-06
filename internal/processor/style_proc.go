@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"fusionn/errs"
 	"fusionn/internal/model"
 	"fusionn/internal/service"
 	"fusionn/logger"
@@ -18,7 +19,7 @@ func NewStyleStage(styleService service.StyleService) *StyleStage {
 func (s *StyleStage) Process(ctx context.Context, input any) (any, error) {
 	req, ok := input.(*model.ParsedSubtitles)
 	if !ok {
-		return nil, ErrInvalidInput
+		return nil, errs.ErrInvalidInput
 	}
 
 	logger.L.Info("[StyleStage] adding style to subtitles")

@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"fusionn/errs"
 	"fusionn/internal/model"
 	"fusionn/internal/service"
 	"fusionn/logger"
@@ -23,7 +24,7 @@ func NewParseFileStage(parser service.Parser) *ParseFileStage {
 func (p *ParseFileStage) Process(ctx context.Context, input any) (any, error) {
 	req, ok := input.(*model.AsyncMergeRequest)
 	if !ok {
-		return nil, ErrInvalidInput
+		return nil, errs.ErrInvalidInput
 	}
 
 	filename := utils.ExtractFilenameWithoutExtension(req.EngSubtilePath)

@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"fusionn/errs"
 	"fusionn/internal/model"
 	"fusionn/internal/service"
 	"fusionn/logger"
@@ -24,7 +25,7 @@ func NewMergeStage(algo service.Algo) *MergeStage {
 func (s *MergeStage) Process(ctx context.Context, input any) (any, error) {
 	req, ok := input.(*model.ParsedSubtitles)
 	if !ok {
-		return nil, ErrInvalidInput
+		return nil, errs.ErrInvalidInput
 	}
 
 	logger.L.Info("[MergeStage] merging subtitles")
@@ -32,7 +33,7 @@ func (s *MergeStage) Process(ctx context.Context, input any) (any, error) {
 	merged := deepcopy.Copy(req.ChsSubtitle)
 	mergedSubs, ok := merged.(*astisub.Subtitles)
 	if !ok {
-		return nil, ErrInvalidInput
+		return nil, errs.ErrInvalidInput
 	}
 	mergedSubs.Items = s.algo.MatchSubtitleCueClustering(req.ChsSubtitle.Items, req.EngSubtitle.Items, 1000*time.Millisecond)
 	req.MergeSubtitle = mergedSubs
