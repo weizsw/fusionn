@@ -50,19 +50,38 @@ func ExtractFilenameWithoutExtension(path string) string {
 }
 
 func ExtractPathWithoutExtension(filePath string) string {
-	dir := filepath.Dir(filePath)
-	base := filepath.Base(filePath)
-	return filepath.Join(dir, base)
+	dir, file := filepath.Split(filePath)
+	extension := filepath.Ext(file)
+	fileWithoutExtension := strings.TrimSuffix(file, extension)
+	pathWithoutExtension := filepath.Join(dir, fileWithoutExtension)
+	return pathWithoutExtension
 }
 
-func RemoveLanguageExtensions(filename string) string {
+func RemoveLanguageExtensions(filePath string) string {
+	// Split the path into directory and filename
+	dir, filename := filepath.Split(filePath)
+
+	// List of language-related suffixes to remove
 	suffixes := []string{".chi", ".eng", ".chs", ".cht", ".sdh", ".Chinese", ".English"}
-	for _, suffix := range suffixes {
-		if len(filename) > len(suffix) && filename[len(filename)-len(suffix):] == suffix {
-			filename = filename[:len(filename)-len(suffix)]
+
+	// Remove the final extension (e.g., .srt) first
+	filename = strings.TrimSuffix(filename, filepath.Ext(filename))
+
+	// Keep removing suffixes until no more changes occur
+	changed := true
+	for changed {
+		changed = false
+		for _, suffix := range suffixes {
+			if len(filename) > len(suffix) && strings.HasSuffix(filename, suffix) {
+				filename = filename[:len(filename)-len(suffix)]
+				changed = true
+				break // Start over with the new filename
+			}
 		}
 	}
-	return filename
+
+	// Rejoin the directory and processed filename
+	return filepath.Join(dir, filename)
 }
 
 func IsChs(lan string, title string) bool {
