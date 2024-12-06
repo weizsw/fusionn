@@ -26,9 +26,9 @@ func (p *ParseFileStage) Process(ctx context.Context, input any) (any, error) {
 		return nil, ErrInvalidInput
 	}
 
-	filename := utils.ExtractFilenameWithoutExtension(req.ChsSubtilePath)
+	filename := utils.ExtractFilenameWithoutExtension(req.EngSubtilePath)
 	filename = utils.RemoveLanguageExtensions(filename)
-	filePath := utils.ExtractPathWithoutExtension(req.ChsSubtilePath)
+	filePath := utils.ExtractPathWithoutExtension(req.EngSubtilePath)
 	filePath = utils.RemoveLanguageExtensions(filePath)
 
 	logger.L.Info("[ParseFileStage] parsing subtitles", zap.String("chs_subtitle_path", req.ChsSubtilePath), zap.String("eng_subtitle_path", req.EngSubtilePath), zap.String("filename", filename), zap.String("file_path", filePath))
