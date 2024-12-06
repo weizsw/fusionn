@@ -2,7 +2,7 @@ package mq
 
 import (
 	"context"
-	"fusionn/internal/cache.go"
+	"fusionn/internal/cache"
 
 	"github.com/bytedance/sonic"
 )

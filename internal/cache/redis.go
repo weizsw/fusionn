@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"fusionn/config"
@@ -24,10 +25,11 @@ type redisClient struct {
 
 // NewRedisClient creates a new Redis client instance
 func NewRedisClient() (*redisClient, error) {
+	a := config.C.Redis.Addr
+	fmt.Println(a)
 	client := redis.NewClient(&redis.Options{
-		Addr:     config.C.Redis.Addr,
-		Password: config.C.Redis.Password,
-		DB:       config.C.Redis.DB,
+		Addr: config.C.Redis.Addr,
+		DB:   config.C.Redis.DB,
 	})
 
 	// Verify connection
