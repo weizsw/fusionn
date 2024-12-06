@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"fusionn/config"
+	"fusionn/errs"
 	"fusionn/internal/consts"
 	"fusionn/internal/model"
 	"fusionn/internal/mq"
@@ -104,13 +105,6 @@ func (p *parser) ParseFromBytes(ctx context.Context, stream *model.ExtractedStre
 		}
 		parsedSubtitles.ChsSubtitle = chsSub
 	} else if len(stream.ChtSubBuffer) > 0 {
-		if config.C.Translate.Provider == "llm" {
-			err := p.translateToSimplifiedAsync(ctx, stream)
-			if err != nil {
-				logger.L.Error("failed sending translate job to queue", zap.Error(err))
-			}
-			return parsedSubtitles, nil
-		}
 		chtSub, err = astisub.ReadFromSRT(bytes.NewReader(stream.ChtSubBuffer))
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse Chinese traditional subtitles: %w", err)
@@ -122,6 +116,13 @@ func (p *parser) ParseFromBytes(ctx context.Context, stream *model.ExtractedStre
 		}
 		parsedSubtitles.ChsSubtitle = chsSub
 	} else if engSub != nil {
+		if config.C.Translate.Provider == "llm" {
+			err := p.translateToSimplifiedAsync(ctx, stream)
+			if err != nil {
+				logger.L.Error("failed sending translate job to queue", zap.Error(err))
+			}
+			return parsedSubtitles, errs.ErrStopPipeline
+		}
 		chsSub, err = p.convertor.TranslateToSimplified(engSub)
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate English to simplified: %w", err)
@@ -140,12 +141,13 @@ func (p *parser) translateToSimplifiedAsync(ctx context.Context, info *model.Ext
 		return err
 	}
 
-	p.q.Publish(ctx, consts.TRANSLATE_QUEUE, mq.Message{
+	err = p.q.Publish(ctx, consts.TRANSLATE_QUEUE, mq.Message{
 		FileName: info.FileName,
 		Path:     outputPath,
 	})
-
-	ctx = utils.SetStopKey(ctx)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
