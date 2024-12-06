@@ -13,7 +13,13 @@ var (
 )
 
 type Config struct {
-	viper *viper.Viper
+	viper     *viper.Viper
+	Apprise   *AppriseConfig
+	Translate *TranslateConfig
+	Redis     *RedisConfig
+	LLM       *LLMConfig
+	DeepLX    *DeepLXConfig
+	SQLite    *SQLiteConfig
 }
 
 // MustLoad ensures config is loaded before server starts
@@ -43,6 +49,12 @@ func (c *Config) Load() error {
 		logger.S.Errorw("Failed to read config file",
 			"error", err,
 			"paths", []string{".", "./configs"})
+		return err
+	}
+
+	if err := c.viper.Unmarshal(c); err != nil {
+		logger.S.Errorw("Failed to unmarshal config",
+			"error", err)
 		return err
 	}
 
