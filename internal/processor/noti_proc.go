@@ -34,8 +34,8 @@ func (s *NotiStage) Process(ctx context.Context, input any) (any, error) {
 		mode = "translated"
 	}
 
-	if config.C.GetBool(config.APPRISE_ENABLED) {
-		s.apprise.SendBasicMessage(config.C.GetString(config.APPRISE_URL), []byte(fmt.Sprintf(msgFormat, fmt.Sprintf("Subtitle for %s %s successfully", req.FileName, mode))))
+	if config.C.Apprise.Enabled {
+		s.apprise.SendBasicMessage(config.C.Apprise.Url, []byte(fmt.Sprintf(msgFormat, fmt.Sprintf("Subtitle for %s %s successfully", req.FileName, mode))))
 	}
 
 	return req, nil
