@@ -1,7 +1,9 @@
 package pkg
 
 import (
-	"github.com/valyala/fasthttp"
+	"bytes"
+	"io"
+	"net/http"
 )
 
 type Apprise interface {
@@ -9,28 +11,28 @@ type Apprise interface {
 }
 
 type apprise struct {
+	client *http.Client
 }
 
 func NewApprise() *apprise {
-	return &apprise{}
+	return &apprise{
+		client: &http.Client{},
+	}
 }
 
 func (a *apprise) SendBasicMessage(url string, data []byte) ([]byte, error) {
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
-
-	req.SetRequestURI(url)
-	req.Header.SetMethod("POST")
-	req.Header.SetContentType("application/json")
-	req.SetBody(data)
-
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(resp)
-
-	err := fasthttp.Do(req, resp)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
 
-	return resp.Body(), nil
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	return io.ReadAll(resp.Body)
 }
