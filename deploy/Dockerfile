@@ -18,7 +18,7 @@ WORKDIR /app
 COPY --from=builder /app/fusionn /app/fusionn
 COPY --from=builder /build/init.sh /app/init.sh
 RUN chmod +x /app/init.sh
-COPY --from=builder /build/config.yml /app/config.yml
+COPY --from=builder /build/config.yml /app/configs/config.yml
 RUN apk update --no-cache && apk add --no-cache ffmpeg
 RUN mkdir tmp
 
