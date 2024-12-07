@@ -51,7 +51,37 @@ func ExtractFilenameWithoutExtension(path string) string {
 
 func ExtractPathWithoutExtension(filePath string) string {
 	dir, file := filepath.Split(filePath)
-	extension := filepath.Ext(file)
+	extensions := []string{
+		".mp4",  // MPEG-4 Part 14
+		".mkv",  // Matroska Video
+		".avi",  // Audio Video Interleave
+		".mov",  // QuickTime Movie
+		".wmv",  // Windows Media Video
+		".flv",  // Flash Video
+		".webm", // WebM
+		".m4v",  // MPEG-4 Video
+		".ts",   // MPEG Transport Stream
+		".m2ts", // Blu-ray BDAV Video
+		".vob",  // DVD Video Object
+		".3gp",  // 3GPP Multimedia
+		".mpg",  // MPEG-1 Video
+		".mpeg", // MPEG-1 Video
+		".mpe",  // MPEG-1 Video
+		".m1v",  // MPEG-1 Video
+		".m2v",  // MPEG-2 Video
+		".asf",  // Advanced Systems Format
+		".rm",   // RealMedia
+		".rmvb", // RealMedia Variable Bitrate
+		".divx", // DivX Video
+		".ogv",  // Ogg Video
+	}
+	extension := ""
+	for _, ext := range extensions {
+		if strings.HasSuffix(file, ext) {
+			extension = ext
+			break
+		}
+	}
 	fileWithoutExtension := strings.TrimSuffix(file, extension)
 	pathWithoutExtension := filepath.Join(dir, fileWithoutExtension)
 	return pathWithoutExtension
