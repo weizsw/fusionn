@@ -31,5 +31,5 @@ const (
 )
 
 const (
-	KeyStop = "stop"
+	ASSFONTS_PATH = "/usr/local/bin/assfonts"
 )
