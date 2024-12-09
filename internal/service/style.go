@@ -2,18 +2,24 @@ package service
 
 import (
 	"fmt"
+	"fusionn/config"
+	"fusionn/internal/consts"
 	"fusionn/logger"
 	"fusionn/utils"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/asticode/go-astisub"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
 
 type StyleService interface {
 	AddStyle(sub *astisub.Subtitles) *astisub.Subtitles
-	FontSubSet(path string) error
+	FontSubSet(filePath string) error
 	ReduceMargin(sub *astisub.Subtitles, engMargin, defaultMargin string) *astisub.Subtitles
 	ReplaceSpecialCharacters(sub *astisub.Subtitles) *astisub.Subtitles
 	RemovePunctuation(sub *astisub.Subtitles) *astisub.Subtitles
@@ -155,7 +161,47 @@ func (s *styleService) ReduceMargin(sub *astisub.Subtitles, engMargin, defaultMa
 	return sub
 }
 
-func (s *styleService) FontSubSet(path string) error {
+func (s *styleService) FontSubSet(filePath string) error {
+	if !config.C.Subset.Enabled {
+		return nil
+	}
+
+	assfonts := consts.ASSFONTS_PATH
+	if env := os.Getenv("DOCKER_ENV"); env == "" || env == "false" {
+		assfonts = filepath.Join(".", "asset", "bin", "assfonts")
+	}
+
+	folder := filepath.Dir(filePath)
+	fontPath := filepath.Join(".", "asset", "fonts")
+	cmd := exec.Command(assfonts, "-s", "-i", filePath, "-f", fontPath, "-o", ".")
+	logger.L.Info("Running command:", zap.String("command", cmd.String()))
+
+	output, err := cmd.CombinedOutput()
+	logger.L.Info("Command output:", zap.String("output", string(output)))
+
+	if err != nil {
+		logger.L.Error("Error running command:", zap.Error(err))
+		return err
+	}
+
+	filePathWithoutExt := strings.TrimSuffix(filePath, filepath.Ext(filePath))
+	subsetPath := fmt.Sprintf("%s_subsetted", filePathWithoutExt)
+	cmd = exec.Command(assfonts, "-e", "-i", filePath, "-f", subsetPath, "-o", folder)
+	logger.L.Info("Running command:", zap.String("command", cmd.String()))
+
+	output, err = cmd.CombinedOutput()
+	logger.L.Info("Command output:", zap.String("output", string(output)))
+
+	if err != nil {
+		logger.L.Error("Error running command:", zap.Error(err))
+		return err
+	}
+
+	err = os.Remove(subsetPath)
+	if err != nil {
+		logger.L.Error("Error removing subset file:", zap.Error(err))
+	}
+
 	return nil
 }
 
@@ -227,7 +273,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	marginVertical := 10
 	encoding := 1
 	defaultStyle := &astisub.StyleAttributes{
-		SSAFontName:        "WenQuanYiMicroHei",
+		SSAFontName:        "WenQuanYi Micro Hei",
 		SSAFontSize:        proto.Float64(22),
 		SSAPrimaryColour:   primaryColor,
 		SSASecondaryColour: secondaryColor,
@@ -300,7 +346,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	engEncoding := 1
 
 	engStyle := &astisub.StyleAttributes{
-		SSAFontName:        "WenQuanYiMicroHei",
+		SSAFontName:        "WenQuanYi Micro Hei",
 		SSAFontSize:        proto.Float64(12),
 		SSAPrimaryColour:   engPrimaryColor,
 		SSASecondaryColour: engSecondaryColor,

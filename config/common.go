@@ -34,3 +34,7 @@ type SQLiteConfig struct {
 	Enabled bool   `mapstructure:"enabled"`
 	Path    string `mapstructure:"path"`
 }
+
+type SubsetConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+}
