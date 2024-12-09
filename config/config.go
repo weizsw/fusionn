@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/google/go-cmp/cmp"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
@@ -74,16 +75,31 @@ func (c *Config) Load() error {
 			"file", e.Name,
 			"operation", e.Op.String())
 
+		// Create a copy of the current config
+		oldConfig := *c
+
 		if err := c.viper.Unmarshal(c); err != nil {
 			logger.S.Errorw("Failed to unmarshal updated config",
 				"error", err)
 			return
 		}
 
+		// Log the differences
+		logConfigDiff(&oldConfig, c)
+
 		logger.S.Info("Config reloaded successfully")
 	})
 
 	return nil
+}
+
+// logConfigDiff logs the differences between old and new configs
+func logConfigDiff(old, new *Config) {
+	diff := cmp.Diff(old, new)
+	if diff != "" {
+		logger.S.Infow("Config changes detected",
+			"diff", diff)
+	}
 }
 
 // GetString returns string config value
