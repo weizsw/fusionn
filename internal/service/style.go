@@ -16,12 +16,62 @@ type StyleService interface {
 	FontSubSet(path string) error
 	ReduceMargin(sub *astisub.Subtitles, engMargin, defaultMargin string) *astisub.Subtitles
 	ReplaceSpecialCharacters(sub *astisub.Subtitles) *astisub.Subtitles
+	RemovePunctuation(sub *astisub.Subtitles) *astisub.Subtitles
 }
 
 type styleService struct{}
 
 func NewStyleService() *styleService {
 	return &styleService{}
+}
+
+func (s *styleService) RemovePunctuation(sub *astisub.Subtitles) *astisub.Subtitles {
+	// Define full-width punctuation marks to replace
+	punctuations := map[rune]struct{}{
+		'，': {}, // Full-width comma
+		'。': {}, // Full-width period
+		'？': {}, // Full-width question mark
+		'！': {}, // Full-width exclamation mark
+		'；': {}, // Full-width semicolon
+		'：': {}, // Full-width colon
+		'、': {}, // Ideographic comma
+		'…': {}, // Ellipsis
+		'～': {}, // Full-width tilde
+		'「': {}, // Left corner bracket
+		'」': {}, // Right corner bracket
+		'『': {}, // Left white corner bracket
+		'』': {}, // Right white corner bracket
+		'（': {}, // Full-width left parenthesis
+		'）': {}, // Full-width right parenthesis
+		'《': {}, // Left double angle bracket
+		'》': {}, // Right double angle bracket
+		'"': {}, // Full-width left quotation mark
+		'—': {}, // Full-width dash
+	}
+
+	for i := range sub.Items {
+		for j := range sub.Items[i].Lines {
+			for k := range sub.Items[i].Lines[j].Items {
+				// Create a string builder for efficient string manipulation
+				var result strings.Builder
+				text := sub.Items[i].Lines[j].Items[k].Text
+
+				// Iterate through each rune in the text
+				for _, r := range text {
+					if r == '—' { // Special case for full-width dash
+						continue // Skip it entirely (don't add space)
+					} else if _, isPunct := punctuations[r]; isPunct {
+						result.WriteRune(' ') // Replace punctuation with space
+					} else {
+						result.WriteRune(r)
+					}
+				}
+
+				sub.Items[i].Lines[j].Items[k].Text = result.String()
+			}
+		}
+	}
+	return sub
 }
 
 func (s *styleService) ReplaceSpecialCharacters(sub *astisub.Subtitles) *astisub.Subtitles {
