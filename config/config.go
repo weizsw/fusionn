@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
@@ -64,6 +65,22 @@ func (c *Config) Load() error {
 		zap.String("file", c.viper.ConfigFileUsed()),
 		zap.String("paths", strings.Join([]string{".", "./configs"}, ",")),
 		zap.Any("config", c))
+
+	// Add watcher after successful load
+	c.viper.WatchConfig()
+	c.viper.OnConfigChange(func(e fsnotify.Event) {
+		logger.S.Infow("Config file changed, reloading...",
+			"file", e.Name,
+			"operation", e.Op.String())
+
+		if err := c.viper.Unmarshal(c); err != nil {
+			logger.S.Errorw("Failed to unmarshal updated config",
+				"error", err)
+			return
+		}
+
+		logger.S.Info("Config reloaded successfully")
+	})
 
 	return nil
 }
