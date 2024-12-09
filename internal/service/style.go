@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"fusionn/config"
 	"fusionn/internal/consts"
 	"fusionn/logger"
 	"fusionn/utils"
@@ -161,7 +162,10 @@ func (s *styleService) ReduceMargin(sub *astisub.Subtitles, engMargin, defaultMa
 }
 
 func (s *styleService) FontSubSet(filePath string) error {
-	return nil
+	if !config.C.Subset.Enabled {
+		return nil
+	}
+
 	assfonts := consts.ASSFONTS_PATH
 	if env := os.Getenv("DOCKER_ENV"); env == "" || env == "false" {
 		assfonts = filepath.Join(".", "asset", "bin", "assfonts")

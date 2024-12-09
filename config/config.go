@@ -23,6 +23,7 @@ type Config struct {
 	LLM       *LLMConfig
 	DeepLX    *DeepLXConfig
 	SQLite    *SQLiteConfig
+	Subset    *SubsetConfig
 }
 
 // MustLoad ensures config is loaded before server starts
