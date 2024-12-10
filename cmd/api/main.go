@@ -7,9 +7,12 @@ import (
 	"fusionn/internal/wire"
 	"fusionn/logger"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 func gracefulShutdown(apiServer *http.Server, done chan bool) {
@@ -39,6 +42,11 @@ func gracefulShutdown(apiServer *http.Server, done chan bool) {
 func main() {
 	// Initialize config explicitly
 	config.MustLoad()
+
+	gin.SetMode(gin.DebugMode)
+	if os.Getenv("GIN_MODE") == "release" {
+		gin.SetMode(gin.ReleaseMode)
+	}
 
 	server, err := wire.NewServer()
 	if err != nil {
