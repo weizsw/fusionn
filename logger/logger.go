@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -18,10 +19,13 @@ var (
 
 func init() {
 	once.Do(func() {
-		config := zap.NewProductionConfig()
+		conf := zap.NewDevelopmentConfig()
+		if os.Getenv("GIN_MODE") == "release" {
+			conf = zap.NewProductionConfig()
+		}
 
 		// Customize the encoder config
-		config.EncoderConfig = zapcore.EncoderConfig{
+		conf.EncoderConfig = zapcore.EncoderConfig{
 			TimeKey:          "time",
 			LevelKey:         "level",
 			NameKey:          "logger",
@@ -35,9 +39,9 @@ func init() {
 		}
 
 		// Use console encoder instead of JSON
-		config.Encoding = "console"
+		conf.Encoding = "console"
 
-		logger, err := config.Build()
+		logger, err := conf.Build()
 		if err != nil {
 			panic(err)
 		}
