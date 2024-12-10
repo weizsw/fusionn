@@ -22,3 +22,8 @@ redis:
   db: 0
 subset:
   enabled: false
+style:
+  chs_font_name: "Arial"
+  chs_font_size: 19
+  eng_font_name: "Arial"
+  eng_font_size: 19
