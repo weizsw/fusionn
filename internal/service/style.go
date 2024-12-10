@@ -270,12 +270,12 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	encoding := 1
 	defaultStyle := &astisub.StyleAttributes{
 		SSAFontName:        "WenQuanYi Micro Hei",
-		SSAFontSize:        proto.Float64(22),
+		SSAFontSize:        proto.Float64(19),
 		SSAPrimaryColour:   primaryColor,
 		SSASecondaryColour: secondaryColor,
 		SSAOutlineColour:   outlineColor,
 		SSABackColour:      backColor,
-		SSABold:            proto.Bool(false),
+		SSABold:            proto.Bool(true),
 		SSAItalic:          proto.Bool(false),
 		SSAUnderline:       proto.Bool(false),
 		SSAStrikeout:       proto.Bool(false),
@@ -348,7 +348,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 		SSASecondaryColour: engSecondaryColor,
 		SSAOutlineColour:   engOutlineColor,
 		SSABackColour:      engBackColor,
-		SSABold:            proto.Bool(false),
+		SSABold:            proto.Bool(true),
 		SSAItalic:          proto.Bool(false),
 		SSAUnderline:       proto.Bool(false),
 		SSAStrikeout:       proto.Bool(false),
