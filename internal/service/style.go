@@ -269,13 +269,13 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	marginVertical := 10
 	encoding := 1
 	defaultStyle := &astisub.StyleAttributes{
-		SSAFontName:        "WenQuanYi Micro Hei",
-		SSAFontSize:        proto.Float64(19),
+		SSAFontName:        config.C.Style.ChsFontName,
+		SSAFontSize:        proto.Float64(config.C.Style.ChsFontSize),
 		SSAPrimaryColour:   primaryColor,
 		SSASecondaryColour: secondaryColor,
 		SSAOutlineColour:   outlineColor,
 		SSABackColour:      backColor,
-		SSABold:            proto.Bool(true),
+		SSABold:            proto.Bool(config.C.Style.ChsBold),
 		SSAItalic:          proto.Bool(false),
 		SSAUnderline:       proto.Bool(false),
 		SSAStrikeout:       proto.Bool(false),
@@ -342,13 +342,13 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	engEncoding := 1
 
 	engStyle := &astisub.StyleAttributes{
-		SSAFontName:        "WenQuanYi Micro Hei",
-		SSAFontSize:        proto.Float64(12),
+		SSAFontName:        config.C.Style.EngFontName,
+		SSAFontSize:        proto.Float64(config.C.Style.EngFontSize),
 		SSAPrimaryColour:   engPrimaryColor,
 		SSASecondaryColour: engSecondaryColor,
 		SSAOutlineColour:   engOutlineColor,
 		SSABackColour:      engBackColor,
-		SSABold:            proto.Bool(true),
+		SSABold:            proto.Bool(config.C.Style.EngBold),
 		SSAItalic:          proto.Bool(false),
 		SSAUnderline:       proto.Bool(false),
 		SSAStrikeout:       proto.Bool(false),
