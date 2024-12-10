@@ -21,12 +21,14 @@ redis:
   password: 123456
   db: 0
 subset:
-  enabled: false
+  enabled: true
 style:
-  chs_font_name: "Arial"
+  chs_font_name: "WenQuanYi Micro Hei"
   chs_font_size: 19
-  eng_font_name: "Arial"
-  eng_font_size: 19
+  eng_font_name: "WenQuanYi Micro Hei"
+  eng_font_size: 12
   chs_bold: true
   eng_bold: true
-  reduce_margin: true
+  reduce_margin: false
+algo:
+  max_overlapping_segments: 3
