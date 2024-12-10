@@ -25,6 +25,7 @@ type Config struct {
 	DeepLX    *DeepLXConfig
 	SQLite    *SQLiteConfig
 	Subset    *SubsetConfig
+	Style     *StyleConfig
 }
 
 // MustLoad ensures config is loaded before server starts
