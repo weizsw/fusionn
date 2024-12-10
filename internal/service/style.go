@@ -171,9 +171,9 @@ func (s *styleService) FontSubSet(filePath string) error {
 		assfonts = filepath.Join(".", "asset", "bin", "assfonts")
 	}
 
-	folder := filepath.Dir(filePath)
+	outputPath := filepath.Dir(filePath)
 	fontPath := filepath.Join(".", "asset", "fonts")
-	cmd := exec.Command(assfonts, "-s", "-i", filePath, "-f", fontPath, "-o", ".")
+	cmd := exec.Command(assfonts, "-i", filePath, "-f", fontPath, "-o", outputPath)
 	logger.L.Info("Running command:", zap.String("command", cmd.String()))
 
 	output, err := cmd.CombinedOutput()
@@ -184,24 +184,20 @@ func (s *styleService) FontSubSet(filePath string) error {
 		return err
 	}
 
-	filePathWithoutExt := strings.TrimSuffix(filePath, filepath.Ext(filePath))
-	subsetPath := fmt.Sprintf("%s_subsetted", filePathWithoutExt)
-	cmd = exec.Command(assfonts, "-e", "-i", filePath, "-f", subsetPath, "-o", folder)
-	logger.L.Info("Running command:", zap.String("command", cmd.String()))
+	fullPathWithoutExt := utils.GetFullPathWithoutExtension(filePath)
+	subsetPath := fmt.Sprintf("%s_subsetted", fullPathWithoutExt)
 
-	output, err = cmd.CombinedOutput()
-	logger.L.Info("Command output:", zap.String("output", string(output)))
-
-	if err != nil {
-		logger.L.Error("Error running command:", zap.Error(err))
-		return err
-	}
-
-	err = os.Remove(subsetPath)
+	err = os.RemoveAll(subsetPath)
 	if err != nil {
 		logger.L.Error("Error removing subset file:", zap.Error(err))
 	}
+	logger.L.Info("Subset file removed:", zap.String("path", subsetPath))
 
+	err = os.RemoveAll(filePath)
+	if err != nil {
+		logger.L.Error("Error removing original file:", zap.Error(err))
+	}
+	logger.L.Info("Original file removed:", zap.String("path", filePath))
 	return nil
 }
 

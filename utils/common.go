@@ -74,6 +74,9 @@ func ExtractPathWithoutExtension(filePath string) string {
 		".rmvb", // RealMedia Variable Bitrate
 		".divx", // DivX Video
 		".ogv",  // Ogg Video
+		".ass",  // ASS Subtitle
+		".ssa",  // ASS Subtitle
+		".srt",  // SRT Subtitle
 	}
 	extension := ""
 	for _, ext := range extensions {
