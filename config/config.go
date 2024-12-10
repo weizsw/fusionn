@@ -1,7 +1,9 @@
 package config
 
 import (
+	"fmt"
 	"fusionn/logger"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -9,7 +11,6 @@ import (
 	"github.com/jinzhu/copier"
 	"github.com/r3labs/diff"
 	"github.com/spf13/viper"
-	"go.uber.org/zap"
 )
 
 var (
@@ -64,10 +65,10 @@ func (c *Config) Load() error {
 		return err
 	}
 
-	logger.L.Info("Config loaded successfully",
-		zap.String("file", v.ConfigFileUsed()),
-		zap.String("paths", strings.Join([]string{".", "./configs"}, ",")),
-		zap.Any("config", c))
+	logger.L.Info("Config loaded successfully\n" +
+		fmt.Sprintf("file: %s\n", v.ConfigFileUsed()) +
+		fmt.Sprintf("paths: %s\n", strings.Join([]string{".", "./configs"}, ",")) +
+		prettyPrintConfig(c))
 
 	// Watch config changes
 	v.WatchConfig()
@@ -125,4 +126,35 @@ func (c *Config) GetInt(key string) int {
 // GetBool returns boolean config value
 func (c *Config) GetBool(key string) bool {
 	return viper.GetBool(key)
+}
+
+func prettyPrintConfig(v interface{}) string {
+	var b strings.Builder
+	val := reflect.ValueOf(v).Elem()
+	typ := val.Type()
+
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		fieldType := typ.Field(i)
+
+		if !field.IsNil() {
+			b.WriteString(fmt.Sprintf("\n%s:\n", fieldType.Name))
+			structVal := field.Elem()
+			structType := structVal.Type()
+
+			for j := 0; j < structVal.NumField(); j++ {
+				subField := structVal.Field(j)
+				subFieldType := structType.Field(j)
+
+				if strings.Contains(strings.ToLower(subFieldType.Name), "password") ||
+					strings.Contains(strings.ToLower(subFieldType.Name), "secret") ||
+					strings.Contains(strings.ToLower(subFieldType.Name), "key") {
+					b.WriteString(fmt.Sprintf("  %q: \"****\"\n", subFieldType.Name))
+				} else {
+					b.WriteString(fmt.Sprintf("  %q: %#v\n", subFieldType.Name, subField.Interface()))
+				}
+			}
+		}
+	}
+	return b.String()
 }
