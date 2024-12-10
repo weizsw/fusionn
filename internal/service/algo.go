@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fusionn/config"
 	"sort"
 	"time"
 
@@ -128,25 +129,48 @@ func (a *algo) MatchSubtitleSegment(chineseItems, englishItems []*astisub.Item) 
 	})
 
 	var mergedSegments []TimeSegment
+	overlappingCount := 1
 	for _, seg := range segments {
 		if len(mergedSegments) == 0 || mergedSegments[len(mergedSegments)-1].End <= seg.Start {
+			// No overlap, just append
 			mergedSegments = append(mergedSegments, seg)
+			overlappingCount = 1 // Reset count for new non-overlapping segment
 		} else {
+			// There's an overlap
 			last := len(mergedSegments) - 1
-			if seg.End > mergedSegments[last].End {
-				mergedSegments[last].End = seg.End
+			if seg.End < mergedSegments[last].End {
+				continue
+			}
+			overlappingCount++ // Increment count for any overlap
+
+			if overlappingCount > config.C.Algo.MaxOverlappingSegments {
+				// If we exceed max overlapping segments,
+				// start a new segment
+				seg.Start = mergedSegments[last].End
+				mergedSegments = append(mergedSegments, seg)
+				overlappingCount = 1
+			} else {
+				// Merge by taking the later end time
+				if seg.End > mergedSegments[last].End {
+					mergedSegments[last].End = seg.End
+				}
 			}
 		}
 	}
 
 	// Create merged items based on time segments
 	var mergedItems []*astisub.Item
+	usedEngMap := make(map[int]struct{})
+	usedChiMap := make(map[int]struct{})
 	for _, seg := range mergedSegments {
 		var engLines []astisub.Line
 		var chiLines []astisub.Line
 
 		// Collect English lines that overlap with this segment
 		for _, eng := range englishItems {
+			if _, ok := usedEngMap[eng.Index]; ok {
+				continue
+			}
 			if eng.EndAt > seg.Start && eng.StartAt < seg.End {
 				if len(engLines) == 0 {
 					engLines = append(engLines, astisub.Line{})
@@ -154,11 +178,15 @@ func (a *algo) MatchSubtitleSegment(chineseItems, englishItems []*astisub.Item) 
 				for _, line := range eng.Lines {
 					engLines[0].Items = append(engLines[0].Items, line.Items...)
 				}
+				usedEngMap[eng.Index] = struct{}{}
 			}
 		}
 
 		// Collect Chinese lines that overlap with this segment
 		for _, ch := range chineseItems {
+			if _, ok := usedChiMap[ch.Index]; ok {
+				continue
+			}
 			if ch.EndAt > seg.Start && ch.StartAt < seg.End {
 				if len(chiLines) == 0 {
 					chiLines = append(chiLines, astisub.Line{})
@@ -166,6 +194,7 @@ func (a *algo) MatchSubtitleSegment(chineseItems, englishItems []*astisub.Item) 
 				for _, line := range ch.Lines {
 					chiLines[0].Items = append(chiLines[0].Items, line.Items...)
 				}
+				usedChiMap[ch.Index] = struct{}{}
 			}
 		}
 

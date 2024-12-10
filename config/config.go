@@ -26,6 +26,7 @@ type Config struct {
 	SQLite    *SQLiteConfig
 	Subset    *SubsetConfig
 	Style     *StyleConfig
+	Algo      *AlgoConfig
 }
 
 // MustLoad ensures config is loaded before server starts

@@ -48,3 +48,7 @@ type StyleConfig struct {
 	EngBold      bool    `mapstructure:"eng_bold"`
 	ReduceMargin bool    `mapstructure:"reduce_margin"`
 }
+
+type AlgoConfig struct {
+	MaxOverlappingSegments int `mapstructure:"max_overlapping_segments"`
+}

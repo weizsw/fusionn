@@ -42,6 +42,7 @@ RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/weizsw/assfonts/releas
 COPY --from=builder /app/fusionn /app/fusionn
 COPY --from=builder /build/init.sh /app/init.sh
 ENV DOCKER_ENV=true
+ENV GIN_MODE=release
 RUN chmod +x /app/init.sh
 COPY --from=builder /build/config.yml /app/config.yml.default
 RUN mkdir tmp
