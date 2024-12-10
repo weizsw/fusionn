@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"fusionn/config"
 	"fusionn/errs"
 	"fusionn/internal/model"
 	"fusionn/internal/service"
@@ -24,8 +25,10 @@ func (s *StyleStage) Process(ctx context.Context, input any) (any, error) {
 
 	logger.L.Info("[StyleStage] adding style to subtitles")
 	req.MergeSubtitle = s.styleService.AddStyle(req.MergeSubtitle)
-	req.MergeSubtitle = s.styleService.ReduceMargin(req.MergeSubtitle, "{\\org(-2000000,0)\\fr-0.00005}", "{\\org(-2000000,0)\\fr0.00015}")
 	req.MergeSubtitle = s.styleService.ReplaceSpecialCharacters(req.MergeSubtitle)
+	if config.C.Style.ReduceMargin {
+		req.MergeSubtitle = s.styleService.ReduceMargin(req.MergeSubtitle, "{\\org(-2000000,0)\\fr-0.00005}", "{\\org(-2000000,0)\\fr0.00015}")
+	}
 	if req.Translated {
 		req.MergeSubtitle = s.styleService.RemovePunctuation(req.MergeSubtitle)
 	}
