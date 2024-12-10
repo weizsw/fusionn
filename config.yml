@@ -30,5 +30,11 @@ style:
   chs_bold: true
   eng_bold: true
   reduce_margin: false
+  margin_left: 10
+  margin_right: 10
+  margin_vertical: 10
+  alignment: 2
+  border_style: 1
+  wrap_style: "0" # 2: no wrap, 1: wrap
 algo:
   max_overlapping_segments: 3
