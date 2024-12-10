@@ -27,7 +27,7 @@ func (s *StyleStage) Process(ctx context.Context, input any) (any, error) {
 	req.MergeSubtitle = s.styleService.AddStyle(req.MergeSubtitle)
 	req.MergeSubtitle = s.styleService.ReplaceSpecialCharacters(req.MergeSubtitle)
 	if config.C.Style.ReduceMargin {
-		req.MergeSubtitle = s.styleService.ReduceMargin(req.MergeSubtitle, "{\\org(-2000000,0)\\fr-0.00005}", "{\\org(-2000000,0)\\fr0.00015}")
+		req.MergeSubtitle = s.styleService.ReduceMargin(req.MergeSubtitle, "{\\pos(192,278)}", "{\\pos(192,268)}")
 	}
 	if req.Translated {
 		req.MergeSubtitle = s.styleService.RemovePunctuation(req.MergeSubtitle)
