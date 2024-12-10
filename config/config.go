@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"fusionn/logger"
-	"reflect"
 	"strings"
 	"sync"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/jinzhu/copier"
 	"github.com/r3labs/diff"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -65,10 +65,11 @@ func (c *Config) Load() error {
 		return err
 	}
 
-	logger.L.Info("Config loaded successfully\n" +
-		fmt.Sprintf("file: %s\n", v.ConfigFileUsed()) +
-		fmt.Sprintf("paths: %s\n", strings.Join([]string{".", "./configs"}, ",")) +
-		prettyPrintConfig(c))
+	logger.S.Infow("Config loaded successfully\n",
+		"file", v.ConfigFileUsed(),
+		"paths", strings.Join([]string{".", "./configs"}, ","),
+	)
+	logger.S.Info(prettyPrintConfig(c))
 
 	// Watch config changes
 	v.WatchConfig()
@@ -129,32 +130,9 @@ func (c *Config) GetBool(key string) bool {
 }
 
 func prettyPrintConfig(v interface{}) string {
-	var b strings.Builder
-	val := reflect.ValueOf(v).Elem()
-	typ := val.Type()
-
-	for i := 0; i < val.NumField(); i++ {
-		field := val.Field(i)
-		fieldType := typ.Field(i)
-
-		if !field.IsNil() {
-			b.WriteString(fmt.Sprintf("\n%s:\n", fieldType.Name))
-			structVal := field.Elem()
-			structType := structVal.Type()
-
-			for j := 0; j < structVal.NumField(); j++ {
-				subField := structVal.Field(j)
-				subFieldType := structType.Field(j)
-
-				if strings.Contains(strings.ToLower(subFieldType.Name), "password") ||
-					strings.Contains(strings.ToLower(subFieldType.Name), "secret") ||
-					strings.Contains(strings.ToLower(subFieldType.Name), "key") {
-					b.WriteString(fmt.Sprintf("  %q: \"****\"\n", subFieldType.Name))
-				} else {
-					b.WriteString(fmt.Sprintf("  %q: %#v\n", subFieldType.Name, subField.Interface()))
-				}
-			}
-		}
+	bytes, err := yaml.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("Error marshaling config: %v", err)
 	}
-	return b.String()
+	return "\n" + string(bytes)
 }
