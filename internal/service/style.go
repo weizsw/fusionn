@@ -211,7 +211,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	sub.Metadata = &astisub.Metadata{}
 	sub.Metadata.Title = "Default Aegisub file"
 	sub.Metadata.SSAScriptType = "v4.00+"
-	sub.Metadata.SSAWrapStyle = "0"
+	sub.Metadata.SSAWrapStyle = config.C.Style.WrapStyle
 	sub.Metadata.SSAPlayResX = &resX
 	sub.Metadata.SSAPlayResY = &resY
 	sub.Metadata.SSATimer = proto.Float64(100)
@@ -263,10 +263,10 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 			Red:   0,
 		}
 	}
-	borderStyle := 1
-	alignment := 2
-	marginLeft, marginRight := 20, 20
-	marginVertical := 10
+	borderStyle := config.C.Style.BorderStyle
+	alignment := config.C.Style.Alignment
+	marginLeft, marginRight := config.C.Style.MarginLeft, config.C.Style.MarginRight
+	marginVertical := config.C.Style.MarginVertical
 	encoding := 1
 	defaultStyle := &astisub.StyleAttributes{
 		SSAFontName:        config.C.Style.ChsFontName,
@@ -335,10 +335,10 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 		}
 	}
 
-	engBorderStyle := 1
-	engAlignment := 2
-	engMarginLeft, engMarginRight := 20, 20
-	engMarginVertical := 10
+	engBorderStyle := config.C.Style.BorderStyle
+	engAlignment := config.C.Style.Alignment
+	engMarginLeft, engMarginRight := config.C.Style.MarginLeft, config.C.Style.MarginRight
+	engMarginVertical := config.C.Style.MarginVertical
 	engEncoding := 1
 
 	engStyle := &astisub.StyleAttributes{

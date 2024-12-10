@@ -40,13 +40,19 @@ type SubsetConfig struct {
 }
 
 type StyleConfig struct {
-	ChsFontName  string  `mapstructure:"chs_font_name"`
-	EngFontName  string  `mapstructure:"eng_font_name"`
-	ChsFontSize  float64 `mapstructure:"chs_font_size"`
-	EngFontSize  float64 `mapstructure:"eng_font_size"`
-	ChsBold      bool    `mapstructure:"chs_bold"`
-	EngBold      bool    `mapstructure:"eng_bold"`
-	ReduceMargin bool    `mapstructure:"reduce_margin"`
+	ChsFontName    string  `mapstructure:"chs_font_name"`
+	EngFontName    string  `mapstructure:"eng_font_name"`
+	ChsFontSize    float64 `mapstructure:"chs_font_size"`
+	EngFontSize    float64 `mapstructure:"eng_font_size"`
+	ChsBold        bool    `mapstructure:"chs_bold"`
+	EngBold        bool    `mapstructure:"eng_bold"`
+	ReduceMargin   bool    `mapstructure:"reduce_margin"`
+	MarginLeft     int     `mapstructure:"margin_left"`
+	MarginRight    int     `mapstructure:"margin_right"`
+	MarginVertical int     `mapstructure:"margin_vertical"`
+	Alignment      int     `mapstructure:"alignment"`
+	BorderStyle    int     `mapstructure:"border_style"`
+	WrapStyle      string  `mapstructure:"wrap_style"`
 }
 
 type AlgoConfig struct {
