@@ -26,14 +26,14 @@ RUN apt-get update && apt-get install -y \
   && rm -rf /var/lib/apt/lists/*
 
 # Download appropriate assfonts binary based on architecture
-RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/wyzdwdz/assfonts/releases/latest | jq -r .tag_name | sed 's/^v//') && \
+RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/weizsw/assfonts/releases/latest | jq -r .tag_name | sed 's/^v//') && \
   case "$(dpkg --print-architecture)" in \
   "amd64") ARCH="x86_64" ;; \
   "arm64") ARCH="aarch64" ;; \
   *) echo "Unsupported architecture: $(dpkg --print-architecture)" && exit 1 ;; \
   esac && \
   echo "Downloading assfonts for architecture: $ARCH" && \
-  wget -q https://github.com/wyzdwdz/assfonts/releases/download/v${LATEST_VERSION}/assfonts-v${LATEST_VERSION}-${ARCH}-Linux.tar.gz && \
+  wget -q https://github.com/weizsw/assfonts/releases/download/v${LATEST_VERSION}/assfonts-v${LATEST_VERSION}-${ARCH}-Linux.tar.gz && \
   tar xzf assfonts-v${LATEST_VERSION}-${ARCH}-Linux.tar.gz && \
   mv bin/assfonts /usr/local/bin/ && \
   chmod +x /usr/local/bin/assfonts && \
