@@ -27,3 +27,5 @@ style:
   chs_font_size: 19
   eng_font_name: "Arial"
   eng_font_size: 19
+  chs_bold: true
+  eng_bold: true
