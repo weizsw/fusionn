@@ -11,6 +11,7 @@ import (
 	"fusionn/internal/mq"
 	"fusionn/logger"
 	"fusionn/utils"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -24,6 +25,8 @@ type Parser interface {
 	ParseFromBytes(ctx context.Context, stream *model.ExtractedStream) (*model.ParsedSubtitles, error)
 	RemoveSDH(subs *astisub.Subtitles) *astisub.Subtitles
 	Clean(subs *astisub.Subtitles) *astisub.Subtitles
+	ParseFile(input string) (*ASSContent, error)
+	ExportFile(ass *ASSContent, filePath string) error
 }
 
 type parser struct {
@@ -34,6 +37,99 @@ type parser struct {
 
 func NewParser(c Convertor, f FFMPEG, q mq.MessageQueue) *parser {
 	return &parser{convertor: c, ffmpeg: f, q: q}
+}
+
+// ASSContent represents the parsed content of an ASS file
+type ASSContent struct {
+	ScriptInfo []string
+	Styles     []string
+	Events     []string
+	Fonts      []string
+	Raw        []string
+}
+
+func (p *parser) ExportFile(ass *ASSContent, filePath string) error {
+	res := []string{}
+	res = append(res, "[Script Info]")
+	res = append(res, ass.ScriptInfo...)
+	res = append(res, "") // Add empty line between blocks
+	res = append(res, "[V4+ Styles]")
+	res = append(res, ass.Styles...)
+	res = append(res, "") // Add empty line between blocks
+	res = append(res, "[Fonts]")
+	res = append(res, ass.Fonts...)
+	res = append(res, "") // Add empty line between blocks
+	res = append(res, "[Events]")
+	res = append(res, ass.Events...)
+
+	return os.WriteFile(filePath, []byte(strings.Join(res, "\n")), 0644)
+}
+
+func (p *parser) ParseFile(input string) (*ASSContent, error) {
+	if input == "" {
+		logger.S.Info("input is empty")
+		return nil, fmt.Errorf("input file path is empty")
+	}
+
+	// Read file content
+	content, err := os.ReadFile(input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	// Basic validation of file content
+	if len(content) == 0 {
+		return nil, fmt.Errorf("file is empty")
+	}
+
+	// Check if it's a text file by looking for null bytes
+	if bytes.IndexByte(content, 0) != -1 {
+		return nil, fmt.Errorf("file contains binary data")
+	}
+
+	// Split content into lines
+	lines := strings.Split(string(content), "\n")
+
+	result := &ASSContent{
+		Raw: lines,
+	}
+
+	currentSection := ""
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		switch line {
+		case "[Script Info]":
+			currentSection = "script_info"
+		case "[V4+ Styles]", "[V4 Styles]":
+			currentSection = "styles"
+		case "[Fonts]":
+			currentSection = "fonts"
+		case "[Events]":
+			currentSection = "events"
+		default:
+			switch currentSection {
+			case "script_info":
+				result.ScriptInfo = append(result.ScriptInfo, line)
+			case "styles":
+				result.Styles = append(result.Styles, line)
+			case "fonts":
+				result.Fonts = append(result.Fonts, line)
+			case "events":
+				result.Events = append(result.Events, line)
+			}
+		}
+	}
+
+	// Validate that we found all required sections
+	if len(result.ScriptInfo) == 0 || len(result.Styles) == 0 || len(result.Events) == 0 {
+		return nil, fmt.Errorf("invalid ASS format: missing required sections content")
+	}
+
+	return result, nil
 }
 
 func (p *parser) Parse(input string) (*astisub.Subtitles, error) {
