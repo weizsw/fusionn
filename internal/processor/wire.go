@@ -14,4 +14,5 @@ var Set = wire.NewSet(
 	NewSegMergeStage,
 	NewSubsetStage,
 	NewParseFileStage,
+	NewAfterStage,
 )
