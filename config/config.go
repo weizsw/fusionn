@@ -29,6 +29,7 @@ type Config struct {
 	Style     *StyleConfig
 	Algo      *AlgoConfig
 	After     *AfterConfig
+	General   *GeneralConfig
 }
 
 // MustLoad ensures config is loaded before server starts

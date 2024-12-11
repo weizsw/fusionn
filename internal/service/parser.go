@@ -199,6 +199,13 @@ func (p *parser) ParseFromBytes(ctx context.Context, stream *model.ExtractedStre
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse Chinese simplified subtitles: %w", err)
 		}
+
+		if config.C.General.ForceSimplified {
+			chsSub, err = p.convertor.ConvertToSimplified(chsSub)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert traditional to simplified: %w", err)
+			}
+		}
 		parsedSubtitles.ChsSubtitle = chsSub
 	} else if len(stream.ChtSubBuffer) > 0 {
 		chtSub, err = astisub.ReadFromSRT(bytes.NewReader(stream.ChtSubBuffer))
