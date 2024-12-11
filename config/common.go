@@ -46,7 +46,6 @@ type StyleConfig struct {
 	EngFontSize    float64 `mapstructure:"eng_font_size"`
 	ChsBold        bool    `mapstructure:"chs_bold"`
 	EngBold        bool    `mapstructure:"eng_bold"`
-	ReduceMargin   bool    `mapstructure:"reduce_margin"`
 	MarginLeft     int     `mapstructure:"margin_left"`
 	MarginRight    int     `mapstructure:"margin_right"`
 	MarginVertical int     `mapstructure:"margin_vertical"`
@@ -60,5 +59,7 @@ type AlgoConfig struct {
 }
 
 type AfterConfig struct {
-	ReduceMargin bool `mapstructure:"reduce_margin"`
+	ReduceMargin  bool   `mapstructure:"reduce_margin"`
+	EngMargin     string `mapstructure:"eng_margin"`
+	DefaultMargin string `mapstructure:"default_margin"`
 }

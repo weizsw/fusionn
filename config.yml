@@ -21,7 +21,7 @@ redis:
   password: 123456
   db: 0
 subset:
-  enabled: false
+  enabled: true
 style:
   chs_font_name: "WenQuanYi Micro Hei"
   chs_font_size: 19
@@ -39,3 +39,5 @@ algo:
   max_overlapping_segments: 3
 after:
   reduce_margin: true
+  default_margin: "{\\pos(192,263)}"
+  eng_margin: "{\\pos(192,278)}"

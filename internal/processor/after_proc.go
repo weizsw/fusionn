@@ -34,16 +34,16 @@ func (a *AfterStage) Process(ctx context.Context, input any) (any, error) {
 		filePath = fmt.Sprintf("%s.assfonts.ass", filePath)
 	}
 
-	mergedSub, err := a.parser.Parse(filePath)
+	mergedSub, err := a.parser.ParseFile(filePath)
 	if err != nil {
 		return nil, err
 	}
 
 	logger.L.Info("[AfterStage] reducing margin")
-	req.MergeSubtitle = a.styleService.ReduceMargin(mergedSub, "{\\pos(192,278)}", "{\\pos(192,268)}")
+	modifiedSub := a.styleService.ReduceMarginV2(mergedSub, config.C.After.DefaultMargin, config.C.After.EngMargin)
 
 	logger.L.Info("[AfterStage] writing subtitles", zap.String("dst_path", filePath))
-	err = req.MergeSubtitle.Write(filePath)
+	err = a.parser.ExportFile(modifiedSub, filePath)
 	if err != nil {
 		return nil, err
 	}
