@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/sync/errgroup"
 )
 
 type BatchHandler struct {
@@ -70,22 +71,31 @@ func (h *BatchHandler) Batch(c *gin.Context) error {
 	}
 
 	// Process each file in the directory
+	g := new(errgroup.Group)
 	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
+		file := file
+		g.Go(func() error {
+			if file.IsDir() {
+				return nil
+			}
 
-		ext := strings.ToLower(filepath.Ext(file.Name()))
-		if !videoExts[ext] {
-			continue
-		}
+			ext := strings.ToLower(filepath.Ext(file.Name()))
+			if !videoExts[ext] {
+				return nil
+			}
 
-		filePath := filepath.Join(req.Path, file.Name())
-		if _, err := h.pipeline.Execute(ctx, &model.ExtractRequest{
-			SonarrEpisodefilePath: filePath,
-		}); err != nil {
-			return fmt.Errorf("failed to process video %s: %w", filePath, err)
-		}
+			filePath := filepath.Join(req.Path, file.Name())
+			if _, err := h.pipeline.Execute(ctx, &model.ExtractRequest{
+				SonarrEpisodefilePath: filePath,
+			}); err != nil {
+				return fmt.Errorf("failed to process video %s: %w", filePath, err)
+			}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("failed to process videos: %w", err)
 	}
 
 	return nil
