@@ -28,6 +28,7 @@ type Config struct {
 	Subset    *SubsetConfig
 	Style     *StyleConfig
 	Algo      *AlgoConfig
+	After     *AfterConfig
 }
 
 // MustLoad ensures config is loaded before server starts
