@@ -41,3 +41,5 @@ after:
   reduce_margin: true
   default_margin: "{\\pos(192,263)}"
   eng_margin: "{\\pos(192,278)}"
+general:
+  force_simplified: true

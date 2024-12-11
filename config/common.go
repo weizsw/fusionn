@@ -63,3 +63,7 @@ type AfterConfig struct {
 	EngMargin     string `mapstructure:"eng_margin"`
 	DefaultMargin string `mapstructure:"default_margin"`
 }
+
+type GeneralConfig struct {
+	ForceSimplified bool `mapstructure:"force_simplified"`
+}
