@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -23,12 +24,90 @@ type StyleService interface {
 	ReduceMargin(sub *astisub.Subtitles, engMargin, defaultMargin string) *astisub.Subtitles
 	ReplaceSpecialCharacters(sub *astisub.Subtitles) *astisub.Subtitles
 	RemovePunctuation(sub *astisub.Subtitles) *astisub.Subtitles
+	ReduceMarginV2(ass *ASSContent, defaultMargin, engMargin string) *ASSContent
 }
 
 type styleService struct{}
 
 func NewStyleService() *styleService {
 	return &styleService{}
+}
+
+func (s *styleService) ReduceMarginV2(ass *ASSContent, defaultMargin, engMargin string) *ASSContent {
+	var modifiedEvents []string
+	// Calculate available width based on resolution and margins
+	availableWidth := 1920 - 40 // 40 is total horizontal margins (20 left + 20 right)
+	pixelsPerCharEng := 20.2    // 1880/93 pixels per character for English text
+
+	skipNext := false
+
+	// Process all lines
+	for _, line := range ass.Events {
+		if strings.HasPrefix(line, "Format:") {
+			modifiedEvents = append(modifiedEvents, line)
+			continue
+		}
+		if !strings.HasPrefix(line, "Dialogue:") {
+			modifiedEvents = append(modifiedEvents, line)
+			continue
+		}
+
+		// If this line should be skipped (Default line after skipped Eng line)
+		if skipNext {
+			modifiedEvents = append(modifiedEvents, line)
+			skipNext = false
+			continue
+		}
+
+		fields := strings.Split(line, ",")
+		if len(fields) < 10 {
+			modifiedEvents = append(modifiedEvents, line)
+			continue
+		}
+
+		// Get the text part
+		text := strings.Join(fields[9:], ",")
+		style := fields[3]
+
+		// Check if we should skip this line and the next
+		if style == "Eng" {
+			// Skip if the line contains {an8}
+			if strings.Contains(strings.ToLower(text), "{\\an8}") {
+				modifiedEvents = append(modifiedEvents, line)
+				skipNext = true
+				continue
+			}
+
+			// Check text length for English lines
+			cleanText := regexp.MustCompile(`{\\[^}]*}`).ReplaceAllString(text, "")
+			textLength := float64(len(cleanText)) * pixelsPerCharEng
+
+			// Skip if text length exceeds available width
+			if textLength > float64(availableWidth) {
+				modifiedEvents = append(modifiedEvents, line)
+				skipNext = true
+				continue
+			}
+		}
+
+		// Join the first 9 fields
+		prefix := strings.Join(fields[:9], ",")
+
+		// Add position tag based on style
+		switch style {
+		case "Default":
+			text = defaultMargin + text
+		case "Eng":
+			text = engMargin + text
+		}
+
+		// Reconstruct the line
+		modifiedLine := prefix + "," + text
+		modifiedEvents = append(modifiedEvents, modifiedLine)
+	}
+
+	ass.Events = modifiedEvents
+	return ass
 }
 
 func (s *styleService) RemovePunctuation(sub *astisub.Subtitles) *astisub.Subtitles {
