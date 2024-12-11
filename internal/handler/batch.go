@@ -29,6 +29,7 @@ func ProvideBatchPipeline(
 	styleStage *processor.StyleStage,
 	exportStage *processor.ExportStage,
 	subsetStage *processor.SubsetStage,
+	afterStage *processor.AfterStage,
 ) *BatchPipeline {
 	stages := []processor.Stage{
 		extractStage,
@@ -37,6 +38,7 @@ func ProvideBatchPipeline(
 		styleStage,
 		exportStage,
 		subsetStage,
+		afterStage,
 	}
 	return &BatchPipeline{
 		Pipeline: processor.NewPipeline(stages...),

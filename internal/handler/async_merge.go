@@ -24,6 +24,7 @@ func ProvideAsyncMergePipeline(
 	exportStage *processor.ExportStage,
 	subsetStage *processor.SubsetStage,
 	notiStage *processor.NotiStage,
+	afterStage *processor.AfterStage,
 ) *AsyncMergePipeline {
 	stages := []processor.Stage{
 		parseFileStage,
@@ -32,6 +33,7 @@ func ProvideAsyncMergePipeline(
 		exportStage,
 		subsetStage,
 		notiStage,
+		afterStage,
 	}
 	return &AsyncMergePipeline{
 		Pipeline: processor.NewPipeline(stages...),

@@ -18,6 +18,7 @@ func ProvideMergePipeline(
 	exportStage *processor.ExportStage,
 	subsetStage *processor.SubsetStage,
 	notiStage *processor.NotiStage,
+	afterStage *processor.AfterStage,
 ) *MergePipeline {
 	stages := []processor.Stage{
 		extractStage,
@@ -27,6 +28,7 @@ func ProvideMergePipeline(
 		exportStage,
 		subsetStage,
 		notiStage,
+		afterStage,
 	}
 	return &MergePipeline{
 		Pipeline: processor.NewPipeline(stages...),
