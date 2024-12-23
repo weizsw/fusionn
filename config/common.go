@@ -36,7 +36,8 @@ type SQLiteConfig struct {
 }
 
 type SubsetConfig struct {
-	Enabled bool `mapstructure:"enabled"`
+	Enabled   bool `mapstructure:"enabled"`
+	EmbedOnly bool `mapstructure:"embed_only"`
 }
 
 type StyleConfig struct {
