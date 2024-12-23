@@ -346,6 +346,8 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	alignment := config.C.Style.Alignment
 	marginLeft, marginRight := config.C.Style.MarginLeft, config.C.Style.MarginRight
 	marginVertical := config.C.Style.MarginVertical
+	outline := config.C.Style.Outline
+	shadow := config.C.Style.Shadow
 	encoding := 1
 	defaultStyle := &astisub.StyleAttributes{
 		SSAFontName:        config.C.Style.ChsFontName,
@@ -363,8 +365,8 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 		SSASpacing:         proto.Float64(0),
 		SSAAngle:           proto.Float64(0),
 		SSABorderStyle:     &borderStyle,
-		SSAOutline:         proto.Float64(0.5),
-		SSAShadow:          proto.Float64(0),
+		SSAOutline:         proto.Float64(outline),
+		SSAShadow:          proto.Float64(shadow),
 		SSAAlignment:       &alignment,
 		SSAMarginLeft:      &marginLeft,
 		SSAMarginRight:     &marginRight,
@@ -418,6 +420,8 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 	engAlignment := config.C.Style.Alignment
 	engMarginLeft, engMarginRight := config.C.Style.MarginLeft, config.C.Style.MarginRight
 	engMarginVertical := config.C.Style.MarginVertical
+	engOutline := config.C.Style.Outline
+	engShadow := config.C.Style.Shadow
 	engEncoding := 1
 
 	engStyle := &astisub.StyleAttributes{
@@ -436,8 +440,8 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 		SSASpacing:         proto.Float64(0),
 		SSAAngle:           proto.Float64(0),
 		SSABorderStyle:     &engBorderStyle,
-		SSAOutline:         proto.Float64(0.5),
-		SSAShadow:          proto.Float64(0),
+		SSAOutline:         proto.Float64(engOutline),
+		SSAShadow:          proto.Float64(engShadow),
 		SSAAlignment:       &engAlignment,
 		SSAMarginLeft:      &engMarginLeft,
 		SSAMarginRight:     &engMarginRight,
