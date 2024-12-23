@@ -52,6 +52,8 @@ type StyleConfig struct {
 	Alignment      int     `mapstructure:"alignment"`
 	BorderStyle    int     `mapstructure:"border_style"`
 	WrapStyle      string  `mapstructure:"wrap_style"`
+	Outline        float64 `mapstructure:"outline"`
+	Shadow         float64 `mapstructure:"shadow"`
 }
 
 type AlgoConfig struct {
