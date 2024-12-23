@@ -136,7 +136,7 @@ func IsCht(lan string, title string) bool {
 }
 
 func IsEng(lan string, title string) bool {
-	var englishRegex = regexp.MustCompile(`(?i)^(english|)$`)
+	var englishRegex = regexp.MustCompile(`(?i)(english)`)
 	isEngTitle := englishRegex.MatchString(title)
 	return (lan == consts.ENG_LAN) && isEngTitle
 }
