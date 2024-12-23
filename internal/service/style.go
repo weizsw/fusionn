@@ -130,7 +130,8 @@ func (s *styleService) RemovePunctuation(sub *astisub.Subtitles) *astisub.Subtit
 		'）': {}, // Full-width right parenthesis
 		'《': {}, // Left double angle bracket
 		'》': {}, // Right double angle bracket
-		'"': {}, // Full-width left quotation mark
+		'“': {}, // Full-width left quotation mark
+		'”': {}, // Full-width right quotation mark
 		'—': {}, // Full-width dash
 	}
 
@@ -143,8 +144,8 @@ func (s *styleService) RemovePunctuation(sub *astisub.Subtitles) *astisub.Subtit
 
 				// Iterate through each rune in the text
 				for _, r := range text {
-					if r == '—' { // Special case for full-width dash
-						continue // Skip it entirely (don't add space)
+					if r == '-' {
+						continue
 					} else if _, isPunct := punctuations[r]; isPunct {
 						result.WriteRune(' ') // Replace punctuation with space
 					} else {
@@ -253,6 +254,9 @@ func (s *styleService) FontSubSet(filePath string) error {
 	outputPath := filepath.Dir(filePath)
 	fontPath := filepath.Join(".", "asset", "fonts")
 	cmd := exec.Command(assfonts, "-i", filePath, "-f", fontPath, "-o", outputPath)
+	if config.C.Subset.EmbedOnly {
+		cmd.Args = append(cmd.Args, "-e")
+	}
 	logger.L.Info("Running command:", zap.String("command", cmd.String()))
 
 	output, err := cmd.CombinedOutput()
