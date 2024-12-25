@@ -32,7 +32,9 @@ func NewServer() (*http.Server, error) {
 		return nil, err
 	}
 	messageQueue := mq.NewMessageQueue(redisClient)
-	parser := service.NewParser(convertor, ffmpeg, messageQueue)
+	tvdb := pkg.NewTVDB(redisClient)
+	facade := service.NewFacade(redisClient, tvdb)
+	parser := service.NewParser(convertor, ffmpeg, messageQueue, facade)
 	algo := service.NewAlgo()
 	apprise := pkg.NewApprise()
 	extractStage := processor.NewExtractStage(ffmpeg)
