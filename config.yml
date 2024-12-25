@@ -55,3 +55,6 @@ after:
   eng_margin: "{\\pos(192,283)}"
 general:
   force_simplified: true
+tvdb:
+  enabled: false
+  api_key: "1234567890"

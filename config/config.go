@@ -30,6 +30,7 @@ type Config struct {
 	Algo      *AlgoConfig
 	After     *AfterConfig
 	General   *GeneralConfig
+	TVDB      *TVDBConfig
 }
 
 // MustLoad ensures config is loaded before server starts

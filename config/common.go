@@ -83,3 +83,8 @@ type AfterConfig struct {
 type GeneralConfig struct {
 	ForceSimplified bool `mapstructure:"force_simplified"`
 }
+
+type TVDBConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	ApiKey  string `mapstructure:"api_key"`
+}
