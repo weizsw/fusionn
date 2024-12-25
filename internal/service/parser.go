@@ -33,10 +33,11 @@ type parser struct {
 	convertor Convertor
 	ffmpeg    FFMPEG
 	q         mq.MessageQueue
+	facade    Facade
 }
 
-func NewParser(c Convertor, f FFMPEG, q mq.MessageQueue) *parser {
-	return &parser{convertor: c, ffmpeg: f, q: q}
+func NewParser(c Convertor, f FFMPEG, q mq.MessageQueue, facade Facade) *parser {
+	return &parser{convertor: c, ffmpeg: f, q: q, facade: facade}
 }
 
 // ASSContent represents the parsed content of an ASS file
@@ -142,22 +143,6 @@ func (p *parser) Parse(input string) (*astisub.Subtitles, error) {
 		return nil, err
 	}
 
-	// for _, item := range s.Items {
-	// 	if len(item.Lines) > 1 {
-	// 		mergedText := ""
-	// 		for _, line := range item.Lines {
-	// 			for _, lineItem := range line.Items {
-	// 				// Remove the leading "-" from the text and trim spaces
-	// 				lineItem.Text = strings.TrimSpace(strings.TrimPrefix(lineItem.Text, "-"))
-	// 				mergedText += strings.TrimSpace(lineItem.Text) + " "
-	// 			}
-	// 		}
-	// 		// Trim the final merged text to remove any trailing spaces
-	// 		item.Lines[0].Items[0].Text = strings.TrimSpace(mergedText)
-	// 		item.Lines = item.Lines[:1] // Keep only the first line after merging
-	// 	}
-	// }
-
 	return s, nil
 }
 
@@ -244,10 +229,23 @@ func (p *parser) translateToSimplifiedAsync(ctx context.Context, info *model.Ext
 		return err
 	}
 
-	err = p.q.Publish(ctx, consts.TRANSLATE_QUEUE, mq.Message{
+	overview := ""
+	if config.C.TVDB.Enabled {
+		overview, err = p.facade.GetSeriesEpisodeOverview(ctx, info.TVDBSeriesID, info.TVDBSeason, info.TVDBEpisode)
+		if err != nil {
+			return err
+		}
+	}
+
+	msg := mq.Message{
 		FileName: info.FileName,
 		Path:     outputPath,
-	})
+	}
+	if overview != "" {
+		msg.Overview = overview
+	}
+
+	err = p.q.Publish(ctx, consts.TRANSLATE_QUEUE, msg)
 	if err != nil {
 		return err
 	}
