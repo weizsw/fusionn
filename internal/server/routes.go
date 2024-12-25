@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fusionn/internal/middleware"
 	"net/http"
 
 	"github.com/gin-contrib/cors"
@@ -21,7 +22,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 		SkipPaths: []string{"/health"}, // Skip logging for health checks
 	}))
 	r.Use(gin.Recovery())
-
+	r.Use(middleware.RequestLogger())
+	r.Use(middleware.ResponseLogger())
 	r.GET("/", s.HelloWorldHandler)
 
 	r.GET("/health", s.healthHandler)
