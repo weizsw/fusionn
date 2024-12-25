@@ -15,4 +15,6 @@ var Set = wire.NewSet(
 	wire.Bind(new(StyleService), new(*styleService)),
 	NewModifyService,
 	wire.Bind(new(ModifyService), new(*modifyService)),
+	NewFacade,
+	wire.Bind(new(Facade), new(*facade)),
 )

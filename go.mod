@@ -4,6 +4,7 @@ go 1.23.3
 
 require (
 	github.com/asticode/go-astisub v0.29.0
+	github.com/avast/retry-go v2.7.0+incompatible
 	github.com/bytedance/sonic v1.12.4
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gin-contrib/cors v1.7.2
@@ -30,7 +31,6 @@ require (
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/asticode/go-astikit v0.20.0 // indirect
 	github.com/asticode/go-astits v1.8.0 // indirect
-	github.com/avast/retry-go v2.7.0+incompatible // indirect
 	github.com/bytedance/sonic/loader v0.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect

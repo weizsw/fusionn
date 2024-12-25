@@ -14,6 +14,7 @@ type MessageQueue interface {
 type Message struct {
 	FileName string `json:"file_name"`
 	Path     string `json:"path"`
+	Overview string `json:"overview"`
 }
 
 type messageQueue struct {

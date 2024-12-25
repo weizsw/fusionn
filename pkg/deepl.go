@@ -19,10 +19,14 @@ type DeepL interface {
 	TranslateDeepLX(text []string, targetLang, sourceLang string) (*deepLTranslateResp, error)
 }
 type deepL struct {
+	client *http.Client
 }
 
 func NewDeepL() *deepL {
-	return &deepL{}
+	client := &http.Client{
+		Transport: NewLoggingRoundTripper(logger.S),
+	}
+	return &deepL{client: client}
 }
 
 type deepLTranslateReq struct {
@@ -65,8 +69,7 @@ func (d *deepL) Translate(text []string, targetLang, sourceLang string) (*deepLT
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "DeepL-Auth-Key 6ec98a4c-52f1-a773-d4a6-7606a3720c3f:fx")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := d.client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
 		logger.S.Infof("Error sending request: %s", err)
 		return nil, err
@@ -142,8 +145,7 @@ func (d *deepL) TranslateDeepLX(text []string, targetLang, sourceLang string) (*
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "DeepL-Auth-Key helloworld")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := d.client.Do(req)
 	if err != nil {
 		logger.S.Infof("Error sending request: %s", err)
 		return nil, err

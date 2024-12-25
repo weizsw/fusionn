@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"bytes"
+	"fusionn/logger"
 	"io"
 	"net/http"
 )
@@ -16,7 +17,9 @@ type apprise struct {
 
 func NewApprise() *apprise {
 	return &apprise{
-		client: &http.Client{},
+		client: &http.Client{
+			Transport: NewLoggingRoundTripper(logger.S),
+		},
 	}
 }
 
