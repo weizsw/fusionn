@@ -7,6 +7,7 @@ import (
 	"fusionn/internal/service"
 	"fusionn/logger"
 
+	"github.com/spf13/cast"
 	"go.uber.org/zap"
 )
 
@@ -24,7 +25,15 @@ func (s *ExtractStage) Process(ctx context.Context, input any) (any, error) {
 		return nil, errs.ErrInvalidInput
 	}
 
-	logger.L.Info("[ExtractStage] starting subtitle extraction", zap.String("file_path", req.SonarrEpisodefilePath))
+	logger.L.Info("[ExtractStage] starting subtitle extraction", zap.String("file_path", req.SonarrEpisodefilePath), zap.String("tvdb_series_id", req.SonarrSeriesTVDBID), zap.String("season", req.SonarrEpisodefileSeasonNumber), zap.String("episode", req.SonarrEpisodefileEpisodeNumbers))
 
-	return s.ffmpeg.ExtractStreamToBuffer(req.SonarrEpisodefilePath)
+	res, err := s.ffmpeg.ExtractStreamToBuffer(req.SonarrEpisodefilePath)
+	if err != nil {
+		return nil, err
+	}
+	res.TVDBSeriesID = cast.ToInt(req.SonarrSeriesTVDBID)
+	res.TVDBSeason = cast.ToInt(req.SonarrEpisodefileSeasonNumber)
+	res.TVDBEpisode = cast.ToInt(req.SonarrEpisodefileEpisodeNumbers)
+
+	return res, nil
 }
