@@ -46,7 +46,11 @@ func (r *redisClient) Set(ctx context.Context, key string, value interface{}, ex
 }
 
 func (r *redisClient) Get(ctx context.Context, key string) (string, error) {
-	return r.client.Get(ctx, key).Result()
+	val, err := r.client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return "", nil
+	}
+	return val, err
 }
 
 func (r *redisClient) Delete(ctx context.Context, key string) error {
