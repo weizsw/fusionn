@@ -41,25 +41,33 @@ type SubsetConfig struct {
 }
 
 type StyleConfig struct {
-	ChsFontName     string  `mapstructure:"chs_font_name"`
-	EngFontName     string  `mapstructure:"eng_font_name"`
-	ChsFontSize     float64 `mapstructure:"chs_font_size"`
-	EngFontSize     float64 `mapstructure:"eng_font_size"`
-	ChsBold         bool    `mapstructure:"chs_bold"`
-	EngBold         bool    `mapstructure:"eng_bold"`
-	MarginLeft      int     `mapstructure:"margin_left"`
-	MarginRight     int     `mapstructure:"margin_right"`
-	MarginVertical  int     `mapstructure:"margin_vertical"`
-	Alignment       int     `mapstructure:"alignment"`
-	BorderStyle     int     `mapstructure:"border_style"`
-	WrapStyle       string  `mapstructure:"wrap_style"`
-	Outline         float64 `mapstructure:"outline"`
-	Shadow          float64 `mapstructure:"shadow"`
-	ChsPrimaryColor string  `mapstructure:"chs_primary_color"`
-	EngPrimaryColor string  `mapstructure:"eng_primary_color"`
-	SecondaryColor  string  `mapstructure:"secondary_color"`
-	OutlineColor    string  `mapstructure:"outline_color"`
-	BackColor       string  `mapstructure:"back_color"`
+	ChsStyle       *ChsStyleConfig `mapstructure:"chs_style"`
+	EngStyle       *EngStyleConfig `mapstructure:"eng_style"`
+	MarginLeft     int             `mapstructure:"margin_left"`
+	MarginRight    int             `mapstructure:"margin_right"`
+	MarginVertical int             `mapstructure:"margin_vertical"`
+	Alignment      int             `mapstructure:"alignment"`
+	BorderStyle    int             `mapstructure:"border_style"`
+	WrapStyle      string          `mapstructure:"wrap_style"`
+	Outline        float64         `mapstructure:"outline"`
+	Shadow         float64         `mapstructure:"shadow"`
+	SecondaryColor string          `mapstructure:"secondary_color"`
+	OutlineColor   string          `mapstructure:"outline_color"`
+	BackColor      string          `mapstructure:"back_color"`
+}
+
+type ChsStyleConfig struct {
+	FontName     string  `mapstructure:"font_name"`
+	FontSize     float64 `mapstructure:"font_size"`
+	Bold         bool    `mapstructure:"bold"`
+	PrimaryColor string  `mapstructure:"primary_color"`
+}
+
+type EngStyleConfig struct {
+	FontName     string  `mapstructure:"font_name"`
+	FontSize     float64 `mapstructure:"font_size"`
+	Bold         bool    `mapstructure:"bold"`
+	PrimaryColor string  `mapstructure:"primary_color"`
 }
 
 type AlgoConfig struct {
