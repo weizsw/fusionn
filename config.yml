@@ -22,24 +22,36 @@ redis:
   db: 0
 subset:
   enabled: true
+  embed_only: true
 style:
-  chs_font_name: "WenQuanYi Micro Hei"
-  chs_font_size: 19
-  eng_font_name: "WenQuanYi Micro Hei"
-  eng_font_size: 12
-  chs_bold: true
-  eng_bold: true
+  chs_style:
+    font_name: "WenQuanYi Micro Hei"
+    font_size: 19
+    bold: true
+    primary_color: "&H00C8C8C8"
+    # primary_color: "&H00C5C5C5"
+  eng_style:
+    font_name: "WenQuanYi Micro Hei"
+    font_size: 12
+    bold: true
+    primary_color: "&H000D94CC"
+    # primary_color: "&H0000A0DC"
   margin_left: 10
   margin_right: 10
-  margin_vertical: 10
+  margin_vertical: 5
   alignment: 2
   border_style: 1
   wrap_style: "0" # 2: no wrap, 1: wrap
+  outline: 0.5
+  shadow: 0.3
+  secondary_color: "&H0000FFFF"
+  outline_color: "&H00000000"
+  back_color: "&H00000000"
 algo:
   max_overlapping_segments: 3
 after:
-  reduce_margin: true
-  default_margin: "{\\pos(192,263)}"
-  eng_margin: "{\\pos(192,278)}"
+  reduce_margin: false
+  default_margin: "{\\pos(192,272)}"
+  eng_margin: "{\\pos(192,283)}"
 general:
   force_simplified: true

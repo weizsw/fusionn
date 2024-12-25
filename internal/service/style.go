@@ -289,189 +289,119 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 		return sub
 	}
 
-	resX := 384
-	resY := 288
-	sub.Metadata = &astisub.Metadata{}
-	sub.Metadata.Title = "Default Aegisub file"
-	sub.Metadata.SSAScriptType = "v4.00+"
-	sub.Metadata.SSAWrapStyle = config.C.Style.WrapStyle
-	sub.Metadata.SSAPlayResX = &resX
-	sub.Metadata.SSAPlayResY = &resY
-	sub.Metadata.SSATimer = proto.Float64(100)
-	var (
-		primaryColor   *astisub.Color
-		secondaryColor *astisub.Color
-		outlineColor   *astisub.Color
-		backColor      *astisub.Color
-		err            error
+	// Initialize metadata
+	sub.Metadata = s.initializeMetadata()
+
+	// Create default style
+	defaultStyle := s.createStyleAttributes(
+		config.C.Style.ChsStyle.PrimaryColor,
+		config.C.Style.SecondaryColor,
+		config.C.Style.OutlineColor,
+		config.C.Style.BackColor,
+		styleConfig{
+			fontName: config.C.Style.ChsStyle.FontName,
+			fontSize: config.C.Style.ChsStyle.FontSize,
+			bold:     config.C.Style.ChsStyle.Bold,
+			scaleX:   90,
+			scaleY:   100,
+		},
 	)
 
-	primaryColor, err = s.parseASSColor(config.C.Style.ChsPrimaryColor)
-	if err != nil {
-		logger.S.Error("Error parsing primarycolor:", err)
-		primaryColor = &astisub.Color{
-			Alpha: 0,
-			Blue:  197,
-			Green: 197,
-			Red:   197,
+	// Create English style
+	engStyle := s.createStyleAttributes(
+		config.C.Style.EngStyle.PrimaryColor,
+		config.C.Style.SecondaryColor,
+		config.C.Style.OutlineColor,
+		config.C.Style.BackColor,
+		styleConfig{
+			fontName: config.C.Style.EngStyle.FontName,
+			fontSize: config.C.Style.EngStyle.FontSize,
+			bold:     config.C.Style.EngStyle.Bold,
+			scaleX:   100,
+			scaleY:   100,
+		},
+	)
+
+	// Set styles
+	sub.Styles = map[string]*astisub.Style{
+		"Default": {ID: "Default", InlineStyle: defaultStyle},
+		"Eng":     {ID: "Eng", InlineStyle: engStyle},
+	}
+
+	// Set default style for items without style
+	for _, item := range sub.Items {
+		if item.Style == nil {
+			item.Style = &astisub.Style{ID: "Default"}
 		}
 	}
-	secondaryColor, err = s.parseASSColor(config.C.Style.SecondaryColor)
-	if err != nil {
-		logger.S.Error("Error parsing secondarycolor:", err)
-		secondaryColor = &astisub.Color{
-			Alpha: 0,
-			Blue:  255,
-			Green: 255,
-			Red:   0,
-		}
+
+	return sub
+}
+
+type styleConfig struct {
+	fontName string
+	fontSize float64
+	bold     bool
+	scaleX   float64
+	scaleY   float64
+}
+
+func (s *styleService) initializeMetadata() *astisub.Metadata {
+	resX, resY := 384, 288
+	return &astisub.Metadata{
+		Title:         "Default Aegisub file",
+		SSAScriptType: "v4.00+",
+		SSAWrapStyle:  config.C.Style.WrapStyle,
+		SSAPlayResX:   &resX,
+		SSAPlayResY:   &resY,
+		SSATimer:      proto.Float64(100),
 	}
-	outlineColor, err = s.parseASSColor(config.C.Style.OutlineColor)
-	if err != nil {
-		logger.S.Error("Error parsing outlinecolor:", err)
-		outlineColor = &astisub.Color{
-			Alpha: 0,
-			Blue:  0,
-			Green: 0,
-			Red:   0,
-		}
-	}
-	backColor, err = s.parseASSColor(config.C.Style.BackColor)
-	if err != nil {
-		logger.S.Error("Error parsing backcolor:", err)
-		backColor = &astisub.Color{
-			Alpha: 128,
-			Blue:  0,
-			Green: 0,
-			Red:   0,
-		}
-	}
-	borderStyle := config.C.Style.BorderStyle
-	alignment := config.C.Style.Alignment
-	marginLeft, marginRight := config.C.Style.MarginLeft, config.C.Style.MarginRight
-	marginVertical := config.C.Style.MarginVertical
-	outline := config.C.Style.Outline
-	shadow := config.C.Style.Shadow
-	encoding := 1
-	defaultStyle := &astisub.StyleAttributes{
-		SSAFontName:        config.C.Style.ChsFontName,
-		SSAFontSize:        proto.Float64(config.C.Style.ChsFontSize),
+}
+
+func (s *styleService) createStyleAttributes(primaryColorStr, secondaryColorStr, outlineColorStr, backColorStr string, cfg styleConfig) *astisub.StyleAttributes {
+	// Parse colors with fallbacks
+	primaryColor := s.parseColorWithFallback(primaryColorStr, astisub.Color{Blue: 197, Green: 197, Red: 197})
+	secondaryColor := s.parseColorWithFallback(secondaryColorStr, astisub.Color{Blue: 255, Green: 255})
+	outlineColor := s.parseColorWithFallback(outlineColorStr, astisub.Color{})
+	backColor := s.parseColorWithFallback(backColorStr, astisub.Color{Alpha: 128})
+
+	return &astisub.StyleAttributes{
+		SSAFontName:        cfg.fontName,
+		SSAFontSize:        proto.Float64(cfg.fontSize),
 		SSAPrimaryColour:   primaryColor,
 		SSASecondaryColour: secondaryColor,
 		SSAOutlineColour:   outlineColor,
 		SSABackColour:      backColor,
-		SSABold:            proto.Bool(config.C.Style.ChsBold),
+		SSABold:            proto.Bool(cfg.bold),
 		SSAItalic:          proto.Bool(false),
 		SSAUnderline:       proto.Bool(false),
 		SSAStrikeout:       proto.Bool(false),
-		SSAScaleX:          proto.Float64(90),
-		SSAScaleY:          proto.Float64(100),
+		SSAScaleX:          proto.Float64(cfg.scaleX),
+		SSAScaleY:          proto.Float64(cfg.scaleY),
 		SSASpacing:         proto.Float64(0),
 		SSAAngle:           proto.Float64(0),
-		SSABorderStyle:     &borderStyle,
-		SSAOutline:         proto.Float64(outline),
-		SSAShadow:          proto.Float64(shadow),
-		SSAAlignment:       &alignment,
-		SSAMarginLeft:      &marginLeft,
-		SSAMarginRight:     &marginRight,
-		SSAMarginVertical:  &marginVertical,
-		SSAEncoding:        &encoding,
+		SSABorderStyle:     &config.C.Style.BorderStyle,
+		SSAOutline:         proto.Float64(config.C.Style.Outline),
+		SSAShadow:          proto.Float64(config.C.Style.Shadow),
+		SSAAlignment:       &config.C.Style.Alignment,
+		SSAMarginLeft:      &config.C.Style.MarginLeft,
+		SSAMarginRight:     &config.C.Style.MarginRight,
+		SSAMarginVertical:  &config.C.Style.MarginVertical,
+		SSAEncoding:        intPtr(1),
 	}
+}
 
-	// Create English style
-	engPrimaryColor, err := s.parseASSColor(config.C.Style.EngPrimaryColor)
+func intPtr(i int) *int {
+	return &i
+}
+
+func (s *styleService) parseColorWithFallback(colorStr string, fallback astisub.Color) *astisub.Color {
+	color, err := s.parseASSColor(colorStr)
 	if err != nil {
-		logger.S.Error("Error parsing Eng primarycolor:", err)
-		engPrimaryColor = &astisub.Color{
-			Alpha: 0,
-			Blue:  220,
-			Green: 160,
-			Red:   0,
-		}
+		logger.S.Error("Error parsing color:", err)
+		return &fallback
 	}
-	engSecondaryColor, err := s.parseASSColor(config.C.Style.SecondaryColor)
-	if err != nil {
-		logger.S.Error("Error parsing Eng secondarycolor:", err)
-		engSecondaryColor = &astisub.Color{
-			Alpha: 0,
-			Blue:  255,
-			Green: 255,
-			Red:   0,
-		}
-	}
-	engOutlineColor, err := s.parseASSColor(config.C.Style.OutlineColor)
-	if err != nil {
-		logger.S.Error("Error parsing Eng outlinecolor:", err)
-		engOutlineColor = &astisub.Color{
-			Alpha: 0,
-			Blue:  0,
-			Green: 0,
-			Red:   0,
-		}
-	}
-	engBackColor, err := s.parseASSColor(config.C.Style.BackColor)
-	if err != nil {
-		logger.S.Error("Error parsing Eng backcolor:", err)
-		engBackColor = &astisub.Color{
-			Alpha: 128,
-			Blue:  0,
-			Green: 0,
-			Red:   0,
-		}
-	}
-
-	engBorderStyle := config.C.Style.BorderStyle
-	engAlignment := config.C.Style.Alignment
-	engMarginLeft, engMarginRight := config.C.Style.MarginLeft, config.C.Style.MarginRight
-	engMarginVertical := config.C.Style.MarginVertical
-	engOutline := config.C.Style.Outline
-	engShadow := config.C.Style.Shadow
-	engEncoding := 1
-
-	engStyle := &astisub.StyleAttributes{
-		SSAFontName:        config.C.Style.EngFontName,
-		SSAFontSize:        proto.Float64(config.C.Style.EngFontSize),
-		SSAPrimaryColour:   engPrimaryColor,
-		SSASecondaryColour: engSecondaryColor,
-		SSAOutlineColour:   engOutlineColor,
-		SSABackColour:      engBackColor,
-		SSABold:            proto.Bool(config.C.Style.EngBold),
-		SSAItalic:          proto.Bool(false),
-		SSAUnderline:       proto.Bool(false),
-		SSAStrikeout:       proto.Bool(false),
-		SSAScaleX:          proto.Float64(100),
-		SSAScaleY:          proto.Float64(100),
-		SSASpacing:         proto.Float64(0),
-		SSAAngle:           proto.Float64(0),
-		SSABorderStyle:     &engBorderStyle,
-		SSAOutline:         proto.Float64(engOutline),
-		SSAShadow:          proto.Float64(engShadow),
-		SSAAlignment:       &engAlignment,
-		SSAMarginLeft:      &engMarginLeft,
-		SSAMarginRight:     &engMarginRight,
-		SSAMarginVertical:  &engMarginVertical,
-		SSAEncoding:        &engEncoding,
-	}
-
-	sub.Styles = map[string]*astisub.Style{
-		"Default": {
-			ID:          "Default",
-			InlineStyle: defaultStyle,
-		},
-		"Eng": {
-			ID:          "Eng",
-			InlineStyle: engStyle,
-		},
-	}
-
-	for _, item := range sub.Items {
-		if item.Style == nil {
-			item.Style = &astisub.Style{
-				ID: "Default",
-			}
-		}
-	}
-	return sub
+	return color
 }
 
 func (s *styleService) parseASSColor(assColor string) (*astisub.Color, error) {
