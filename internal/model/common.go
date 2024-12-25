@@ -78,14 +78,20 @@ type Stream struct {
 }
 
 type ExtractedData struct {
-	FileName   string
-	EngSubPath string
-	ChsSubPath string
-	ChtSubPath string
-	SdhSubPath string
+	TVDBSeriesID int
+	TVDBSeason   int
+	TVDBEpisode  int
+	FileName     string
+	EngSubPath   string
+	ChsSubPath   string
+	ChtSubPath   string
+	SdhSubPath   string
 }
 
 type ExtractedStream struct {
+	TVDBSeriesID int
+	TVDBSeason   int
+	TVDBEpisode  int
 	FileName     string
 	FilePath     string
 	EngSubBuffer []byte
@@ -96,6 +102,9 @@ type ExtractedStream struct {
 }
 
 type ParsedSubtitles struct {
+	TVDBSeriesID  int
+	TVDBSeason    int
+	TVDBEpisode   int
 	FileName      string
 	FilePath      string
 	EngSubtitle   *astisub.Subtitles
