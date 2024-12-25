@@ -231,7 +231,7 @@ func (p *parser) translateToSimplifiedAsync(ctx context.Context, info *model.Ext
 
 	overview := ""
 	if config.C.TVDB.Enabled {
-		overview, err = p.facade.GetSeriesEpisodeOverview(ctx, info.TVDBSeriesID, info.TVDBSeason, info.TVDBEpisode)
+		overview, err = p.facade.GetSeriesEpisodeOverview(ctx, info.TVDBSeriesID, info.Season, info.Episode)
 		if err != nil {
 			return err
 		}

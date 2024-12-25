@@ -1,10 +1,10 @@
 package model
 
 type ExtractRequest struct {
-	SonarrEpisodefilePath           string `json:"sonarr_episodefile_path"`
-	SonarrSeriesTVDBID              string `json:"sonarr_series_tvdbid"`
-	SonarrEpisodefileSeasonNumber   string `json:"sonarr_episodefile_seasonnumber"`
-	SonarrEpisodefileEpisodeNumbers string `json:"sonarr_episodefile_episodenumbers"`
+	FilePath       string `json:"file_path"`
+	SeriesTVDBID   string `json:"series_tvdbid"`
+	SeasonNumber   string `json:"season_number"`
+	EpisodeNumbers string `json:"episode_numbers"`
 }
 
 type BatchRequest struct {

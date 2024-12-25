@@ -82,7 +82,7 @@ func (h *BatchHandler) Batch(c *gin.Context) error {
 
 		filePath := filepath.Join(req.Path, file.Name())
 		if _, err := h.pipeline.Execute(ctx, &model.ExtractRequest{
-			SonarrEpisodefilePath: filePath,
+			FilePath: filePath,
 		}); err != nil {
 			return fmt.Errorf("failed to process video %s: %w", filePath, err)
 		}
