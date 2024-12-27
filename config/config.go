@@ -19,18 +19,19 @@ var (
 )
 
 type Config struct {
-	Apprise   *AppriseConfig
-	Translate *TranslateConfig
-	Redis     *RedisConfig
-	LLM       *LLMConfig
-	DeepLX    *DeepLXConfig
-	SQLite    *SQLiteConfig
-	Subset    *SubsetConfig
-	Style     *StyleConfig
-	Algo      *AlgoConfig
-	After     *AfterConfig
-	General   *GeneralConfig
-	TVDB      *TVDBConfig
+	Apprise     *AppriseConfig
+	Translate   *TranslateConfig
+	Redis       *RedisConfig
+	LLM         *LLMConfig
+	DeepLX      *DeepLXConfig
+	SQLite      *SQLiteConfig
+	Subset      *SubsetConfig
+	Style       *StyleConfig
+	Algo        *AlgoConfig
+	After       *AfterConfig
+	General     *GeneralConfig
+	TVDB        *TVDBConfig
+	GPTSubTrans *GPTSubTransConfig
 }
 
 // MustLoad ensures config is loaded before server starts

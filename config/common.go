@@ -88,3 +88,7 @@ type TVDBConfig struct {
 	Enabled bool   `mapstructure:"enabled"`
 	ApiKey  string `mapstructure:"api_key"`
 }
+
+type GPTSubTransConfig struct {
+	Provider string `mapstructure:"provider"`
+}
