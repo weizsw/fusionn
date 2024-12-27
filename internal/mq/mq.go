@@ -15,6 +15,7 @@ type Message struct {
 	FileName string `json:"file_name"`
 	Path     string `json:"path"`
 	Overview string `json:"overview"`
+	Provider string `json:"provider"`
 }
 
 type messageQueue struct {
