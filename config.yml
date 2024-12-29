@@ -58,5 +58,5 @@ general:
 tvdb:
   enabled: false
   api_key: "1234567890"
-gpt_subtrans:
+gptsubtrans:
   provider: local

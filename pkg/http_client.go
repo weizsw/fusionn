@@ -29,13 +29,19 @@ func NewLoggingRoundTripper(logger *zap.SugaredLogger) http.RoundTripper {
 }
 
 func (l loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Log request
-	body, _ := io.ReadAll(req.Body)
-	req.Body = io.NopCloser(bytes.NewBuffer(body))
+	// Create a copy of the body for logging
+	var bodyBytes []byte
+	if req.Body != nil {
+		bodyBytes, _ = io.ReadAll(req.Body)
+		req.Body.Close()
+		// Create new ReadCloser for both logging and the actual request
+		req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+	}
+
 	l.logger.Infow("HTTP Request",
 		"url", req.URL,
 		"method", req.Method,
-		"body", string(body),
+		"body", string(bodyBytes),
 	)
 
 	// Execute request
@@ -44,12 +50,18 @@ func (l loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		return nil, err
 	}
 
-	// Log response
-	respBody, _ := io.ReadAll(resp.Body)
-	resp.Body = io.NopCloser(bytes.NewBuffer(respBody))
+	// Create a copy of response body for logging
+	var respBodyBytes []byte
+	if resp.Body != nil {
+		respBodyBytes, _ = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		// Create new ReadCloser for both logging and the client
+		resp.Body = io.NopCloser(bytes.NewBuffer(respBodyBytes))
+	}
+
 	l.logger.Infow("HTTP Response",
 		"status", resp.Status,
-		"body", string(respBody),
+		"body", string(respBodyBytes),
 	)
 
 	return resp, nil
