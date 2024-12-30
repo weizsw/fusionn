@@ -18,7 +18,7 @@ type apprise struct {
 func NewApprise() *apprise {
 	return &apprise{
 		client: &http.Client{
-			Transport: NewLoggingRoundTripper(logger.S),
+			Transport: NewLoggingRoundTripper(logger.L),
 		},
 	}
 }

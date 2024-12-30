@@ -33,7 +33,7 @@ type tvdb struct {
 
 func NewTVDB(cache cache.RedisClient) *tvdb {
 	client := &http.Client{
-		Transport: NewLoggingRoundTripper(logger.S),
+		Transport: NewLoggingRoundTripper(logger.L),
 	}
 	return &tvdb{client: client, cache: cache}
 }

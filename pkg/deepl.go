@@ -24,7 +24,7 @@ type deepL struct {
 
 func NewDeepL() *deepL {
 	client := &http.Client{
-		Transport: NewLoggingRoundTripper(logger.S),
+		Transport: NewLoggingRoundTripper(logger.L),
 	}
 	return &deepL{client: client}
 }

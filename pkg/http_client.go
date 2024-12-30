@@ -18,10 +18,10 @@ var retryOptions = []retry.Option{
 
 type loggingRoundTripper struct {
 	next   http.RoundTripper
-	logger *zap.SugaredLogger
+	logger *zap.Logger
 }
 
-func NewLoggingRoundTripper(logger *zap.SugaredLogger) http.RoundTripper {
+func NewLoggingRoundTripper(logger *zap.Logger) http.RoundTripper {
 	return loggingRoundTripper{
 		next:   http.DefaultTransport,
 		logger: logger,
@@ -38,10 +38,10 @@ func (l loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 	}
 
-	l.logger.Infow("HTTP Request",
-		"url", req.URL,
-		"method", req.Method,
-		"body", string(bodyBytes),
+	l.logger.Info("[HTTP Request]",
+		zap.String("url", req.URL.String()),
+		zap.String("method", req.Method),
+		zap.String("body", string(bodyBytes)),
 	)
 
 	// Execute request
@@ -59,9 +59,9 @@ func (l loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		resp.Body = io.NopCloser(bytes.NewBuffer(respBodyBytes))
 	}
 
-	l.logger.Infow("HTTP Response",
-		"status", resp.Status,
-		"body", string(respBodyBytes),
+	l.logger.Info("[HTTP Response]",
+		zap.String("status", resp.Status),
+		zap.String("body", string(respBodyBytes)),
 	)
 
 	return resp, nil
