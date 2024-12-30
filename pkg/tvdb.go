@@ -57,7 +57,7 @@ func (t *tvdb) Login() (string, error) {
 	req.Header.Set("Accept", "application/json")
 	var loginResp model.TVDBLoginResponse
 
-	retry.Do(func() error {
+	if err := retry.Do(func() error {
 		resp, err := t.client.Do(req)
 		if err != nil {
 			return err
@@ -83,7 +83,9 @@ func (t *tvdb) Login() (string, error) {
 		}
 
 		return nil
-	}, retryOptions...)
+	}, retryOptions...); err != nil {
+		return "", err
+	}
 
 	return loginResp.Data.Token, nil
 }
@@ -115,7 +117,7 @@ func (t *tvdb) GetSeriesEpisodes(ctx context.Context, id int) (*model.TVDBSeries
 	req.Header.Set("Accept", "application/json")
 	var series model.TVDBSeries
 
-	retry.Do(func() error {
+	if err := retry.Do(func() error {
 		resp, err := t.client.Do(req)
 		if err != nil {
 			return err
@@ -137,7 +139,9 @@ func (t *tvdb) GetSeriesEpisodes(ctx context.Context, id int) (*model.TVDBSeries
 		}
 
 		return nil
-	}, retryOptions...)
+	}, retryOptions...); err != nil {
+		return nil, err
+	}
 
 	return &series, nil
 }
