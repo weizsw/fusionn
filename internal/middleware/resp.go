@@ -2,9 +2,10 @@ package middleware
 
 import (
 	"bytes"
-	"log"
+	"fusionn/logger"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // ResponseLogger captures and logs the response
@@ -20,12 +21,12 @@ func ResponseLogger() gin.HandlerFunc {
 		// Process request
 		c.Next()
 
-		// Log the response after request is processed
-		log.Printf("Response: %s %s - Status: %d - Body: %s",
-			c.Request.Method,
-			c.Request.URL.Path,
-			responseBuffer.Status(),
-			responseBuffer.body.String())
+		// Use zap logger instead of standard log
+		logger.L.Info("[outgoing response]",
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.Request.URL.Path),
+			zap.Int("status", responseBuffer.Status()),
+			zap.String("body", responseBuffer.body.String()))
 	}
 }
 
