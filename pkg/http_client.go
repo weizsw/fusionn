@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"bytes"
+	"fusionn/logger"
 	"io"
 	"net/http"
 	"time"
@@ -14,6 +15,10 @@ var retryOptions = []retry.Option{
 	retry.Attempts(3),
 	retry.Delay(1 * time.Second),
 	retry.MaxJitter(1 * time.Second),
+	retry.OnRetry(func(n uint, err error) {
+		logger.L.Error("[retry]", zap.Error(err))
+	}),
+	retry.LastErrorOnly(true),
 }
 
 type loggingRoundTripper struct {
