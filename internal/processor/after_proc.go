@@ -28,6 +28,10 @@ func (a *AfterStage) Process(ctx context.Context, input any) (any, error) {
 		return nil, errs.ErrInvalidInput
 	}
 
+	if !config.C.After.ReduceMargin {
+		return req, nil
+	}
+
 	filePath := req.ExportedPath
 	if config.C.Subset.Enabled {
 		filePath = utils.ExtractPathWithoutExtension(filePath)
