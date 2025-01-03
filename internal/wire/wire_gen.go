@@ -42,7 +42,7 @@ func NewServer() (*http.Server, error) {
 	cleanStage := processor.NewCleanStage(parser)
 	segMergeStage := processor.NewSegMergeStage(algo)
 	styleService := service.NewStyleService()
-	styleStage := processor.NewStyleStage(styleService)
+	styleStage := processor.NewStyleStage(styleService, ffmpeg)
 	exportStage := processor.NewExportStage()
 	subsetStage := processor.NewSubsetStage(styleService)
 	notiStage := processor.NewNotiStage(apprise)
