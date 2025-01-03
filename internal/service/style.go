@@ -290,7 +290,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles, width, height int) *asti
 		return sub
 	}
 
-	chsFS, sx := s.calculateScaling(config.C.Style.ChsStyle.FontSize, width, height)
+	chsFS, _ := s.calculateScaling(config.C.Style.ChsStyle.FontSize, width, height)
 	engFS, _ := s.calculateScaling(config.C.Style.EngStyle.FontSize, width, height)
 
 	// Initialize metadata
@@ -306,7 +306,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles, width, height int) *asti
 			fontName: config.C.Style.ChsStyle.FontName,
 			fontSize: chsFS,
 			bold:     config.C.Style.ChsStyle.Bold,
-			scaleX:   sx,
+			scaleX:   90,
 			scaleY:   100,
 		},
 	)
@@ -321,7 +321,7 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles, width, height int) *asti
 			fontName: config.C.Style.EngStyle.FontName,
 			fontSize: engFS,
 			bold:     config.C.Style.EngStyle.Bold,
-			scaleX:   sx,
+			scaleX:   90,
 			scaleY:   100,
 		},
 	)
