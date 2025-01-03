@@ -15,8 +15,8 @@ type StyleStage struct {
 	ffmpeg       service.FFmpeg
 }
 
-func NewStyleStage(styleService service.StyleService) *StyleStage {
-	return &StyleStage{styleService: styleService}
+func NewStyleStage(styleService service.StyleService, ffmpeg service.FFmpeg) *StyleStage {
+	return &StyleStage{styleService: styleService, ffmpeg: ffmpeg}
 }
 
 func (s *StyleStage) Process(ctx context.Context, input any) (any, error) {
