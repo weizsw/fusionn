@@ -178,6 +178,11 @@ func (p *parser) ParseFromBytes(ctx context.Context, stream *model.ExtractedStre
 		parsedSubtitles.SdhSubtitle = sdhSub
 	}
 
+	if len(stream.SdhSubBuffer) > 0 && len(stream.EngSubBuffer) == 0 {
+		engSub := p.RemoveSDH(sdhSub)
+		parsedSubtitles.EngSubtitle = engSub
+	}
+
 	// Try to get Chinese simplified subtitles
 	if len(stream.ChsSubBuffer) > 0 {
 		chsSub, err = astisub.ReadFromSRT(bytes.NewReader(stream.ChsSubBuffer))
