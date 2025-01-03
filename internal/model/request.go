@@ -14,4 +14,5 @@ type BatchRequest struct {
 type AsyncMergeRequest struct {
 	ChsSubtilePath string `json:"chs_subtitle_path"`
 	EngSubtilePath string `json:"eng_subtitle_path"`
+	VideoPath      string `json:"video_path"`
 }

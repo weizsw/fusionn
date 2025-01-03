@@ -243,9 +243,10 @@ func (p *parser) translateToSimplifiedAsync(ctx context.Context, info *model.Ext
 	}
 
 	msg := mq.Message{
-		FileName: info.FileName,
-		Path:     outputPath,
-		Provider: config.C.GPTSubTrans.Provider,
+		FileName:  info.FileName,
+		Path:      outputPath,
+		VideoPath: info.FilePath,
+		Provider:  config.C.GPTSubTrans.Provider,
 	}
 	if overview != "" {
 		msg.Overview = overview
