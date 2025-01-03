@@ -31,12 +31,12 @@ type Parser interface {
 
 type parser struct {
 	convertor Convertor
-	ffmpeg    FFMPEG
+	ffmpeg    FFmpeg
 	q         mq.MessageQueue
 	facade    Facade
 }
 
-func NewParser(c Convertor, f FFMPEG, q mq.MessageQueue, facade Facade) *parser {
+func NewParser(c Convertor, f FFmpeg, q mq.MessageQueue, facade Facade) *parser {
 	return &parser{convertor: c, ffmpeg: f, q: q, facade: facade}
 }
 
@@ -176,6 +176,11 @@ func (p *parser) ParseFromBytes(ctx context.Context, stream *model.ExtractedStre
 			return nil, fmt.Errorf("failed to parse SDH subtitles: %w", err)
 		}
 		parsedSubtitles.SdhSubtitle = sdhSub
+	}
+
+	if len(stream.SdhSubBuffer) > 0 && len(stream.EngSubBuffer) == 0 {
+		engSub := p.RemoveSDH(sdhSub)
+		parsedSubtitles.EngSubtitle = engSub
 	}
 
 	// Try to get Chinese simplified subtitles
