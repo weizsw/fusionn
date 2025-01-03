@@ -31,12 +31,12 @@ type Parser interface {
 
 type parser struct {
 	convertor Convertor
-	ffmpeg    FFMPEG
+	ffmpeg    FFmpeg
 	q         mq.MessageQueue
 	facade    Facade
 }
 
-func NewParser(c Convertor, f FFMPEG, q mq.MessageQueue, facade Facade) *parser {
+func NewParser(c Convertor, f FFmpeg, q mq.MessageQueue, facade Facade) *parser {
 	return &parser{convertor: c, ffmpeg: f, q: q, facade: facade}
 }
 

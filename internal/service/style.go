@@ -6,6 +6,7 @@ import (
 	"fusionn/internal/consts"
 	"fusionn/logger"
 	"fusionn/utils"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,7 +20,7 @@ import (
 )
 
 type StyleService interface {
-	AddStyle(sub *astisub.Subtitles) *astisub.Subtitles
+	AddStyle(sub *astisub.Subtitles, width, height int) *astisub.Subtitles
 	FontSubSet(filePath string) error
 	ReduceMargin(sub *astisub.Subtitles, engMargin, defaultMargin string) *astisub.Subtitles
 	ReplaceSpecialCharacters(sub *astisub.Subtitles) *astisub.Subtitles
@@ -284,10 +285,13 @@ func (s *styleService) FontSubSet(filePath string) error {
 	return nil
 }
 
-func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
+func (s *styleService) AddStyle(sub *astisub.Subtitles, width, height int) *astisub.Subtitles {
 	if sub == nil {
 		return sub
 	}
+
+	chsFS, sx := s.calculateScaling(config.C.Style.ChsStyle.FontSize, width, height)
+	engFS, _ := s.calculateScaling(config.C.Style.EngStyle.FontSize, width, height)
 
 	// Initialize metadata
 	sub.Metadata = s.initializeMetadata()
@@ -300,9 +304,9 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 		config.C.Style.BackColor,
 		styleConfig{
 			fontName: config.C.Style.ChsStyle.FontName,
-			fontSize: config.C.Style.ChsStyle.FontSize,
+			fontSize: chsFS,
 			bold:     config.C.Style.ChsStyle.Bold,
-			scaleX:   90,
+			scaleX:   sx,
 			scaleY:   100,
 		},
 	)
@@ -315,9 +319,9 @@ func (s *styleService) AddStyle(sub *astisub.Subtitles) *astisub.Subtitles {
 		config.C.Style.BackColor,
 		styleConfig{
 			fontName: config.C.Style.EngStyle.FontName,
-			fontSize: config.C.Style.EngStyle.FontSize,
+			fontSize: engFS,
 			bold:     config.C.Style.EngStyle.Bold,
-			scaleX:   100,
+			scaleX:   sx,
 			scaleY:   100,
 		},
 	)
@@ -447,4 +451,13 @@ func ReplaceSpecialCharacters(inputString string) string {
 	modifiedString = strings.ReplaceAll(modifiedString, "</i>", "{\\i0}")
 
 	return modifiedString
+}
+
+func (s *styleService) calculateScaling(fontSize float64, width, height int) (float64, float64) {
+	baseWidth := 3840
+	baseHeight := 2160
+	ratio := math.Sqrt(float64(baseWidth*baseHeight) / float64(width*height))
+	fs := int(math.Round(float64(fontSize) * ratio))
+	sx := int(math.Round(float64(90) * ratio))
+	return float64(fs), float64(sx)
 }

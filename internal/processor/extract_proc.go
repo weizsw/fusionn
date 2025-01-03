@@ -12,10 +12,10 @@ import (
 )
 
 type ExtractStage struct {
-	ffmpeg service.FFMPEG
+	ffmpeg service.FFmpeg
 }
 
-func NewExtractStage(ffmpeg service.FFMPEG) *ExtractStage {
+func NewExtractStage(ffmpeg service.FFmpeg) *ExtractStage {
 	return &ExtractStage{ffmpeg: ffmpeg}
 }
 

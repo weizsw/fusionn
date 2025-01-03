@@ -14,10 +14,11 @@ import (
 	"go.uber.org/zap"
 )
 
-type FFMPEG interface {
+type FFmpeg interface {
 	ExtractSubtitles(videoPath string) (*model.ExtractedData, error)
 	ExtractStreamToBuffer(videoPath string) (*model.ExtractedStream, error)
 	ExtractStream(videoPath, subtitlePath string, streamIndex int) error
+	GetStreamInfo(videoPath string) (int, int, error)
 }
 
 type ffmpeg struct{}
@@ -217,4 +218,13 @@ func (f *ffmpeg) extractStreamToBuffer(videoPath string, streamIndex int) ([]byt
 	}
 
 	return output, nil
+}
+
+func (f *ffmpeg) GetStreamInfo(videoPath string) (int, int, error) {
+	ffprobeData, err := f.detectStream(videoPath)
+	if err != nil || len(ffprobeData.Streams) == 0 {
+		return 3840, 2160, err
+	}
+
+	return ffprobeData.Streams[0].Width, ffprobeData.Streams[0].Height, nil
 }

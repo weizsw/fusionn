@@ -36,7 +36,7 @@ func ProvideMergePipeline(
 }
 
 type MergeHandler struct {
-	ffmpeg    service.FFMPEG
+	ffmpeg    service.FFmpeg
 	parser    service.Parser
 	convertor service.Convertor
 	algo      service.Algo
@@ -44,7 +44,7 @@ type MergeHandler struct {
 	pipeline  *MergePipeline
 }
 
-func NewMergeHandler(ffmpeg service.FFMPEG, parser service.Parser, convertor service.Convertor, algo service.Algo, apprise pkg.Apprise, pipeline *MergePipeline) *MergeHandler {
+func NewMergeHandler(ffmpeg service.FFmpeg, parser service.Parser, convertor service.Convertor, algo service.Algo, apprise pkg.Apprise, pipeline *MergePipeline) *MergeHandler {
 	return &MergeHandler{
 		ffmpeg:    ffmpeg,
 		parser:    parser,
