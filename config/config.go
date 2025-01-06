@@ -32,6 +32,7 @@ type Config struct {
 	General     *GeneralConfig
 	TVDB        *TVDBConfig
 	GPTSubTrans *GPTSubTransConfig
+	Sentry      *SentryConfig
 }
 
 // MustLoad ensures config is loaded before server starts
