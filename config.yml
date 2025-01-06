@@ -60,3 +60,7 @@ tvdb:
   api_key: "1234567890"
 gptsubtrans:
   provider: local
+sentry:
+  enabled: false
+  dsn: "https://f626ef5cf2b251daa8aaffe20c2d5fab@o4506674942902272.ingest.us.sentry.io/"
+  sample_rate: 0.1

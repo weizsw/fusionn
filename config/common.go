@@ -92,3 +92,9 @@ type TVDBConfig struct {
 type GPTSubTransConfig struct {
 	Provider string `mapstructure:"provider"`
 }
+
+type SentryConfig struct {
+	Enabled    bool    `mapstructure:"enabled"`
+	Dsn        string  `mapstructure:"dsn"`
+	SampleRate float64 `mapstructure:"sample_rate"`
+}
