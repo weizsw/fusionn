@@ -7,8 +7,6 @@ A Go-based subtitle processing service with translation capabilities, error trac
 - Subtitle merging and batch processing
 - Async subtitle processing
 - Multiple translation providers (LLM, DeepLX)
-- Redis caching
-- SQLite storage
 - Sentry error tracking
 - Health monitoring
 - CORS support
