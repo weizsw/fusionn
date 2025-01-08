@@ -109,6 +109,92 @@ Common HTTP status codes:
 
 ## Installation
 
+### Option 1: Docker Compose (Recommended)
+
+1. Create a `docker-compose.yml` file:
+
+```yaml
+services:
+  fusionn:
+    image: ghcr.io/weizsw/fusionn:latest
+    container_name: fusionn
+    environment:
+      - PUID=501
+      - PGID=20
+      - TZ=Asia/Shanghai
+      - UMASK=022
+    volumes:
+      - /path/to/media:/data     # Mount your media directory
+      - ./configs:/app/configs   # Mount config directory
+    ports:
+      - 4664:4664
+    restart: unless-stopped
+    depends_on:
+      - redis
+    networks:
+      - fusionn_default
+
+  gpt-subtrans:
+    image: ghcr.io/weizsw/gpt-subtrans:latest
+    container_name: gpt-subtrans
+    volumes:
+      - ./gpt-subtrans/configs:/app/configs
+      - /path/to/media:/data
+    environment:
+      - PUID=501
+      - PGID=20
+      - TZ=Asia/Shanghai
+      - CONFIG_PATH=/app/configs/config.json
+      - DOCKER_ENV=true
+    restart: unless-stopped
+    networks:
+      - fusionn_default
+
+  redis:
+    image: redis:alpine
+    container_name: fusionn-redis
+    command: redis-server --save "" --maxmemory 100mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - fusionn_default
+
+  fusionn-ui:
+    image: ghcr.io/weizsw/fusionn-ui:latest
+    container_name: fusionn-ui
+    ports:
+      - "5664:3000"
+    restart: unless-stopped
+    depends_on:
+      - fusionn
+    networks:
+      - fusionn_default
+
+networks:
+  fusionn_default:
+    name: fusionn_default
+    driver: bridge
+```
+
+2. Create configuration:
+
+```bash
+mkdir -p configs gpt-subtrans/configs
+```
+
+3. Create `configs/config.yml` with your configuration (see Configuration section)
+
+4. Start the services:
+
+```bash
+docker compose up -d
+```
+
+The UI will be available at `http://localhost:5664`
+
+### Option 2: Manual Installation
+
 1. Clone the repository
 2. Install dependencies:
 
@@ -122,43 +208,12 @@ go mod download
 make setup
 ```
 
-## Configuration
+4. Configure the application (see Configuration section)
 
-Create a `config.yml` file in the project root or `configs/` directory:
+5. Start the application:
 
-```yaml
-apprise:
-  enabled: true
-  url: http://your-apprise-url
-
-sqlite:
-  enabled: true
-  path: ./sqlite.db
-
-translate:
-  enabled: true
-  provider: llm  # or deeplx
-
-deeplx:
-  local: false
-  url: http://your-deeplx-url
-
-llm:
-  base: https://your-llm-base
-  endpoint: /chat/completions
-  api_key: your-api-key
-  model: your-model
-  language: Chinese
-
-redis:
-  addr: 127.0.0.1:6379
-  password: your-password
-  db: 0
-
-sentry:
-  enabled: true
-  dsn: your-sentry-dsn
-  sample_rate: 0.1
+```bash
+make run
 ```
 
 ## Development Commands
