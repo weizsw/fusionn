@@ -24,6 +24,89 @@ r.POST("/api/v1/batch", wrapHandler(s.batchHandler.Batch))
 r.POST("/api/v1/async_merge", wrapHandler(s.asyncMergeHandler.AsyncMerge))
 ```
 
+## API Documentation
+
+### POST /api/v1/merge
+
+Extracts and processes subtitle files.
+
+**Request Body**
+
+```json
+{
+    "file_path": "/path/to/video/file",
+    "series_tvdbid": "12345",    // Optional, for TVDB lookup
+    "season_number": "1",         // Optional, for TVDB lookup
+    "episode_numbers": "1"        // Optional, for TVDB lookup
+}
+```
+
+**Response**
+
+```json
+{
+    "message": "success"
+}
+```
+
+### POST /api/v1/batch
+
+Processes multiple files in a directory.
+
+**Request Body**
+
+```json
+{
+    "path": "/path/to/directory"
+}
+```
+
+**Response**
+
+```json
+{
+    "message": "success"
+}
+```
+
+### POST /api/v1/async_merge
+
+Asynchronously merges Chinese and English subtitles with video.
+
+**Request Body**
+
+```json
+{
+    "chs_subtitle_path": "/path/to/chinese.srt",
+    "eng_subtitle_path": "/path/to/english.srt", 
+    "video_path": "/path/to/video.mkv"
+}
+```
+
+**Response**
+
+```json
+{
+    "message": "success"
+}
+```
+
+## Error Responses
+
+All endpoints may return error responses in this format:
+
+```json
+{
+    "error": "Error message description"
+}
+```
+
+Common HTTP status codes:
+
+- 200: Success
+- 400: Bad Request (invalid parameters)
+- 500: Internal Server Error
+
 ## Installation
 
 1. Clone the repository
