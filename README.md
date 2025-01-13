@@ -277,6 +277,14 @@ func RecoverWithSentry() gin.HandlerFunc {
 4. Push to the branch
 5. Create a Pull Request
 
+## Activity
+
+![Alt](https://repobeats.axiom.co/api/embed/a3afa557f925b8522a3f12c89952c4e210adc206.svg "Repobeats analytics image")
+
+## Stars History
+
+<iframe style="width:100%;height:auto;min-width:600px;min-height:400px;" src="https://star-history.com/embed?secret=Z2hwX1lHWmpUQ3FtcDJDeDhyMHJ2aUhuTE1LSlBQT2haUzNYT1FEbQ==#weizsw/fusionn&Date" frameBorder="0"></iframe>
+
 ## License
 
 This project is licensed under the MIT License.
