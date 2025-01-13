@@ -279,11 +279,11 @@ func RecoverWithSentry() gin.HandlerFunc {
 
 ## Activity
 
-![Alt](https://repobeats.axiom.co/api/embed/a3afa557f925b8522a3f12c89952c4e210adc206.svg "Repobeats analytics image")
+![Git Repository Activity](https://repobeats.axiom.co/api/embed/a3afa557f925b8522a3f12c89952c4e210adc206.svg "Repobeats analytics image")
 
 ## Stars History
 
-<iframe style="width:100%;height:auto;min-width:600px;min-height:400px;" src="https://star-history.com/embed?secret=Z2hwX1lHWmpUQ3FtcDJDeDhyMHJ2aUhuTE1LSlBQT2haUzNYT1FEbQ==#weizsw/fusionn&Date" frameBorder="0"></iframe>
+[![Star History Chart](https://api.star-history.com/svg?repos=weizsw/fusionn&type=Date)](https://star-history.com/#weizsw/fusionn&Date)
 
 ## License
 
