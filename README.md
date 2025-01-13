@@ -281,9 +281,7 @@ func RecoverWithSentry() gin.HandlerFunc {
 
 ![Git Repository Activity](https://repobeats.axiom.co/api/embed/a3afa557f925b8522a3f12c89952c4e210adc206.svg "Repobeats analytics image")
 
-## Stars History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=weizsw/fusionn&type=Date)](https://star-history.com/#weizsw/fusionn&Date)
+## Star History <a href="https://star-history.com/#weizsw/fusionn&Date"> <picture> <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=weizsw/fusionn&type=Date&theme=dark" /> <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=weizsw/fusionn&type=Date" /> <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=weizsw/fusionn&type=Date" /> </picture> </a>
 
 ## License
 
