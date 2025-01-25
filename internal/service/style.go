@@ -454,8 +454,14 @@ func ReplaceSpecialCharacters(inputString string) string {
 }
 
 func (s *styleService) calculateScaling(fontSize float64, width, height int) (float64, float64) {
-	baseWidth := 3840
-	baseHeight := 2160
+	baseWidth := 1920
+	baseHeight := 1080
+	// 如果是4K分辨率，调整基准以保持相同比例
+	if width >= 3840 {
+		baseWidth = 3840
+		baseHeight = 2160
+	}
+
 	ratio := math.Sqrt(float64(baseWidth*baseHeight) / float64(width*height))
 	fs := int(math.Round(float64(fontSize) * ratio))
 	sx := int(math.Round(float64(90) * ratio))
