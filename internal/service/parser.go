@@ -179,7 +179,7 @@ func (p *parser) ParseFromBytes(ctx context.Context, stream *model.ExtractedStre
 	}
 
 	if len(stream.SdhSubBuffer) > 0 && len(stream.EngSubBuffer) == 0 {
-		engSub := p.RemoveSDH(sdhSub)
+		engSub = p.RemoveSDH(sdhSub)
 		parsedSubtitles.EngSubtitle = engSub
 	}
 
