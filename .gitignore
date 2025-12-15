@@ -1,0 +1,46 @@
+# Binaries (only in root, not folders with same name)
+/fusionn
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# Environment variables
+.env
+.env.local
+
+# Configuration files (keep example)
+config/config.yaml
+
+# Data directories
+data/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# OpenSpec
+openspec/
+AGENTS.md

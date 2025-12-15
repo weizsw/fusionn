@@ -1,0 +1,19 @@
+services:
+  fusionn:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fusionn
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Config (required)
+      - ./config/config.yaml:/app/config/config.yaml:ro
+      
+      # Data directory
+      - ./data:/data
+    environment:
+      - ENV=production
+      - TZ=Asia/Singapore
+
