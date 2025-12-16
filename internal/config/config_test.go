@@ -48,7 +48,7 @@ server:
 	// Initialize logger before creating manager (required for logging in NewManager)
 	logger.Init(true)
 	defer logger.Sync()
-	
+
 	mgr, err := NewManager(configPath)
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
@@ -58,6 +58,104 @@ server:
 	cfg := mgr.Get()
 	if cfg.Server.Port != 8080 {
 		t.Errorf("Expected port 8080, got %d", cfg.Server.Port)
+	}
+}
+
+func TestSubtitleConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configContent := `
+server:
+  port: 8080
+
+subtitle:
+  enabled: true
+  duosubs:
+    model: "sentence-transformers/LaBSE"
+    device: "auto"
+    timeout_minutes: 10
+  output_same_dir: true
+  english_variants: ["eng", "eng-sdh", "en"]
+  chinese_variants: ["zh-Hans", "zh-CN", "chi", "zho"]
+  opencc:
+    enabled: true
+    config: "t2s.json"
+
+redis:
+  host: "redis"
+  port: 6379
+  password: ""
+  database: 0
+  queue_key: "fusionn:translation:queue"
+
+apprise:
+  enabled: true
+  base_url: "http://apprise:8000"
+  key: "apprise"
+  tag: "fusionn-subtitle"
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to create test config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Test subtitle config
+	if !cfg.Subtitle.Enabled {
+		t.Error("Expected subtitle.enabled to be true")
+	}
+	if cfg.Subtitle.DuoSubs.Model != "sentence-transformers/LaBSE" {
+		t.Errorf("Expected model 'sentence-transformers/LaBSE', got %s", cfg.Subtitle.DuoSubs.Model)
+	}
+	if cfg.Subtitle.DuoSubs.Device != "auto" {
+		t.Errorf("Expected device 'auto', got %s", cfg.Subtitle.DuoSubs.Device)
+	}
+	if cfg.Subtitle.DuoSubs.TimeoutMinutes != 10 {
+		t.Errorf("Expected timeout 10, got %d", cfg.Subtitle.DuoSubs.TimeoutMinutes)
+	}
+	if !cfg.Subtitle.OutputSameDir {
+		t.Error("Expected output_same_dir to be true")
+	}
+	if len(cfg.Subtitle.EnglishVariants) != 3 {
+		t.Errorf("Expected 3 english variants, got %d", len(cfg.Subtitle.EnglishVariants))
+	}
+	if len(cfg.Subtitle.ChineseVariants) != 4 {
+		t.Errorf("Expected 4 chinese variants, got %d", len(cfg.Subtitle.ChineseVariants))
+	}
+	if !cfg.Subtitle.OpenCC.Enabled {
+		t.Error("Expected opencc.enabled to be true")
+	}
+	if cfg.Subtitle.OpenCC.Config != "t2s.json" {
+		t.Errorf("Expected opencc config 't2s.json', got %s", cfg.Subtitle.OpenCC.Config)
+	}
+
+	// Test Redis config
+	if cfg.Redis.Host != "redis" {
+		t.Errorf("Expected redis host 'redis', got %s", cfg.Redis.Host)
+	}
+	if cfg.Redis.Port != 6379 {
+		t.Errorf("Expected redis port 6379, got %d", cfg.Redis.Port)
+	}
+	if cfg.Redis.QueueKey != "fusionn:translation:queue" {
+		t.Errorf("Expected queue_key 'fusionn:translation:queue', got %s", cfg.Redis.QueueKey)
+	}
+
+	// Test Apprise config
+	if !cfg.Apprise.Enabled {
+		t.Error("Expected apprise.enabled to be true")
+	}
+	if cfg.Apprise.BaseURL != "http://apprise:8000" {
+		t.Errorf("Expected base_url 'http://apprise:8000', got %s", cfg.Apprise.BaseURL)
+	}
+	if cfg.Apprise.Key != "apprise" {
+		t.Errorf("Expected key 'apprise', got %s", cfg.Apprise.Key)
+	}
+	if cfg.Apprise.Tag != "fusionn-subtitle" {
+		t.Errorf("Expected tag 'fusionn-subtitle', got %s", cfg.Apprise.Tag)
 	}
 }
 
@@ -124,4 +222,3 @@ server:
 		t.Errorf("Expected updated port 9090, got %d", cfg.Server.Port)
 	}
 }
-
