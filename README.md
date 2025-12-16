@@ -21,16 +21,19 @@ Intelligent Media Automation Platform
 ### Local Development
 
 1. Copy the example configuration:
+
 ```bash
 cp config/config.example.yaml config/config.yaml
 ```
 
 2. Run the application:
+
 ```bash
 make run
 ```
 
 Or build and run:
+
 ```bash
 make build
 ./fusionn
@@ -39,16 +42,19 @@ make build
 ### Docker
 
 Build and run with Docker Compose:
+
 ```bash
 docker compose up -d
 ```
 
 View logs:
+
 ```bash
 docker compose logs -f
 ```
 
 Stop:
+
 ```bash
 docker compose down
 ```
@@ -99,4 +105,3 @@ make clean
 ## License
 
 MIT
-
