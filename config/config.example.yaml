@@ -7,6 +7,70 @@ server:
   port: 8080
 
 # ════════════════════════════════════════════════════════════════════════════
+# SUBTITLE MERGING (Sonarr/Radarr Integration)
+# ════════════════════════════════════════════════════════════════════════════
+subtitle:
+  enabled: false # Set to true to enable subtitle merging
+
+  # DuoSubs settings for semantic subtitle alignment
+  duosubs:
+    model: "sentence-transformers/LaBSE" # Multilingual embedding model (~2GB)
+    device: "auto" # "auto", "cuda", "cpu"
+    timeout_minutes: 10
+
+  # Output: save merged subtitle to same directory as video file
+  output_same_dir: true
+
+  # Language code variants for subtitle detection
+  english_variants: ["eng", "en", "eng-us"]
+  chinese_variants: ["chi", "zho", "zh-hans", "zh-cn", "zh", "zh-tw", "zh-hk"]
+
+  # Title keywords for Chinese subtitle type detection (case-insensitive)
+  simplified_keywords: ["simplified", "简体", "简中", "chs", "singapore"]
+  traditional_keywords:
+    ["traditional", "繁体", "繁中", "cht", "taiwan", "hong kong"]
+
+  # OpenCC: Traditional → Simplified Chinese conversion
+  opencc:
+    enabled: true
+    config: "t2s.json"
+
+  # ASS styling: Custom visual appearance for merged subtitles
+  ass_style:
+    enabled: true
+    primary_font: "WenQuanYi Micro Hei" # Font for Chinese (primary line)
+    primary_size: 20 # Font size for Chinese
+    primary_color: "&H00c8c8c8" # Color for Chinese (ASS format: &HAABBGGRR)
+    secondary_font: "WenQuanYi Micro Hei" # Font for English (secondary line)
+    secondary_size: 13 # Font size for English
+    secondary_color: "&H0010b8ff" # Color for English (orange)
+    bold: true # Bold text
+    outline: 0.5 # Outline width
+    shadow: 0.5 # Shadow depth
+    margin_v: 5 # Vertical margin
+
+# Redis connection (for translation queue to fusionn-subs)
+redis:
+  host: "redis"
+  port: 6379
+  password: ""
+  database: 0
+  queue_key: "fusionn:translation:queue"
+
+# Apprise notifications (success/failure alerts)
+apprise:
+  enabled: false # Set to true to enable notifications
+  base_url: "http://apprise:8000"
+  key: "apprise"
+  tag: "fusionn-subtitle"
+
+# Job queue settings (for subtitle merging)
+queue:
+  workers: 1 # Number of concurrent merge workers (1 = sequential, 2+ = parallel)
+  queue_size: 100 # Max pending jobs in queue
+  max_retries: 3 # Max retry attempts for failed jobs
+
+# ════════════════════════════════════════════════════════════════════════════
 # DOCKER SETUP
 # ════════════════════════════════════════════════════════════════════════════
 #
@@ -14,14 +78,18 @@ server:
 #   -p 8080:8080 \
 #   -v ./config.yaml:/app/config/config.yaml:ro \
 #   -v ./data:/data \
+#   -v /path/to/media:/media \
 #   fusionn
 #
 # ════════════════════════════════════════════════════════════════════════════
 # API ENDPOINTS
 # ════════════════════════════════════════════════════════════════════════════
 #
-# GET  /health              - Health check
-# GET  /api/v1/status       - Application status
+# GET  /health                          - Health check
+# GET  /api/v1/status                   - Application status
+# POST /api/v1/webhook/sonarr           - Sonarr import webhook
+# POST /api/v1/webhook/radarr           - Radarr import webhook
+# POST /api/v1/callback/translation     - Translation completion callback
 #
 # ════════════════════════════════════════════════════════════════════════════
 

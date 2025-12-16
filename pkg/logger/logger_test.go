@@ -44,4 +44,3 @@ func TestLogMethods(t *testing.T) {
 	Error("test error")
 	Errorf("test error: %s", "formatted")
 }
-

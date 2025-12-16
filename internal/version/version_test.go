@@ -32,4 +32,3 @@ func TestPrintBanner(t *testing.T) {
 		t.Errorf("Output should contain version %s", Version)
 	}
 }
-

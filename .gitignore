@@ -43,4 +43,5 @@ Thumbs.db
 
 # OpenSpec
 openspec/
-AGENTS.md
+*.md
+!README.md
