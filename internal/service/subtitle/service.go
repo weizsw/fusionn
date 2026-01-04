@@ -2,9 +2,9 @@ package subtitle
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/notification"
@@ -15,15 +15,15 @@ import (
 // Service orchestrates subtitle processing using the pipeline architecture.
 type Service struct {
 	analyzePipeline *Pipeline // Analyze + Extract
-	mergePipeline   *Pipeline // Merge + Output + Notify + Cleanup
+	mergePipeline   *Pipeline // Convert + Merge + Style + Output + Notify + Cleanup
 	config          *config.Config
 	mergeQueue      *queue.MergeQueue
-	redisClient     *redis.Client
+	redisClient     QueueClient
 	appriseClient   *notification.AppriseClient
 }
 
 // NewService creates a new subtitle service with all processors configured.
-func NewService(cfg *config.Config, redisClient *redis.Client, mergeQueue *queue.MergeQueue) *Service {
+func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.MergeQueue) *Service {
 	// Create analyzer
 	analyzer := NewAnalyzer(
 		cfg.Subtitle.EnglishVariants,
@@ -42,23 +42,19 @@ func NewService(cfg *config.Config, redisClient *redis.Client, mergeQueue *queue
 		)
 	}
 
+	// Build callback URL for translation queue
+	callbackURL := fmt.Sprintf("http://%s:%d/api/v1/callback/translation", cfg.Server.Host, cfg.Server.Port)
+
 	// Build analyze pipeline (fast, runs synchronously in webhook)
 	analyzePipeline := NewPipeline()
 	analyzePipeline.AddProcessor(NewAnalyzerProcessor(analyzer))
 	analyzePipeline.AddProcessor(NewExtractorProcessor(analyzer))
-	analyzePipeline.AddProcessor(NewTranslationQueueProcessor(redisClient, cfg.Redis.QueueKey))
+	analyzePipeline.AddProcessor(NewTranslationQueueProcessor(redisClient, callbackURL))
 
 	// Build merge pipeline (slow, runs asynchronously in queue)
 	mergePipeline := NewPipeline()
-	mergePipeline.AddProcessor(NewConversionProcessor(
-		cfg.Subtitle.OpenCC.Enabled,
-		cfg.Subtitle.OpenCC.Config,
-	))
-	mergePipeline.AddProcessor(NewMergerProcessor(
-		cfg.Subtitle.DuoSubs.Model,
-		cfg.Subtitle.DuoSubs.Device,
-		cfg.Subtitle.DuoSubs.TimeoutMinutes,
-	))
+	mergePipeline.AddProcessor(NewConversionProcessor(cfg.Subtitle.OpenCC))
+	mergePipeline.AddProcessor(NewMergerProcessor(cfg.Subtitle.DuoSubs))
 	mergePipeline.AddProcessor(NewStyleProcessor(cfg.Subtitle.ASSStyle))
 	mergePipeline.AddProcessor(NewOutputProcessor(cfg.Subtitle.OutputSameDir))
 	mergePipeline.AddProcessor(NewNotificationProcessor(appriseClient, cfg.Apprise.Enabled))
