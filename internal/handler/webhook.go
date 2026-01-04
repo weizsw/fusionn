@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -105,8 +106,10 @@ func (h *WebhookHandler) HandleSonarr(c *gin.Context) {
 	// Process subtitle in background (non-blocking)
 	if h.subtitleService != nil {
 		go func() {
+			// Use background context since this runs after HTTP response
+			ctx := context.Background()
 			if err := h.subtitleService.ProcessMedia(
-				c.Request.Context(),
+				ctx,
 				payload.EpisodeFile.Path,
 				"episode",
 				mediaTitle,
@@ -156,8 +159,10 @@ func (h *WebhookHandler) HandleRadarr(c *gin.Context) {
 	// Process subtitle in background (non-blocking)
 	if h.subtitleService != nil {
 		go func() {
+			// Use background context since this runs after HTTP response
+			ctx := context.Background()
 			if err := h.subtitleService.ProcessMedia(
-				c.Request.Context(),
+				ctx,
 				payload.MovieFile.Path,
 				"movie",
 				mediaTitle,

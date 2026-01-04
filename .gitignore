@@ -42,5 +42,4 @@ data/
 Thumbs.db
 
 # OpenSpec
-*.md
 !README.md
