@@ -13,7 +13,18 @@ services:
       
       # Data directory
       - ./data:/data
+      
+      # HuggingFace model cache for DuoSubs
+      # Persists downloaded sentence-transformer models (~2GB for LaBSE)
+      # First run will download the model (5-10 minutes), subsequent runs are instant
+      - huggingface-cache:/root/.cache/huggingface
     environment:
       - ENV=production
       - TZ=Asia/Singapore
+
+volumes:
+  # Named volume for HuggingFace model cache
+  # To use a custom directory instead, replace with:
+  # - /path/to/custom/cache:/root/.cache/huggingface
+  huggingface-cache:
 
