@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/handler"
@@ -43,22 +42,13 @@ func main() {
 	cfg := cfgMgr.Get()
 
 	// Initialize Redis client (for translation queue)
-	var redisClient *redis.Client
+	var redisQueueClient *queue.RedisClient
 	if cfg.Subtitle.Enabled {
-		redisClient = redis.NewClient(&redis.Options{
-			Addr:     fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
-			Password: cfg.Redis.Password,
-			DB:       cfg.Redis.Database,
-		})
-
-		// Test Redis connection
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := redisClient.Ping(ctx).Err(); err != nil {
+		var err error
+		redisQueueClient, err = queue.NewRedisClient(cfg.Redis)
+		if err != nil {
 			logger.Warnf("⚠️  Redis connection failed: %v (translation queue disabled)", err)
-			redisClient = nil
-		} else {
-			logger.Infof("✅ Redis connected: %s:%d", cfg.Redis.Host, cfg.Redis.Port)
+			redisQueueClient = nil
 		}
 	}
 
@@ -77,7 +67,7 @@ func main() {
 		)
 
 		// Create subtitle service
-		subtitleService = subtitle.NewService(cfg, redisClient, mergeQueue)
+		subtitleService = subtitle.NewService(cfg, redisQueueClient, mergeQueue)
 
 		// Set the queue handler to use the subtitle service
 		mergeQueue = queue.NewMergeQueue(
@@ -90,7 +80,7 @@ func main() {
 		)
 
 		// Recreate subtitle service with the properly configured queue
-		subtitleService = subtitle.NewService(cfg, redisClient, mergeQueue)
+		subtitleService = subtitle.NewService(cfg, redisQueueClient, mergeQueue)
 
 		// Start queue workers
 		mergeQueue.Start()
@@ -164,8 +154,8 @@ func main() {
 		mergeQueue.Stop()
 	}
 
-	if redisClient != nil {
-		if err := redisClient.Close(); err != nil {
+	if redisQueueClient != nil {
+		if err := redisQueueClient.Close(); err != nil {
 			logger.Errorf("❌ Redis close error: %v", err)
 		}
 	}
@@ -194,8 +184,10 @@ func registerRoutes(router *gin.Engine, cfg *config.Config, subtitleService *sub
 			api.POST("/webhook/radarr", webhookHandler.HandleRadarr)
 
 			// Callback endpoint for fusionn-subs
-			callbackHandler := handler.NewCallbackHandler(subtitleService)
-			api.POST("/callback/translation", callbackHandler.HandleTranslationCallback)
+			callbackHandler := handler.NewTranslationCallbackHandler(subtitleService)
+			api.POST("/callback/translation", func(c *gin.Context) {
+				callbackHandler.Handle(c.Writer, c.Request)
+			})
 		}
 	}
 }
