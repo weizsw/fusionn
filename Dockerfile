@@ -22,10 +22,17 @@ FROM alpine:3.19
 
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies including Python for DuoSubs
 RUN apk add --no-cache \
     ca-certificates \
-    tzdata
+    tzdata \
+    python3 \
+    py3-pip \
+    ffmpeg \
+    opencc
+
+# Install DuoSubs Python package
+RUN pip3 install --no-cache-dir duosubs --break-system-packages
 
 # Copy Go binary
 COPY --from=go-builder /app/fusionn .
@@ -33,6 +40,8 @@ COPY --from=go-builder /app/fusionn .
 # Create data directories
 RUN mkdir -p /data
 
+# Set HuggingFace cache directory for model persistence
+ENV HF_HOME=/root/.cache/huggingface
 ENV ENV=production
 ENV CONFIG_PATH=/app/config/config.yaml
 

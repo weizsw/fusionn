@@ -15,6 +15,8 @@ subtitle:
   # DuoSubs settings for semantic subtitle alignment
   duosubs:
     model: "sentence-transformers/LaBSE" # Multilingual embedding model (~2GB)
+                                          # Leave empty ("") to use DuoSubs default (LaBSE)
+                                          # First run downloads model to HuggingFace cache
     device: "auto" # "auto", "cuda", "cpu"
     timeout_minutes: 10
 
@@ -79,7 +81,35 @@ queue:
 #   -v ./config.yaml:/app/config/config.yaml:ro \
 #   -v ./data:/data \
 #   -v /path/to/media:/media \
+#   -v huggingface-cache:/root/.cache/huggingface \
 #   fusionn
+#
+# ════════════════════════════════════════════════════════════════════════════
+# DUOSUBS MODEL CACHING (Docker)
+# ════════════════════════════════════════════════════════════════════════════
+#
+# DuoSubs downloads sentence-transformer models from HuggingFace (~2GB for LaBSE).
+# To persist models across container restarts, mount the HuggingFace cache:
+#
+# In docker-compose.yaml:
+#   volumes:
+#     - huggingface-cache:/root/.cache/huggingface
+#
+#   volumes:
+#     huggingface-cache:
+#
+# **First Run Behavior:**
+# - Downloads LaBSE model (~2GB, takes 5-10 minutes)
+# - Stores in /root/.cache/huggingface inside container
+#
+# **Subsequent Runs:**
+# - Uses cached model (instant startup)
+# - No re-download needed
+#
+# **Custom Cache Directory:**
+# To use a host directory instead of Docker volume:
+#   volumes:
+#     - /path/to/custom/cache:/root/.cache/huggingface
 #
 # ════════════════════════════════════════════════════════════════════════════
 # API ENDPOINTS

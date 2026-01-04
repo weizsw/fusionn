@@ -48,10 +48,6 @@ func (p *MergerProcessor) Process(ctx context.Context, pctx *ProcessingContext) 
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// DuoSubs expects output directory, not file path
-	// It will create output.ass inside the directory
-	mergedPath := filepath.Join(outputDir, "output.ass")
-
 	// Build DuoSubs config
 	duosubsCfg := executor.DuoSubsConfig{
 		Model:   p.duosubsConfig.Model,
@@ -59,14 +55,10 @@ func (p *MergerProcessor) Process(ctx context.Context, pctx *ProcessingContext) 
 		Timeout: time.Duration(p.duosubsConfig.TimeoutMinutes) * time.Minute,
 	}
 
-	// Run DuoSubs
-	if err := executor.MergeDuoSubs(ctx, pctx.EnglishSubPath, pctx.ChineseSubPath, outputDir, duosubsCfg); err != nil {
+	// Run DuoSubs - it will extract and return the path to the combined ASS file
+	mergedPath, err := executor.MergeDuoSubs(ctx, pctx.ChineseSubPath, pctx.EnglishSubPath, outputDir, duosubsCfg)
+	if err != nil {
 		return fmt.Errorf("duosubs merge failed: %w", err)
-	}
-
-	// Verify output file exists
-	if _, err := os.Stat(mergedPath); os.IsNotExist(err) {
-		return fmt.Errorf("duosubs did not create expected output file: %s", mergedPath)
 	}
 
 	// Update context with merged subtitle path
@@ -75,4 +67,3 @@ func (p *MergerProcessor) Process(ctx context.Context, pctx *ProcessingContext) 
 	logger.Infof("✅ Merge completed: %s", mergedPath)
 	return nil
 }
-
