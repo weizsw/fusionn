@@ -18,20 +18,22 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # ════════════════════════════════════════════════════════════════════════════
 # STAGE 2: Final image
 # ════════════════════════════════════════════════════════════════════════════
-FROM alpine:3.19
+FROM debian:bookworm-slim
 
 WORKDIR /app
 
 # Install runtime dependencies including Python for DuoSubs
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     tzdata \
     python3 \
-    py3-pip \
+    python3-pip \
     ffmpeg \
-    opencc
+    opencc \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install DuoSubs Python package
+# Note: First run will download ~2GB LaBSE model to HuggingFace cache
 RUN pip3 install --no-cache-dir duosubs --break-system-packages
 
 # Copy Go binary
