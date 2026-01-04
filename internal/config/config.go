@@ -244,9 +244,7 @@ func (c *Config) Validate() error {
 	}
 
 	if c.Subtitle.Enabled {
-		if c.Subtitle.DuoSubs.Model == "" {
-			return fmt.Errorf("subtitle.duosubs.model is required when subtitle is enabled")
-		}
+		// Model is optional - DuoSubs will use its default (LaBSE) if empty
 		if c.Subtitle.DuoSubs.TimeoutMinutes <= 0 {
 			return fmt.Errorf("subtitle.duosubs.timeout_minutes must be positive")
 		}
