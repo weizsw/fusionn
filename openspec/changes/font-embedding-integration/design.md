@@ -135,7 +135,7 @@ subtitle:
 → **Mitigation:** Configurable timeout (default 5 minutes). Subsetting typically reduces size by 90%+ so execution is fast. If timeout occurs, fall back to non-embedded file.
 
 **[Risk] fusionn-font has breaking changes in future releases**
-→ **Mitigation:** Pin specific version in Dockerfile (`v1.0.2`). Update explicitly when tested. CLI interface is stable.
+→ **Mitigation:** Pin specific version in Dockerfile (`v1.0.3`). Update explicitly when tested. CLI interface is stable.
 
 **[Trade-off] Binary vs source installation**
 Chose binary for smaller image size, but means we can't easily patch fusionn-font code if issues arise. Acceptable trade-off given tool stability.
