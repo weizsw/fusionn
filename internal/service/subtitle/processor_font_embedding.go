@@ -53,12 +53,13 @@ func (p *FontEmbeddingProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process embeds fonts into the ASS subtitle file.
 func (p *FontEmbeddingProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	logger.Info("🔤 Embedding fonts into subtitle...")
+	log := logger.Indent()
+	log.Info("Embedding fonts into subtitle...")
 
 	// Get original file size for logging
 	originalInfo, err := os.Stat(pctx.MergedSubPath)
 	if err != nil {
-		logger.Warnf("⚠️ Failed to stat subtitle file: %v - skipping font embedding", err)
+		log.Warnf("⚠️ Failed to stat subtitle file: %v - skipping font embedding", err)
 		return nil
 	}
 	originalSize := originalInfo.Size()
@@ -73,23 +74,23 @@ func (p *FontEmbeddingProcessor) Process(ctx context.Context, pctx *ProcessingCo
 	// Execute fusionn-font
 	output, err := p.executeFusionnFont(ctx, pctx.MergedSubPath, embeddedPath)
 	if err != nil {
-		logger.Warnf("⚠️ Font embedding failed: %v - using non-embedded subtitle", err)
+		log.Warnf("⚠️ Font embedding failed: %v - using non-embedded subtitle", err)
 		if output != "" {
-			logger.Warnf("fusionn-font output: %s", output)
+			log.Warnf("fusionn-font output: %s", output)
 		}
 		return nil
 	}
 
 	// Verify embedded file was created and is valid
 	if err := p.verifyEmbeddedFile(embeddedPath); err != nil {
-		logger.Warnf("⚠️ Embedded file validation failed: %v - using non-embedded subtitle", err)
+		log.Warnf("⚠️ Embedded file validation failed: %v - using non-embedded subtitle", err)
 		os.Remove(embeddedPath)
 		return nil
 	}
 
 	// Replace original with embedded version
 	if err := os.Rename(embeddedPath, pctx.MergedSubPath); err != nil {
-		logger.Warnf("⚠️ Failed to replace subtitle with embedded version: %v", err)
+		log.Warnf("⚠️ Failed to replace subtitle with embedded version: %v", err)
 		os.Remove(embeddedPath)
 		return nil
 	}
@@ -98,9 +99,9 @@ func (p *FontEmbeddingProcessor) Process(ctx context.Context, pctx *ProcessingCo
 	embeddedInfo, _ := os.Stat(pctx.MergedSubPath)
 	if embeddedInfo != nil {
 		embeddedSize := embeddedInfo.Size()
-		logger.Infof("✅ Fonts embedded successfully (%d → %d bytes)", originalSize, embeddedSize)
+		log.Infof("✅ Fonts embedded successfully (%d → %d bytes)", originalSize, embeddedSize)
 	} else {
-		logger.Info("✅ Fonts embedded successfully")
+		log.Info("✅ Fonts embedded successfully")
 	}
 
 	return nil

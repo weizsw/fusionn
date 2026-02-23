@@ -44,3 +44,26 @@ func TestLogMethods(t *testing.T) {
 	Error("test error")
 	Errorf("test error: %s", "formatted")
 }
+
+func TestIndentLogger(t *testing.T) {
+	Init(true)
+	defer Sync()
+
+	// Test indented logger methods don't panic
+	log := Indent()
+	log.Info("test indented info")
+	log.Infof("test indented info: %s", "formatted")
+	log.Debug("test indented debug")
+	log.Debugf("test indented debug: %s", "formatted")
+	log.Warn("test indented warn")
+	log.Warnf("test indented warn: %s", "formatted")
+	log.Error("test indented error")
+	log.Errorf("test indented error: %s", "formatted")
+}
+
+func TestIndentPrefix(t *testing.T) {
+	expected := "  ├─ "
+	if IndentPrefix != expected {
+		t.Errorf("IndentPrefix = %q, want %q", IndentPrefix, expected)
+	}
+}

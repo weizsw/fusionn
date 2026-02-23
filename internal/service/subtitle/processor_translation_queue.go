@@ -40,7 +40,8 @@ func (p *TranslationQueueProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process queues a translation job.
 func (p *TranslationQueueProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	logger.Info("Chinese subtitle missing - queuing for translation")
+	log := logger.Indent()
+	log.Info("Chinese subtitle missing - queuing for translation")
 
 	job := &queue.TranslationJob{
 		JobID:        pctx.JobID,
@@ -57,6 +58,6 @@ func (p *TranslationQueueProcessor) Process(ctx context.Context, pctx *Processin
 	// Mark that translation is needed
 	pctx.NeedsTranslation = true
 
-	logger.Infof("✅ Translation job queued: %s", pctx.JobID)
+	log.Infof("✅ Translation job queued: %s", pctx.JobID)
 	return nil
 }

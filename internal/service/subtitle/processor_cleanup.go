@@ -28,21 +28,22 @@ func (p *CleanupProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process removes temporary files.
 func (p *CleanupProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	logger.Info("Cleaning up temporary files")
+	log := logger.Indent()
+	log.Info("Cleaning up temporary files")
 
 	// Clean up extracted subtitles
 	if pctx.EnglishSubPath != "" {
 		if err := os.Remove(pctx.EnglishSubPath); err != nil && !os.IsNotExist(err) {
-			logger.Warnf("Failed to remove %s: %v", pctx.EnglishSubPath, err)
+			log.Warnf("Failed to remove %s: %v", pctx.EnglishSubPath, err)
 		}
 	}
 
 	if pctx.ChineseSubPath != "" {
 		if err := os.Remove(pctx.ChineseSubPath); err != nil && !os.IsNotExist(err) {
-			logger.Warnf("Failed to remove %s: %v", pctx.ChineseSubPath, err)
+			log.Warnf("Failed to remove %s: %v", pctx.ChineseSubPath, err)
 		}
 	}
 
-	logger.Info("✅ Cleanup completed")
+	log.Info("✅ Cleanup completed")
 	return nil
 }

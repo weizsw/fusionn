@@ -49,7 +49,8 @@ func NewAnalyzer(englishVariants, chineseVariants, simplifiedKeywords, tradition
 
 // AnalyzeVideo detects subtitle tracks in a video file.
 func (a *Analyzer) AnalyzeVideo(ctx context.Context, videoPath string) (*AnalysisResult, error) {
-	logger.Infof("Analyzing subtitles in: %s", videoPath)
+	log := logger.Indent()
+	log.Infof("Analyzing subtitles in: %s", videoPath)
 
 	// Check if video file exists
 	if _, err := os.Stat(videoPath); os.IsNotExist(err) {
@@ -70,24 +71,24 @@ func (a *Analyzer) AnalyzeVideo(ctx context.Context, videoPath string) (*Analysi
 		}
 	}
 
-	logger.Infof("Found %d subtitle track(s)", len(subtitleStreams))
+	log.Infof("Found %d subtitle track(s)", len(subtitleStreams))
 
 	// Detect English and Chinese subtitles
 	englishTrack := a.detectEnglishSubtitle(subtitleStreams)
 	chineseTrack := a.detectChineseSubtitle(subtitleStreams)
 
 	if englishTrack != nil {
-		logger.Infof("✅ English subtitle detected: index=%d, lang=%s, priority=%d",
+		log.Infof("✅ English subtitle detected: index=%d, lang=%s, priority=%d",
 			englishTrack.Index, englishTrack.Language, englishTrack.Priority)
 	} else {
-		logger.Warn("⚠️  No English subtitle found")
+		log.Warn("⚠️  No English subtitle found")
 	}
 
 	if chineseTrack != nil {
-		logger.Infof("✅ Chinese subtitle detected: index=%d, lang=%s, priority=%d, needs_conversion=%v",
+		log.Infof("✅ Chinese subtitle detected: index=%d, lang=%s, priority=%d, needs_conversion=%v",
 			chineseTrack.Index, chineseTrack.Language, chineseTrack.Priority, chineseTrack.NeedsConversion)
 	} else {
-		logger.Warn("⚠️  No Chinese subtitle found - will queue for translation")
+		log.Warn("⚠️  No Chinese subtitle found - will queue for translation")
 	}
 
 	return &AnalysisResult{
@@ -216,7 +217,8 @@ func (a *Analyzer) matchChineseTrack(stream executor.StreamInfo) *Track {
 
 	// Priority 3: Fallback - assume Traditional if language is Chinese but title is ambiguous
 	// (Most ambiguous Chinese subtitles are Traditional Chinese)
-	logger.Warnf("Chinese subtitle detected but type unknown (lang=%s, title=%s), defaulting to Traditional", lang, title)
+	log := logger.Indent()
+	log.Warnf("Chinese subtitle detected but type unknown (lang=%s, title=%s), defaulting to Traditional", lang, title)
 	return &Track{
 		Index:           stream.Index,
 		Language:        lang,
@@ -229,6 +231,7 @@ func (a *Analyzer) matchChineseTrack(stream executor.StreamInfo) *Track {
 
 // ExtractSubtitles extracts the detected subtitle tracks to SRT files in the media directory.
 func (a *Analyzer) ExtractSubtitles(ctx context.Context, result *AnalysisResult) error {
+	log := logger.Indent()
 	videoDir := filepath.Dir(result.VideoPath)
 	videoBase := filepath.Base(result.VideoPath)
 	videoName := strings.TrimSuffix(videoBase, filepath.Ext(videoBase))
@@ -239,7 +242,7 @@ func (a *Analyzer) ExtractSubtitles(ctx context.Context, result *AnalysisResult)
 			return fmt.Errorf("failed to extract English subtitle: %w", err)
 		}
 		result.EnglishTrack.ExtractedPath = outputPath
-		logger.Infof("Extracted English subtitle: %s", outputPath)
+		log.Infof("Extracted English subtitle: %s", outputPath)
 	}
 
 	if result.ChineseTrack != nil {
@@ -248,7 +251,7 @@ func (a *Analyzer) ExtractSubtitles(ctx context.Context, result *AnalysisResult)
 			return fmt.Errorf("failed to extract Chinese subtitle: %w", err)
 		}
 		result.ChineseTrack.ExtractedPath = outputPath
-		logger.Infof("Extracted Chinese subtitle: %s", outputPath)
+		log.Infof("Extracted Chinese subtitle: %s", outputPath)
 	}
 
 	return nil
@@ -256,15 +259,16 @@ func (a *Analyzer) ExtractSubtitles(ctx context.Context, result *AnalysisResult)
 
 // Cleanup removes temporary extracted subtitle files.
 func (a *Analyzer) Cleanup(result *AnalysisResult) {
+	log := logger.Indent()
 	if result.EnglishTrack != nil && result.EnglishTrack.ExtractedPath != "" {
 		if err := os.Remove(result.EnglishTrack.ExtractedPath); err != nil {
-			logger.Warnf("Failed to cleanup %s: %v", result.EnglishTrack.ExtractedPath, err)
+			log.Warnf("Failed to cleanup %s: %v", result.EnglishTrack.ExtractedPath, err)
 		}
 	}
 
 	if result.ChineseTrack != nil && result.ChineseTrack.ExtractedPath != "" {
 		if err := os.Remove(result.ChineseTrack.ExtractedPath); err != nil {
-			logger.Warnf("Failed to cleanup %s: %v", result.ChineseTrack.ExtractedPath, err)
+			log.Warnf("Failed to cleanup %s: %v", result.ChineseTrack.ExtractedPath, err)
 		}
 	}
 }

@@ -31,7 +31,8 @@ func (p *AnalyzerProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process analyzes the video file for subtitle tracks.
 func (p *AnalyzerProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	logger.Infof("Analyzing video: %s", pctx.VideoPath)
+	log := logger.Indent()
+	log.Infof("Analyzing video: %s", pctx.VideoPath)
 
 	analysis, err := p.analyzer.AnalyzeVideo(ctx, pctx.VideoPath)
 	if err != nil {
@@ -40,7 +41,7 @@ func (p *AnalyzerProcessor) Process(ctx context.Context, pctx *ProcessingContext
 
 	pctx.Analysis = analysis
 
-	logger.Infof("Analysis complete: English=%v, Chinese=%v",
+	log.Infof("Analysis complete: English=%v, Chinese=%v",
 		analysis.EnglishTrack != nil,
 		analysis.ChineseTrack != nil)
 
