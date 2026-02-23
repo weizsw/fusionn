@@ -195,13 +195,13 @@ func (q *MergeQueue) cleanupOldJob(jobID string, delay time.Duration) {
 }
 
 // ErrQueueFull is returned when the queue is at capacity.
-var ErrQueueFull = &QueueError{Message: "merge queue is full"}
+var ErrQueueFull = &Error{Message: "merge queue is full"}
 
-// QueueError represents a queue error.
-type QueueError struct {
+// Error represents a queue error.
+type Error struct {
 	Message string
 }
 
-func (e *QueueError) Error() string {
+func (e *Error) Error() string {
 	return e.Message
 }

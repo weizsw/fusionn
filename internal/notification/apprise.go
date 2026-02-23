@@ -11,14 +11,14 @@ import (
 	"github.com/fusionn/pkg/logger"
 )
 
-// NotificationType represents the type of notification.
-type NotificationType string
+// Type represents the type of notification.
+type Type string
 
 const (
-	Success NotificationType = "success"
-	Info    NotificationType = "info"
-	Warning NotificationType = "warning"
-	Error   NotificationType = "failure"
+	Success Type = "success"
+	Info    Type = "info"
+	Warning Type = "warning"
+	Error   Type = "failure"
 )
 
 // AppriseClient wraps Apprise API for sending notifications.
@@ -50,7 +50,7 @@ type appriseRequest struct {
 }
 
 // Send sends a notification via Apprise.
-func (a *AppriseClient) Send(ctx context.Context, title, body string, notificationType NotificationType) error {
+func (a *AppriseClient) Send(ctx context.Context, title, body string, notificationType Type) error {
 	if a.baseURL == "" || a.key == "" {
 		return fmt.Errorf("apprise client not configured")
 	}

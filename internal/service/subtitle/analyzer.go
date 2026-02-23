@@ -11,8 +11,8 @@ import (
 	"github.com/fusionn/pkg/logger"
 )
 
-// SubtitleTrack represents a detected subtitle track.
-type SubtitleTrack struct {
+// Track represents a detected subtitle track.
+type Track struct {
 	Index           int
 	Language        string
 	Title           string
@@ -24,8 +24,8 @@ type SubtitleTrack struct {
 
 // AnalysisResult contains the result of subtitle analysis.
 type AnalysisResult struct {
-	EnglishTrack *SubtitleTrack
-	ChineseTrack *SubtitleTrack
+	EnglishTrack *Track
+	ChineseTrack *Track
 	VideoPath    string
 }
 
@@ -98,8 +98,8 @@ func (a *Analyzer) AnalyzeVideo(ctx context.Context, videoPath string) (*Analysi
 }
 
 // detectEnglishSubtitle finds the best English subtitle track.
-func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *SubtitleTrack {
-	var best *SubtitleTrack
+func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *Track {
+	var best *Track
 
 	for _, stream := range streams {
 		track := a.matchEnglishTrack(stream)
@@ -114,14 +114,14 @@ func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *Subtitl
 }
 
 // matchEnglishTrack checks if a stream is an English subtitle.
-func (a *Analyzer) matchEnglishTrack(stream executor.StreamInfo) *SubtitleTrack {
+func (a *Analyzer) matchEnglishTrack(stream executor.StreamInfo) *Track {
 	lang := strings.ToLower(getLanguage(stream))
 	title := strings.ToLower(getTitle(stream))
 
 	// Check if language is English first
 	isEnglish := false
 	for _, variant := range a.englishVariants {
-		if lang == strings.ToLower(variant) {
+		if strings.EqualFold(lang, variant) {
 			isEnglish = true
 			break
 		}
@@ -133,7 +133,7 @@ func (a *Analyzer) matchEnglishTrack(stream executor.StreamInfo) *SubtitleTrack 
 
 	// Priority 1: Standard English (non-SDH)
 	if !strings.Contains(title, "sdh") {
-		return &SubtitleTrack{
+		return &Track{
 			Index:     stream.Index,
 			Language:  lang,
 			Title:     title,
@@ -143,7 +143,7 @@ func (a *Analyzer) matchEnglishTrack(stream executor.StreamInfo) *SubtitleTrack 
 	}
 
 	// Priority 2: English SDH
-	return &SubtitleTrack{
+	return &Track{
 		Index:     stream.Index,
 		Language:  lang,
 		Title:     title,
@@ -153,8 +153,8 @@ func (a *Analyzer) matchEnglishTrack(stream executor.StreamInfo) *SubtitleTrack 
 }
 
 // detectChineseSubtitle finds the best Chinese subtitle track.
-func (a *Analyzer) detectChineseSubtitle(streams []executor.StreamInfo) *SubtitleTrack {
-	var best *SubtitleTrack
+func (a *Analyzer) detectChineseSubtitle(streams []executor.StreamInfo) *Track {
+	var best *Track
 
 	for _, stream := range streams {
 		track := a.matchChineseTrack(stream)
@@ -169,14 +169,14 @@ func (a *Analyzer) detectChineseSubtitle(streams []executor.StreamInfo) *Subtitl
 }
 
 // matchChineseTrack checks if a stream is a Chinese subtitle.
-func (a *Analyzer) matchChineseTrack(stream executor.StreamInfo) *SubtitleTrack {
+func (a *Analyzer) matchChineseTrack(stream executor.StreamInfo) *Track {
 	lang := strings.ToLower(getLanguage(stream))
 	title := strings.ToLower(getTitle(stream))
 
 	// Check if language is Chinese-related using configured variants
 	isChinese := false
 	for _, variant := range a.chineseVariants {
-		if lang == strings.ToLower(variant) {
+		if strings.EqualFold(lang, variant) {
 			isChinese = true
 			break
 		}
@@ -189,7 +189,7 @@ func (a *Analyzer) matchChineseTrack(stream executor.StreamInfo) *SubtitleTrack 
 	// Priority 1: Simplified Chinese (by title keywords)
 	for _, keyword := range a.simplifiedKeywords {
 		if strings.Contains(title, strings.ToLower(keyword)) {
-			return &SubtitleTrack{
+			return &Track{
 				Index:           stream.Index,
 				Language:        lang,
 				Title:           title,
@@ -203,7 +203,7 @@ func (a *Analyzer) matchChineseTrack(stream executor.StreamInfo) *SubtitleTrack 
 	// Priority 2: Traditional Chinese (by title keywords) - needs conversion
 	for _, keyword := range a.traditionalKeywords {
 		if strings.Contains(title, strings.ToLower(keyword)) {
-			return &SubtitleTrack{
+			return &Track{
 				Index:           stream.Index,
 				Language:        lang,
 				Title:           title,
@@ -217,7 +217,7 @@ func (a *Analyzer) matchChineseTrack(stream executor.StreamInfo) *SubtitleTrack 
 	// Priority 3: Fallback - assume Traditional if language is Chinese but title is ambiguous
 	// (Most ambiguous Chinese subtitles are Traditional Chinese)
 	logger.Warnf("Chinese subtitle detected but type unknown (lang=%s, title=%s), defaulting to Traditional", lang, title)
-	return &SubtitleTrack{
+	return &Track{
 		Index:           stream.Index,
 		Language:        lang,
 		Title:           title,

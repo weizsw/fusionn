@@ -31,13 +31,13 @@ func NewMergerProcessor(cfg config.DuoSubsConfig) (*MergerProcessor, error) {
 		HTTPContainerPrefix: cfg.HTTPContainerPrefix,
 		HTTPHostPrefix:      cfg.HTTPHostPrefix,
 	}
-	
+
 	// Initialize executor (validates config, creates HTTP client if needed)
 	duosubsExec, err := executor.NewDuoSubsExecutor(execCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize duosubs executor: %w", err)
 	}
-	
+
 	return &MergerProcessor{
 		duosubsExecutor: duosubsExec,
 	}, nil

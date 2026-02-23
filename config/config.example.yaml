@@ -61,6 +61,13 @@ subtitle:
     shadow: 0.5 # Shadow depth
     margin_v: 5 # Vertical margin
 
+  # Font embedding: Automatically embed fonts into ASS subtitle files
+  font_embedding:
+    enabled: false # Set to true to enable font embedding
+    fonts_dir: "/app/fonts" # Directory containing font files (TTF/OTF)
+                             # Mount via Docker: -v ./fonts:/app/fonts
+    timeout_seconds: 300 # Timeout for font embedding operation (5 minutes)
+
 # Redis connection (for translation queue to fusionn-subs)
 redis:
   host: "redis"

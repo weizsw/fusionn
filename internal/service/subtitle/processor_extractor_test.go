@@ -11,12 +11,12 @@ func TestExtractorProcessor_SetsNeedsConversionFlag(t *testing.T) {
 	// from Analysis to ProcessingContext
 	tests := []struct {
 		name                 string
-		chineseTrack         *SubtitleTrack
+		chineseTrack         *Track
 		expectedNeedsConvert bool
 	}{
 		{
 			name: "Traditional Chinese - needs conversion",
-			chineseTrack: &SubtitleTrack{
+			chineseTrack: &Track{
 				Index:           1,
 				Language:        "chi",
 				NeedsConversion: true,
@@ -26,7 +26,7 @@ func TestExtractorProcessor_SetsNeedsConversionFlag(t *testing.T) {
 		},
 		{
 			name: "Simplified Chinese - no conversion needed",
-			chineseTrack: &SubtitleTrack{
+			chineseTrack: &Track{
 				Index:           1,
 				Language:        "chi",
 				NeedsConversion: false,
@@ -84,12 +84,12 @@ func TestConversionProcessor_ShouldRun(t *testing.T) {
 	// Test that ConversionProcessor correctly checks NeedsConversion flag
 	// This is critical for the merge pipeline where Analysis is not available
 	tests := []struct {
-		name              string
-		openccEnabled     bool
-		chineseSubPath    string
-		needsConversion   bool
-		analysisPresent   bool
-		want              bool
+		name            string
+		openccEnabled   bool
+		chineseSubPath  string
+		needsConversion bool
+		analysisPresent bool
+		want            bool
 	}{
 		{
 			name:            "All conditions met",
@@ -148,7 +148,7 @@ func TestConversionProcessor_ShouldRun(t *testing.T) {
 			// Optionally add analysis (should not be required for ShouldRun)
 			if tt.analysisPresent {
 				pctx.Analysis = &AnalysisResult{
-					ChineseTrack: &SubtitleTrack{
+					ChineseTrack: &Track{
 						NeedsConversion: tt.needsConversion,
 					},
 				}
@@ -268,5 +268,3 @@ func TestOutputProcessor_ShouldRun(t *testing.T) {
 		})
 	}
 }
-
-

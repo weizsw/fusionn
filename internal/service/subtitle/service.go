@@ -50,18 +50,26 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 	// Build merge pipeline (slow, runs asynchronously in queue)
 	mergePipeline := NewPipeline()
 	mergePipeline.AddProcessor(NewConversionProcessor(cfg.Subtitle.OpenCC))
-	
+
 	// Create merger processor (may fail if HTTP service is unreachable)
 	mergerProc, err := NewMergerProcessor(cfg.Subtitle.DuoSubs)
 	if err != nil {
 		return nil, err
 	}
 	mergePipeline.AddProcessor(mergerProc)
-	
+
 	mergePipeline.AddProcessor(NewStyleProcessor(cfg.Subtitle.ASSStyle))
+	mergePipeline.AddProcessor(NewFontEmbeddingProcessor(cfg.Subtitle.FontEmbedding))
 	mergePipeline.AddProcessor(NewOutputProcessor(cfg.Subtitle.OutputSameDir))
 	mergePipeline.AddProcessor(NewNotificationProcessor(appriseClient, cfg.Apprise.Enabled))
 	mergePipeline.AddProcessor(NewCleanupProcessor())
+
+	// Check if font embedding is enabled and binary is available
+	if cfg.Subtitle.FontEmbedding.Enabled {
+		if !isFusionnFontAvailable() {
+			logger.Warn("⚠️ fusionn-font binary not found - font embedding disabled")
+		}
+	}
 
 	return &Service{
 		analyzePipeline: analyzePipeline,

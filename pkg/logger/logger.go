@@ -74,21 +74,21 @@ func Fatalf(template string, args ...interface{}) { Log.Fatalf(template, args...
 
 // InfoWriter returns an io.Writer that writes subprocess output to stderr.
 // Lines are prefixed with │ to visually distinguish from service logs.
-type infoWriter struct {
+type InfoWriter struct {
 	prefix string
 	buffer []byte
 }
 
-func NewInfoWriter() *infoWriter {
-	return &infoWriter{
+func NewInfoWriter() *InfoWriter {
+	return &InfoWriter{
 		prefix: "  │ ",
 		buffer: make([]byte, 0, 1024),
 	}
 }
 
-func (w *infoWriter) Write(p []byte) (n int, err error) {
+func (w *InfoWriter) Write(p []byte) (n int, err error) {
 	w.buffer = append(w.buffer, p...)
-	
+
 	// Process complete lines (split on \n or \r for progress bars)
 	for {
 		idx := bytes.IndexByte(w.buffer, '\n')
@@ -98,14 +98,14 @@ func (w *infoWriter) Write(p []byte) (n int, err error) {
 				break
 			}
 		}
-		
+
 		line := string(w.buffer[:idx])
-		if len(line) > 0 {
+		if line != "" {
 			// Write directly to stderr with prefix, then flush
 			fmt.Fprintf(os.Stderr, "%s%s\n", w.prefix, line)
 		}
 		w.buffer = w.buffer[idx+1:]
 	}
-	
+
 	return len(p), nil
 }

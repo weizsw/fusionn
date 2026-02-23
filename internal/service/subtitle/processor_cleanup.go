@@ -46,4 +46,3 @@ func (p *CleanupProcessor) Process(ctx context.Context, pctx *ProcessingContext)
 	logger.Info("✅ Cleanup completed")
 	return nil
 }
-

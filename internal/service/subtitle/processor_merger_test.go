@@ -19,9 +19,9 @@ func TestMergerProcessor_Name(t *testing.T) {
 
 func TestMergerProcessor_ShouldRun(t *testing.T) {
 	tests := []struct {
-		name    string
-		pctx    *ProcessingContext
-		want    bool
+		name string
+		pctx *ProcessingContext
+		want bool
 	}{
 		{
 			name: "both subtitles present",
@@ -178,4 +178,3 @@ func hasSubstring(s, substr string) bool {
 	}
 	return false
 }
-
