@@ -24,7 +24,7 @@ func NewStyleProcessor(cfg config.ASSStyleConfig) *StyleProcessor {
 
 // Name returns the processor name.
 func (p *StyleProcessor) Name() string {
-	return "StyleProcessor"
+	return "Style"
 }
 
 // ShouldRun runs if ASS styling is enabled and we have a merged subtitle.
@@ -34,7 +34,8 @@ func (p *StyleProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process injects custom styles into the ASS file.
 func (p *StyleProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	logger.Infof("🎨 Injecting custom ASS styles: %s", pctx.MergedSubPath)
+	log := logger.Indent()
+	log.Infof("Injecting custom ASS styles: %s", pctx.MergedSubPath)
 
 	// Read ASS file
 	content, err := os.ReadFile(pctx.MergedSubPath)
@@ -45,12 +46,12 @@ func (p *StyleProcessor) Process(ctx context.Context, pctx *ProcessingContext) e
 	// Parse ASS into sections
 	eventsSection, err := extractEventsSection(string(content))
 	if err != nil {
-		logger.Warnf("Failed to parse ASS file, skipping styling: %v", err)
+		log.Warnf("Failed to parse ASS file, skipping styling: %v", err)
 		return nil // Don't fail the job, just skip styling
 	}
 
 	// Generate custom styles
-	scriptInfo := GetScriptInfo()
+	scriptInfo := GetScriptInfo(p.config.WrapStyle)
 	styles := GenerateStyles(p.config)
 
 	// Reconstruct ASS file
@@ -61,7 +62,7 @@ func (p *StyleProcessor) Process(ctx context.Context, pctx *ProcessingContext) e
 		return fmt.Errorf("failed to write styled ASS: %w", err)
 	}
 
-	logger.Infof("✅ Custom styles injected: %s", pctx.MergedSubPath)
+	log.Infof("✅ Custom styles injected: %s", pctx.MergedSubPath)
 	return nil
 }
 

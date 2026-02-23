@@ -34,6 +34,7 @@ func (p *OutputProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process copies merged subtitle to final destination.
 func (p *OutputProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
+	log := logger.Indent()
 	if pctx.MergedSubPath == "" {
 		return fmt.Errorf("merged subtitle path not set")
 	}
@@ -49,10 +50,10 @@ func (p *OutputProcessor) Process(ctx context.Context, pctx *ProcessingContext) 
 	// If not outputting to same directory, use a configured output directory
 	// For now, we always output to the same directory
 	if !p.outputSameDir {
-		logger.Warn("Output to separate directory not yet implemented, using video directory")
+		log.Warn("Output to separate directory not yet implemented, using video directory")
 	}
 
-	logger.Infof("Copying merged subtitle: %s → %s", pctx.MergedSubPath, finalPath)
+	log.Infof("Copying merged subtitle: %s → %s", pctx.MergedSubPath, finalPath)
 
 	// Copy file
 	if err := copyFile(pctx.MergedSubPath, finalPath); err != nil {
@@ -62,7 +63,7 @@ func (p *OutputProcessor) Process(ctx context.Context, pctx *ProcessingContext) 
 	// Update context with final path
 	pctx.MergedSubPath = finalPath
 
-	logger.Infof("✅ Merged subtitle saved: %s", finalPath)
+	log.Infof("✅ Merged subtitle saved: %s", finalPath)
 	return nil
 }
 

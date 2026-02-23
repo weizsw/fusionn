@@ -56,7 +56,8 @@ func (p *MergerProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process merges English and Chinese subtitles.
 func (p *MergerProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	logger.Info("Merging English + Chinese subtitles with DuoSubs")
+	log := logger.Indent()
+	log.Info("Merging English + Chinese subtitles with DuoSubs")
 
 	// Use the video's directory for temp output (shared volume, accessible from host)
 	// This ensures HTTP mode can create files that the container can access
@@ -75,6 +76,6 @@ func (p *MergerProcessor) Process(ctx context.Context, pctx *ProcessingContext) 
 	// Update context with merged subtitle path
 	pctx.MergedSubPath = mergedPath
 
-	logger.Infof("✅ Merge completed: %s", mergedPath)
+	log.Infof("✅ Merge completed: %s", mergedPath)
 	return nil
 }

@@ -37,11 +37,12 @@ func (p *ConversionProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process converts Traditional to Simplified Chinese.
 func (p *ConversionProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
+	log := logger.Indent()
 	if pctx.ChineseSubPath == "" {
 		return fmt.Errorf("chinese subtitle path not set")
 	}
 
-	logger.Info("Converting Traditional Chinese → Simplified Chinese")
+	log.Info("Converting Traditional Chinese → Simplified Chinese")
 
 	// Create output path
 	convertedPath := pctx.ChineseSubPath + ".converted.srt"
@@ -60,12 +61,12 @@ func (p *ConversionProcessor) Process(ctx context.Context, pctx *ProcessingConte
 	// Replace Chinese subtitle path with converted version
 	// Clean up original
 	if err := os.Remove(pctx.ChineseSubPath); err != nil {
-		logger.Warnf("Failed to remove original Traditional subtitle: %v", err)
+		log.Warnf("Failed to remove original Traditional subtitle: %v", err)
 	}
 
 	pctx.ChineseSubPath = convertedPath
 	pctx.NeedsConversion = false
 
-	logger.Info("✅ Conversion completed")
+	log.Info("✅ Conversion completed")
 	return nil
 }

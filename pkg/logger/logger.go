@@ -12,6 +12,8 @@ import (
 
 var Log *zap.SugaredLogger
 
+const IndentPrefix = "  ├─ "
+
 func Init(isDev bool) {
 	var encoder zapcore.Encoder
 	var level zapcore.Level
@@ -71,6 +73,49 @@ func Warn(args ...interface{})                    { Log.Warn(args...) }
 func Warnf(template string, args ...interface{})  { Log.Warnf(template, args...) }
 func Fatal(args ...interface{})                   { Log.Fatal(args...); os.Exit(1) }
 func Fatalf(template string, args ...interface{}) { Log.Fatalf(template, args...); os.Exit(1) }
+
+// Indent returns an indented logger that prefixes all log messages with IndentPrefix.
+// Use this within processors to create visual hierarchy for sub-logs.
+func Indent() IndentedLogger {
+	return IndentedLogger{prefix: IndentPrefix}
+}
+
+// IndentedLogger wraps logging methods with an indent prefix.
+type IndentedLogger struct {
+	prefix string
+}
+
+func (il IndentedLogger) Info(args ...interface{}) {
+	Log.Info(il.prefix, fmt.Sprint(args...))
+}
+
+func (il IndentedLogger) Infof(template string, args ...interface{}) {
+	Log.Infof(il.prefix+template, args...)
+}
+
+func (il IndentedLogger) Error(args ...interface{}) {
+	Log.Error(il.prefix, fmt.Sprint(args...))
+}
+
+func (il IndentedLogger) Errorf(template string, args ...interface{}) {
+	Log.Errorf(il.prefix+template, args...)
+}
+
+func (il IndentedLogger) Debug(args ...interface{}) {
+	Log.Debug(il.prefix, fmt.Sprint(args...))
+}
+
+func (il IndentedLogger) Debugf(template string, args ...interface{}) {
+	Log.Debugf(il.prefix+template, args...)
+}
+
+func (il IndentedLogger) Warn(args ...interface{}) {
+	Log.Warn(il.prefix, fmt.Sprint(args...))
+}
+
+func (il IndentedLogger) Warnf(template string, args ...interface{}) {
+	Log.Warnf(il.prefix+template, args...)
+}
 
 // InfoWriter returns an io.Writer that writes subprocess output to stderr.
 // Lines are prefixed with │ to visually distinguish from service logs.

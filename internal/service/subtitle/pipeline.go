@@ -48,6 +48,28 @@ type Pipeline struct {
 	processors []Processor
 }
 
+// processorEmojis maps processor names to their visual identifiers
+var processorEmojis = map[string]string{
+	"AnalyzerProcessor": "🔍",
+	"Extractor":         "📤",
+	"Conversion":        "🔄",
+	"Merger":            "🔀",
+	"Style":             "🎨",
+	"FontEmbedding":     "🔤",
+	"Output":            "💾",
+	"Notification":      "📢",
+	"Cleanup":           "🧹",
+	"TranslationQueue":  "🌐",
+}
+
+// getProcessorEmoji returns the emoji for a processor, or empty string if not found
+func getProcessorEmoji(name string) string {
+	if emoji, ok := processorEmojis[name]; ok {
+		return emoji + " "
+	}
+	return ""
+}
+
 // NewPipeline creates a new processing pipeline.
 func NewPipeline() *Pipeline {
 	return &Pipeline{
@@ -68,18 +90,20 @@ func (p *Pipeline) Execute(ctx context.Context, pctx *ProcessingContext) error {
 	for _, proc := range p.processors {
 		// Check if processor should run
 		if !proc.ShouldRun(pctx) {
-			logger.Debugf("⏭️  Skipping processor: %s (condition not met)", proc.Name())
+			emoji := getProcessorEmoji(proc.Name())
+			logger.Debugf("⏭️ Skipping processor: %s%s (condition not met)", emoji, proc.Name())
 			continue
 		}
 
-		logger.Infof("▶️  Running processor: %s", proc.Name())
+		emoji := getProcessorEmoji(proc.Name())
+		logger.Infof("▶️ Running processor: %s%s", emoji, proc.Name())
 
 		// Execute processor
 		if err := proc.Process(ctx, pctx); err != nil {
 			return fmt.Errorf("processor %s failed: %w", proc.Name(), err)
 		}
 
-		logger.Infof("✅ Processor completed: %s", proc.Name())
+		logger.Infof("✅ Processor completed: %s%s", emoji, proc.Name())
 	}
 
 	logger.Infof("Pipeline execution completed (job: %s)", pctx.JobID)

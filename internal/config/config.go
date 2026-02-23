@@ -74,6 +74,11 @@ type ASSStyleConfig struct {
 	Outline        float64 `mapstructure:"outline"`
 	Shadow         float64 `mapstructure:"shadow"`
 	MarginV        int     `mapstructure:"margin_v"`
+	MarginLeft     int     `mapstructure:"margin_left"`
+	MarginRight    int     `mapstructure:"margin_right"`
+	Alignment      int     `mapstructure:"alignment"`
+	BorderStyle    int     `mapstructure:"border_style"`
+	WrapStyle      string  `mapstructure:"wrap_style"`
 }
 
 // FontEmbeddingConfig holds font embedding settings.

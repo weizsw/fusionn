@@ -88,9 +88,10 @@ func MergeDuoSubs(ctx context.Context, chinesePath, englishPath, outputDir strin
 
 // mergeDuoSubsHTTP calls the HTTP service
 func mergeDuoSubsHTTP(ctx context.Context, chinesePath, englishPath, outputDir string, cfg DuoSubsConfig) (string, error) {
-	logger.Infof("Calling DuoSubs HTTP service: %s", cfg.HTTPURL)
-	logger.Infof("  Primary (Chinese): %s", chinesePath)
-	logger.Infof("  Secondary (English): %s", englishPath)
+	log := logger.Indent()
+	log.Infof("Calling DuoSubs HTTP service: %s", cfg.HTTPURL)
+	log.Infof("Primary (Chinese): %s", chinesePath)
+	log.Infof("Secondary (English): %s", englishPath)
 
 	if cfg.httpClient == nil {
 		return "", fmt.Errorf("http client not initialized")
@@ -101,7 +102,7 @@ func mergeDuoSubsHTTP(ctx context.Context, chinesePath, englishPath, outputDir s
 		return "", fmt.Errorf("http merge failed: %w", err)
 	}
 
-	logger.Infof("✅ DuoSubs HTTP merge completed: %s", outputPath)
+	log.Infof("✅ DuoSubs HTTP merge completed: %s", outputPath)
 	return outputPath, nil
 }
 
@@ -113,7 +114,8 @@ func mergeDuoSubsHTTP(ctx context.Context, chinesePath, englishPath, outputDir s
 //
 // This function extracts the zip and returns the path to the combined ASS file.
 func mergeDuoSubsLocal(ctx context.Context, chinesePath, englishPath, outputDir string, cfg DuoSubsConfig) (string, error) {
-	logger.Infof("Running DuoSubs: primary=%s, secondary=%s, out=%s", chinesePath, englishPath, outputDir)
+	log := logger.Indent()
+	log.Infof("Running DuoSubs: primary=%s, secondary=%s, out=%s", chinesePath, englishPath, outputDir)
 
 	// Determine basename for output files (use Chinese subtitle filename as base)
 	basename := filepath.Base(chinesePath)
@@ -153,7 +155,7 @@ func mergeDuoSubsLocal(ctx context.Context, chinesePath, englishPath, outputDir 
 	cmd.Stdout = logger.NewInfoWriter()
 	cmd.Stderr = logger.NewInfoWriter()
 
-	logger.Info("🚀 Starting DuoSubs (this may take a while on first run to download models...)")
+	log.Info("🚀 Starting DuoSubs (this may take a while on first run to download models...)")
 	err := cmd.Run()
 	if err != nil {
 		// Check if it was a timeout
@@ -178,7 +180,7 @@ func mergeDuoSubsLocal(ctx context.Context, chinesePath, englishPath, outputDir 
 
 	// Clean up zip file
 	if err := os.Remove(zipPath); err != nil {
-		logger.Warnf("Failed to remove zip file %s: %v", zipPath, err)
+		log.Warnf("Failed to remove zip file %s: %v", zipPath, err)
 	}
 
 	// Locate the combined ASS file
@@ -187,7 +189,7 @@ func mergeDuoSubsLocal(ctx context.Context, chinesePath, englishPath, outputDir 
 		return "", fmt.Errorf("combined file not found in zip: %s", combinedPath)
 	}
 
-	logger.Infof("✅ DuoSubs completed: %s", combinedPath)
+	log.Infof("✅ DuoSubs completed: %s", combinedPath)
 	return combinedPath, nil
 }
 

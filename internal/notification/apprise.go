@@ -1,12 +1,11 @@
 package notification
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"time"
+
+	"github.com/go-resty/resty/v2"
 
 	"github.com/fusionn/pkg/logger"
 )
@@ -21,71 +20,78 @@ const (
 	Error   Type = "failure"
 )
 
+// Response represents an Apprise API response
+type Response struct {
+	Error string `json:"error,omitempty"`
+}
+
 // AppriseClient wraps Apprise API for sending notifications.
 type AppriseClient struct {
-	baseURL string
-	key     string
-	tag     string
-	client  *http.Client
+	client *resty.Client
+	key    string
+	tag    string
 }
 
 // NewAppriseClient creates a new Apprise client.
 func NewAppriseClient(baseURL, key, tag string) *AppriseClient {
-	return &AppriseClient{
-		baseURL: baseURL,
-		key:     key,
-		tag:     tag,
-		client: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+	if key == "" {
+		key = "apprise"
 	}
-}
+	if tag == "" {
+		tag = "all"
+	}
 
-// appriseRequest represents the Apprise notification request payload.
-type appriseRequest struct {
-	Title string `json:"title"`
-	Body  string `json:"body"`
-	Type  string `json:"type,omitempty"`
-	Tag   string `json:"tag,omitempty"`
+	client := resty.New().
+		SetBaseURL(baseURL).
+		SetTimeout(30 * time.Second).
+		SetRetryCount(2).
+		SetRetryWaitTime(1 * time.Second)
+
+	return &AppriseClient{
+		client: client,
+		key:    key,
+		tag:    tag,
+	}
 }
 
 // Send sends a notification via Apprise.
 func (a *AppriseClient) Send(ctx context.Context, title, body string, notificationType Type) error {
-	if a.baseURL == "" || a.key == "" {
+	if a.key == "" {
 		return fmt.Errorf("apprise client not configured")
 	}
 
-	url := fmt.Sprintf("%s/notify/%s", a.baseURL, a.key)
-
-	payload := appriseRequest{
-		Title: title,
-		Body:  body,
-		Type:  string(notificationType),
-		Tag:   a.tag,
+	// Build form data
+	formData := map[string]string{
+		"body": body,
+		"tags": a.tag,
+	}
+	if title != "" {
+		formData["title"] = title
+	}
+	if notificationType != "" {
+		formData["type"] = string(notificationType)
 	}
 
-	jsonData, err := json.Marshal(payload)
+	logger.Debugf("Sending Apprise notification to /notify/%s", a.key)
+
+	var apiResp Response
+	resp, err := a.client.R().
+		SetContext(ctx).
+		SetFormData(formData).
+		SetResult(&apiResp).
+		Post(fmt.Sprintf("/notify/%s", a.key))
+
 	if err != nil {
-		return fmt.Errorf("failed to marshal apprise request: %w", err)
+		return fmt.Errorf("sending request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create apprise request: %w", err)
+	if resp.IsError() {
+		return fmt.Errorf("apprise returned status %d: %s", resp.StatusCode(), resp.String())
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-
-	logger.Debugf("Sending Apprise notification to %s", url)
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send apprise request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("apprise returned status %d", resp.StatusCode)
+	// Check for error in response body (Apprise returns 200 with error in JSON)
+	if apiResp.Error != "" {
+		return fmt.Errorf("apprise error: %s", apiResp.Error)
 	}
 
 	logger.Debugf("Apprise notification sent successfully")
