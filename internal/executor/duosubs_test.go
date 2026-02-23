@@ -28,8 +28,8 @@ func TestExtractZip(t *testing.T) {
 			name: "successful extraction",
 			setupZip: func(t *testing.T, zipPath string) {
 				createTestZip(t, zipPath, map[string]string{
-					"test_combined.ass": "[Script Info]\nTitle: Test",
-					"test_primary.ass":  "[Script Info]\nTitle: Primary",
+					"test_combined.ass":  "[Script Info]\nTitle: Test",
+					"test_primary.ass":   "[Script Info]\nTitle: Primary",
 					"test_secondary.ass": "[Script Info]\nTitle: Secondary",
 				})
 			},
@@ -176,9 +176,9 @@ func TestMergeDuoSubs_ZipExtraction(t *testing.T) {
 	zipPath := filepath.Join(outputDir, basename+".zip")
 
 	createTestZip(t, zipPath, map[string]string{
-		basename + "_combined.ass":   "[Script Info]\nTitle: Combined",
-		basename + "_primary.ass":    "[Script Info]\nTitle: Primary",
-		basename + "_secondary.ass":  "[Script Info]\nTitle: Secondary",
+		basename + "_combined.ass":  "[Script Info]\nTitle: Combined",
+		basename + "_primary.ass":   "[Script Info]\nTitle: Primary",
+		basename + "_secondary.ass": "[Script Info]\nTitle: Secondary",
 	})
 
 	// Test extraction
@@ -297,4 +297,3 @@ func hasSubstring(s, substr string) bool {
 	}
 	return false
 }
-

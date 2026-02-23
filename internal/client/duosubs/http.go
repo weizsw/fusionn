@@ -12,28 +12,28 @@ import (
 
 // HTTPClient calls a remote DuoSubs HTTP service
 type HTTPClient struct {
-	baseURL            string
-	containerPrefix    string
-	hostPrefix         string
-	timeout            time.Duration
-	client             *http.Client
+	baseURL         string
+	containerPrefix string
+	hostPrefix      string
+	timeout         time.Duration
+	client          *http.Client
 }
 
 // HTTPConfig configures the HTTP client
 type HTTPConfig struct {
-	BaseURL            string
-	ContainerPrefix    string
-	HostPrefix         string
-	Timeout            time.Duration
+	BaseURL         string
+	ContainerPrefix string
+	HostPrefix      string
+	Timeout         time.Duration
 }
 
 // MergeRequest is the HTTP request payload
 type mergeRequest struct {
-	PrimaryPath      string `json:"primary_path"`
-	SecondaryPath    string `json:"secondary_path"`
-	OutputDir        string `json:"output_dir"`
-	ContainerPrefix  string `json:"container_prefix"`
-	HostPrefix       string `json:"host_prefix"`
+	PrimaryPath     string `json:"primary_path"`
+	SecondaryPath   string `json:"secondary_path"`
+	OutputDir       string `json:"output_dir"`
+	ContainerPrefix string `json:"container_prefix"`
+	HostPrefix      string `json:"host_prefix"`
 }
 
 // MergeResponse is the HTTP response payload
@@ -110,7 +110,7 @@ func (c *HTTPClient) Merge(ctx context.Context, primaryPath, secondaryPath, outp
 
 // HealthCheck checks if the service is healthy
 func (c *HTTPClient) HealthCheck(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/health", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/health", http.NoBody)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}

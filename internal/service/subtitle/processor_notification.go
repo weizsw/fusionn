@@ -35,7 +35,7 @@ func (p *NotificationProcessor) ShouldRun(pctx *ProcessingContext) bool {
 // Process sends a notification based on processing result.
 func (p *NotificationProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
 	var title, body string
-	var notificationType notification.NotificationType
+	var notificationType notification.Type
 
 	// Determine notification type based on processing result
 	if pctx.MergedSubPath != "" {

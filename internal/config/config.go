@@ -30,24 +30,25 @@ type ServerConfig struct {
 
 // SubtitleConfig holds subtitle processing settings.
 type SubtitleConfig struct {
-	Enabled             bool           `mapstructure:"enabled"`
-	DuoSubs             DuoSubsConfig  `mapstructure:"duosubs"`
-	OutputSameDir       bool           `mapstructure:"output_same_dir"`
-	EnglishVariants     []string       `mapstructure:"english_variants"`
-	ChineseVariants     []string       `mapstructure:"chinese_variants"`
-	SimplifiedKeywords  []string       `mapstructure:"simplified_keywords"`
-	TraditionalKeywords []string       `mapstructure:"traditional_keywords"`
-	OpenCC              OpenCCConfig   `mapstructure:"opencc"`
-	ASSStyle            ASSStyleConfig `mapstructure:"ass_style"`
+	Enabled             bool                `mapstructure:"enabled"`
+	DuoSubs             DuoSubsConfig       `mapstructure:"duosubs"`
+	OutputSameDir       bool                `mapstructure:"output_same_dir"`
+	EnglishVariants     []string            `mapstructure:"english_variants"`
+	ChineseVariants     []string            `mapstructure:"chinese_variants"`
+	SimplifiedKeywords  []string            `mapstructure:"simplified_keywords"`
+	TraditionalKeywords []string            `mapstructure:"traditional_keywords"`
+	OpenCC              OpenCCConfig        `mapstructure:"opencc"`
+	ASSStyle            ASSStyleConfig      `mapstructure:"ass_style"`
+	FontEmbedding       FontEmbeddingConfig `mapstructure:"font_embedding"`
 }
 
 // DuoSubsConfig holds DuoSubs settings.
 type DuoSubsConfig struct {
-	Mode                string `mapstructure:"mode"` // "local" or "http"
-	Model               string `mapstructure:"model"`
-	Device              string `mapstructure:"device"`
-	TimeoutMinutes      int    `mapstructure:"timeout_minutes"`
-	
+	Mode           string `mapstructure:"mode"` // "local" or "http"
+	Model          string `mapstructure:"model"`
+	Device         string `mapstructure:"device"`
+	TimeoutMinutes int    `mapstructure:"timeout_minutes"`
+
 	// HTTP mode settings
 	HTTPURL             string `mapstructure:"http_url"`
 	HTTPContainerPrefix string `mapstructure:"http_container_prefix"`
@@ -73,6 +74,13 @@ type ASSStyleConfig struct {
 	Outline        float64 `mapstructure:"outline"`
 	Shadow         float64 `mapstructure:"shadow"`
 	MarginV        int     `mapstructure:"margin_v"`
+}
+
+// FontEmbeddingConfig holds font embedding settings.
+type FontEmbeddingConfig struct {
+	Enabled        bool   `mapstructure:"enabled"`
+	FontsDir       string `mapstructure:"fonts_dir"`
+	TimeoutSeconds int    `mapstructure:"timeout_seconds"`
 }
 
 // RedisConfig holds Redis connection settings.
@@ -253,6 +261,20 @@ func (c *Config) Validate() error {
 		// Model is optional - DuoSubs will use its default (LaBSE) if empty
 		if c.Subtitle.DuoSubs.TimeoutMinutes <= 0 {
 			return fmt.Errorf("subtitle.duosubs.timeout_minutes must be positive")
+		}
+
+		// Font embedding validation
+		if c.Subtitle.FontEmbedding.Enabled {
+			if c.Subtitle.FontEmbedding.FontsDir == "" {
+				return fmt.Errorf("subtitle.font_embedding.fonts_dir must be set when font embedding is enabled")
+			}
+			if _, err := os.Stat(c.Subtitle.FontEmbedding.FontsDir); os.IsNotExist(err) {
+				return fmt.Errorf("subtitle.font_embedding.fonts_dir does not exist: %s", c.Subtitle.FontEmbedding.FontsDir)
+			}
+			// Set default timeout if not specified
+			if c.Subtitle.FontEmbedding.TimeoutSeconds <= 0 {
+				c.Subtitle.FontEmbedding.TimeoutSeconds = 300
+			}
 		}
 	}
 

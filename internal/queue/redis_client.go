@@ -72,4 +72,3 @@ func (c *RedisClient) EnqueueTranslation(ctx context.Context, job *TranslationJo
 func (c *RedisClient) Close() error {
 	return c.client.Close()
 }
-

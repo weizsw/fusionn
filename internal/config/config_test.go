@@ -222,3 +222,139 @@ server:
 		t.Errorf("Expected updated port 9090, got %d", cfg.Server.Port)
 	}
 }
+
+func TestFontEmbeddingConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	fontsDir := filepath.Join(tmpDir, "fonts")
+
+	// Create fonts directory
+	if err := os.MkdirAll(fontsDir, 0755); err != nil {
+		t.Fatalf("Failed to create fonts directory: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		config      string
+		expectError bool
+		validate    func(*testing.T, *Config)
+	}{
+		{
+			name: "font embedding disabled by default",
+			config: `
+server:
+  port: 8080
+subtitle:
+  enabled: true
+  duosubs:
+    timeout_minutes: 10
+`,
+			expectError: false,
+			validate: func(t *testing.T, cfg *Config) {
+				if cfg.Subtitle.FontEmbedding.Enabled {
+					t.Error("Expected font_embedding.enabled to be false by default")
+				}
+			},
+		},
+		{
+			name: "font embedding enabled with valid config",
+			config: `
+server:
+  port: 8080
+subtitle:
+  enabled: true
+  duosubs:
+    timeout_minutes: 10
+  font_embedding:
+    enabled: true
+    fonts_dir: "` + fontsDir + `"
+    timeout_seconds: 300
+`,
+			expectError: false,
+			validate: func(t *testing.T, cfg *Config) {
+				if !cfg.Subtitle.FontEmbedding.Enabled {
+					t.Error("Expected font_embedding.enabled to be true")
+				}
+				if cfg.Subtitle.FontEmbedding.FontsDir != fontsDir {
+					t.Errorf("Expected fonts_dir %s, got %s", fontsDir, cfg.Subtitle.FontEmbedding.FontsDir)
+				}
+				if cfg.Subtitle.FontEmbedding.TimeoutSeconds != 300 {
+					t.Errorf("Expected timeout_seconds 300, got %d", cfg.Subtitle.FontEmbedding.TimeoutSeconds)
+				}
+			},
+		},
+		{
+			name: "font embedding enabled with default timeout",
+			config: `
+server:
+  port: 8080
+subtitle:
+  enabled: true
+  duosubs:
+    timeout_minutes: 10
+  font_embedding:
+    enabled: true
+    fonts_dir: "` + fontsDir + `"
+`,
+			expectError: false,
+			validate: func(t *testing.T, cfg *Config) {
+				if cfg.Subtitle.FontEmbedding.TimeoutSeconds != 300 {
+					t.Errorf("Expected default timeout_seconds 300, got %d", cfg.Subtitle.FontEmbedding.TimeoutSeconds)
+				}
+			},
+		},
+		{
+			name: "font embedding enabled without fonts_dir",
+			config: `
+server:
+  port: 8080
+subtitle:
+  enabled: true
+  duosubs:
+    timeout_minutes: 10
+  font_embedding:
+    enabled: true
+`,
+			expectError: true,
+		},
+		{
+			name: "font embedding enabled with non-existent fonts_dir",
+			config: `
+server:
+  port: 8080
+subtitle:
+  enabled: true
+  duosubs:
+    timeout_minutes: 10
+  font_embedding:
+    enabled: true
+    fonts_dir: "/nonexistent/path"
+`,
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := os.WriteFile(configPath, []byte(tt.config), 0644); err != nil {
+				t.Fatalf("Failed to create test config: %v", err)
+			}
+
+			cfg, err := Load(configPath)
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Failed to load config: %v", err)
+			}
+
+			if tt.validate != nil {
+				tt.validate(t, cfg)
+			}
+		})
+	}
+}

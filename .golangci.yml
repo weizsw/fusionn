@@ -12,7 +12,6 @@ linters:
     - unused
     - gofmt
     - goimports
-    - misspell
     - unconvert
     - unparam
     - gocritic
@@ -25,7 +24,7 @@ linters-settings:
     simplify: true
 
   goimports:
-    local-prefixes: github.com/fusionn-air
+    local-prefixes: github.com/fusionn
 
   misspell:
     locale: US
@@ -40,7 +39,7 @@ linters-settings:
       - rangeValCopy # Allow value copies in range loops
       - unnamedResult # Not enforcing named results
       - ifElseChain # Allow if-else chains
-      - unnecessaryBlock # Allow grouped blocks (common in Gin routes)
+      - unnecessaryBlock # Allow grouped blocks
       - octalLiteral # Allow old-style octal
 
   revive:

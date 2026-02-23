@@ -13,6 +13,7 @@ Intelligent Media Automation Platform
 - 🎬 Sonarr/Radarr webhook integration for subtitle automation
 - 🔤 Automatic dual-language subtitle generation (English + Chinese)
 - 🌐 Redis-based translation queue for external translation services
+- 🔠 Automatic font embedding in dual-language subtitles
 
 ## Quick Start
 
@@ -101,6 +102,49 @@ When Chinese subtitles are missing from media files, fusionn will:
 The translation service (like [fusionn-subs](https://github.com/weizsw/fusionn-subs)) polls the Redis queue, translates subtitles using AI, and callbacks to fusionn when complete.
 
 See `config/config.example.yaml` for full configuration options.
+
+### Font Embedding
+
+Automatically embed fonts into ASS subtitle files for better portability and consistent rendering across all devices:
+
+**Setup:**
+
+1. Enable font embedding in your config:
+
+```yaml
+subtitle:
+  font_embedding:
+    enabled: true
+    fonts_dir: "/app/fonts"
+    timeout_seconds: 300  # Optional, defaults to 300
+```
+
+2. Mount your fonts directory in `docker-compose.yml`:
+
+```yaml
+volumes:
+  - ./fonts:/app/fonts:ro
+```
+
+3. Add your font files (TTF/OTF) to the `./fonts` directory
+
+**How it works:**
+
+fusionn will automatically:
+- Detect fonts referenced in ASS files
+- Subset fonts to only characters actually used (typically 90%+ size reduction)
+- Embed subsetted fonts directly into the ASS file using UUEncode format
+- Fall back gracefully if fonts are missing (subtitle still works, just without embedded fonts)
+
+**Benefits:**
+- **Portable** - Embedded ASS files work on any device without requiring font installation
+- **Smaller** - Font subsetting dramatically reduces file sizes
+- **Automatic** - No manual intervention needed, happens during subtitle processing
+
+**Troubleshooting:**
+- **Missing fonts warning**: Place required font files in your fonts directory and ensure the font family names match those used in the ASS file
+- **Timeout**: Increase `timeout_seconds` if processing large font files
+- **Feature not working**: Check logs for `⚠️ fusionn-font binary not found` - this indicates the Docker image wasn't built correctly
 
 ## API Endpoints
 

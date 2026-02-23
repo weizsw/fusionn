@@ -90,7 +90,7 @@ func (m *MockNotificationClientInterface) EXPECT() *MockNotificationClientInterf
 }
 
 // Send mocks base method.
-func (m *MockNotificationClientInterface) Send(ctx context.Context, title, body string, ntype notification.NotificationType) error {
+func (m *MockNotificationClientInterface) Send(ctx context.Context, title, body string, ntype notification.Type) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Send", ctx, title, body, ntype)
 	ret0, _ := ret[0].(error)
