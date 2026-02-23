@@ -11,7 +11,6 @@ import (
 // TranslationQueueProcessor queues a job for translation when Chinese subtitle is missing.
 type TranslationQueueProcessor struct {
 	queueClient QueueClient
-	callbackURL string
 }
 
 // QueueClient defines the interface for queuing translation jobs.
@@ -20,10 +19,9 @@ type QueueClient interface {
 }
 
 // NewTranslationQueueProcessor creates a new translation queue processor.
-func NewTranslationQueueProcessor(queueClient QueueClient, callbackURL string) *TranslationQueueProcessor {
+func NewTranslationQueueProcessor(queueClient QueueClient, _ string) *TranslationQueueProcessor {
 	return &TranslationQueueProcessor{
 		queueClient: queueClient,
-		callbackURL: callbackURL,
 	}
 }
 
@@ -45,11 +43,11 @@ func (p *TranslationQueueProcessor) Process(ctx context.Context, pctx *Processin
 	logger.Info("Chinese subtitle missing - queuing for translation")
 
 	job := &queue.TranslationJob{
-		JobID:       pctx.JobID,
-		VideoPath:   pctx.VideoPath,
-		MediaType:   pctx.MediaType,
-		MediaTitle:  pctx.MediaTitle,
-		CallbackURL: p.callbackURL,
+		JobID:        pctx.JobID,
+		VideoPath:    pctx.VideoPath,
+		SubtitlePath: pctx.EnglishSubPath,
+		MediaType:    pctx.MediaType,
+		MediaTitle:   pctx.MediaTitle,
 	}
 
 	if err := p.queueClient.EnqueueTranslation(ctx, job); err != nil {

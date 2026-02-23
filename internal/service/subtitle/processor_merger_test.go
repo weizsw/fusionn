@@ -8,7 +8,10 @@ import (
 )
 
 func TestMergerProcessor_Name(t *testing.T) {
-	p := NewMergerProcessor(config.DuoSubsConfig{})
+	p, err := NewMergerProcessor(config.DuoSubsConfig{Mode: "local"})
+	if err != nil {
+		t.Fatalf("NewMergerProcessor() error = %v", err)
+	}
 	if got := p.Name(); got != "Merger" {
 		t.Errorf("Name() = %v, want %v", got, "Merger")
 	}
@@ -56,7 +59,10 @@ func TestMergerProcessor_ShouldRun(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := NewMergerProcessor(config.DuoSubsConfig{})
+			p, err := NewMergerProcessor(config.DuoSubsConfig{Mode: "local"})
+			if err != nil {
+				t.Fatalf("NewMergerProcessor() error = %v", err)
+			}
 			if got := p.ShouldRun(tt.pctx); got != tt.want {
 				t.Errorf("ShouldRun() = %v, want %v", got, tt.want)
 			}
@@ -76,6 +82,7 @@ func TestMergerProcessor_Process_ShouldNotPanic(t *testing.T) {
 		{
 			name: "with model specified",
 			cfg: config.DuoSubsConfig{
+				Mode:           "local",
 				Model:          "sentence-transformers/LaBSE",
 				Device:         "cpu",
 				TimeoutMinutes: 10,
@@ -88,6 +95,7 @@ func TestMergerProcessor_Process_ShouldNotPanic(t *testing.T) {
 		{
 			name: "without model (uses default)",
 			cfg: config.DuoSubsConfig{
+				Mode:           "local",
 				Model:          "", // Empty - should use DuoSubs default
 				Device:         "cpu",
 				TimeoutMinutes: 10,
@@ -107,12 +115,15 @@ func TestMergerProcessor_Process_ShouldNotPanic(t *testing.T) {
 				}
 			}()
 
-			p := NewMergerProcessor(tt.cfg)
+			p, err := NewMergerProcessor(tt.cfg)
+			if err != nil {
+				t.Fatalf("NewMergerProcessor() error = %v", err)
+			}
 			ctx := context.Background()
 
 			// This will error because duosubs isn't installed and files don't exist,
 			// but it shouldn't panic
-			err := p.Process(ctx, tt.pctx)
+			err = p.Process(ctx, tt.pctx)
 			if err == nil {
 				t.Error("Process() expected error (duosubs not installed), got nil")
 			}
@@ -124,11 +135,15 @@ func TestMergerProcessor_Process_CreatesOutputDirectory(t *testing.T) {
 	// Test that the processor creates the output directory
 	// Even though duosubs will fail, the directory creation should succeed
 
-	p := NewMergerProcessor(config.DuoSubsConfig{
+	p, err := NewMergerProcessor(config.DuoSubsConfig{
+		Mode:           "local",
 		Model:          "test-model",
 		Device:         "cpu",
 		TimeoutMinutes: 1,
 	})
+	if err != nil {
+		t.Fatalf("NewMergerProcessor() error = %v", err)
+	}
 
 	pctx := &ProcessingContext{
 		EnglishSubPath: "/nonexistent/english.srt",
@@ -138,7 +153,7 @@ func TestMergerProcessor_Process_CreatesOutputDirectory(t *testing.T) {
 	ctx := context.Background()
 
 	// This will fail at duosubs execution, but should create the temp dir first
-	err := p.Process(ctx, pctx)
+	err = p.Process(ctx, pctx)
 	if err == nil {
 		t.Error("Process() expected error, got nil")
 	}

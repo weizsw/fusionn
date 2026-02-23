@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/google/uuid"
-
 	"github.com/fusionn/internal/executor"
 	"github.com/fusionn/pkg/logger"
 )
@@ -229,12 +227,14 @@ func (a *Analyzer) matchChineseTrack(stream executor.StreamInfo) *SubtitleTrack 
 	}
 }
 
-// ExtractSubtitles extracts the detected subtitle tracks to temporary SRT files.
+// ExtractSubtitles extracts the detected subtitle tracks to SRT files in the media directory.
 func (a *Analyzer) ExtractSubtitles(ctx context.Context, result *AnalysisResult) error {
-	tmpDir := os.TempDir()
+	videoDir := filepath.Dir(result.VideoPath)
+	videoBase := filepath.Base(result.VideoPath)
+	videoName := strings.TrimSuffix(videoBase, filepath.Ext(videoBase))
 
 	if result.EnglishTrack != nil {
-		outputPath := filepath.Join(tmpDir, fmt.Sprintf("fusionn-eng-%s.srt", uuid.New().String()))
+		outputPath := filepath.Join(videoDir, fmt.Sprintf("%s.eng.srt", videoName))
 		if err := executor.ExtractSubtitle(ctx, result.VideoPath, result.EnglishTrack.Index, outputPath); err != nil {
 			return fmt.Errorf("failed to extract English subtitle: %w", err)
 		}
@@ -243,7 +243,7 @@ func (a *Analyzer) ExtractSubtitles(ctx context.Context, result *AnalysisResult)
 	}
 
 	if result.ChineseTrack != nil {
-		outputPath := filepath.Join(tmpDir, fmt.Sprintf("fusionn-zh-%s.srt", uuid.New().String()))
+		outputPath := filepath.Join(videoDir, fmt.Sprintf("%s.chs.srt", videoName))
 		if err := executor.ExtractSubtitle(ctx, result.VideoPath, result.ChineseTrack.Index, outputPath); err != nil {
 			return fmt.Errorf("failed to extract Chinese subtitle: %w", err)
 		}

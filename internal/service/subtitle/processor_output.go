@@ -44,7 +44,7 @@ func (p *OutputProcessor) Process(ctx context.Context, pctx *ProcessingContext) 
 	videoExt := filepath.Ext(videoBase)
 	videoName := videoBase[:len(videoBase)-len(videoExt)]
 
-	finalPath := filepath.Join(videoDir, videoName+".ass")
+	finalPath := filepath.Join(videoDir, videoName+".zh-CN.ass")
 
 	// If not outputting to same directory, use a configured output directory
 	// For now, we always output to the same directory
