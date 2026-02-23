@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: fusionn-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  fusionn:
+    image: fusionn:latest
+    container_name: fusionn
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount media library (adjust path to your media location)
+      - /path/to/your/media:/media
+      # Mount config
+      - ./config/config.yaml:/app/config/config.yaml:ro
+      # Mount HuggingFace cache for DuoSubs models
+      - huggingface_cache:/root/.cache/huggingface
+    environment:
+      ENV: production
+      CONFIG_PATH: /app/config/config.yaml
+      # Override specific config values if needed
+      # FUSIONN_REDIS_HOST: redis
+      # FUSIONN_REDIS_PORT: 6379
+
+  fusionn-subs:
+    image: ghcr.io/weizsw/fusionn-subs:latest
+    container_name: fusionn-subs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      fusionn:
+        condition: service_started
+    volumes:
+      # Mount same media library as fusionn
+      - /path/to/your/media:/media
+      # Mount config
+      - ./fusionn-subs-config.yaml:/app/config/config.yaml:ro
+    environment:
+      ENV: production
+      CONFIG_PATH: /app/config/config.yaml
+      TZ: Asia/Shanghai  # Adjust to your timezone
+      # Redis connection
+      FUSIONN_SUBS_REDIS_URL: "redis://redis:6379"
+      FUSIONN_SUBS_REDIS_QUEUE: "fusionn:translation_queue"
+      # Callback to fusionn
+      FUSIONN_SUBS_CALLBACK_URL: "http://fusionn:8080/api/v1/callback/translation"
+      # API keys (use Docker secrets in production!)
+      # FUSIONN_SUBS_OPENROUTER_API_KEY: "sk-or-..."
+      # FUSIONN_SUBS_GEMINI_API_KEY: "AIza..."
+
+volumes:
+  redis_data:
+    driver: local
+  huggingface_cache:
+    driver: local

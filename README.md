@@ -10,6 +10,9 @@ Intelligent Media Automation Platform
 - 🐳 Docker and Docker Compose support
 - 🔄 Graceful shutdown
 - 🌐 HTTP API with Gin framework
+- 🎬 Sonarr/Radarr webhook integration for subtitle automation
+- 🔤 Automatic dual-language subtitle generation (English + Chinese)
+- 🌐 Redis-based translation queue for external translation services
 
 ## Quick Start
 
@@ -17,6 +20,7 @@ Intelligent Media Automation Platform
 
 - Go 1.23 or later
 - Docker (optional)
+- Redis server (if using translation queue feature)
 
 ### Local Development
 
@@ -65,10 +69,46 @@ Configuration is loaded from `config/config.yaml` by default. You can override t
 
 The application supports hot-reload - changes to the config file are automatically detected and applied without restart.
 
+### Subtitle Processing
+
+Enable automatic dual-language subtitle generation:
+
+```yaml
+subtitle:
+  enabled: true
+  # ... other subtitle settings
+```
+
+### Redis Integration
+
+For automatic translation of missing Chinese subtitles, configure Redis to queue jobs for external translation services (e.g., fusionn-subs):
+
+```yaml
+redis:
+  host: "redis"
+  port: 6379
+  password: ""
+  database: 0
+  queue_key: "fusionn:translation_queue"
+```
+
+When Chinese subtitles are missing from media files, fusionn will:
+1. Extract the English subtitle track to the media directory (`.eng.srt`)
+2. Queue a translation job to Redis
+3. Wait for the translation service to callback with the translated Chinese subtitle
+4. Merge both subtitles into a dual-language `.zh-CN.ass` file
+
+The translation service (like [fusionn-subs](https://github.com/weizsw/fusionn-subs)) polls the Redis queue, translates subtitles using AI, and callbacks to fusionn when complete.
+
+See `config/config.example.yaml` for full configuration options.
+
 ## API Endpoints
 
 - `GET /health` - Health check
 - `GET /api/v1/status` - Application status and version
+- `POST /api/v1/webhook/sonarr` - Sonarr import webhook
+- `POST /api/v1/webhook/radarr` - Radarr import webhook
+- `POST /api/v1/callback/translation` - Translation completion callback (from fusionn-subs)
 
 ## Development
 

@@ -2,7 +2,6 @@ package subtitle
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/google/uuid"
 
@@ -23,7 +22,7 @@ type Service struct {
 }
 
 // NewService creates a new subtitle service with all processors configured.
-func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.MergeQueue) *Service {
+func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.MergeQueue) (*Service, error) {
 	// Create analyzer
 	analyzer := NewAnalyzer(
 		cfg.Subtitle.EnglishVariants,
@@ -42,19 +41,23 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 		)
 	}
 
-	// Build callback URL for translation queue
-	callbackURL := fmt.Sprintf("http://%s:%d/api/v1/callback/translation", cfg.Server.Host, cfg.Server.Port)
-
 	// Build analyze pipeline (fast, runs synchronously in webhook)
 	analyzePipeline := NewPipeline()
 	analyzePipeline.AddProcessor(NewAnalyzerProcessor(analyzer))
 	analyzePipeline.AddProcessor(NewExtractorProcessor(analyzer))
-	analyzePipeline.AddProcessor(NewTranslationQueueProcessor(redisClient, callbackURL))
+	analyzePipeline.AddProcessor(NewTranslationQueueProcessor(redisClient, ""))
 
 	// Build merge pipeline (slow, runs asynchronously in queue)
 	mergePipeline := NewPipeline()
 	mergePipeline.AddProcessor(NewConversionProcessor(cfg.Subtitle.OpenCC))
-	mergePipeline.AddProcessor(NewMergerProcessor(cfg.Subtitle.DuoSubs))
+	
+	// Create merger processor (may fail if HTTP service is unreachable)
+	mergerProc, err := NewMergerProcessor(cfg.Subtitle.DuoSubs)
+	if err != nil {
+		return nil, err
+	}
+	mergePipeline.AddProcessor(mergerProc)
+	
 	mergePipeline.AddProcessor(NewStyleProcessor(cfg.Subtitle.ASSStyle))
 	mergePipeline.AddProcessor(NewOutputProcessor(cfg.Subtitle.OutputSameDir))
 	mergePipeline.AddProcessor(NewNotificationProcessor(appriseClient, cfg.Apprise.Enabled))
@@ -67,7 +70,7 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 		mergeQueue:      mergeQueue,
 		redisClient:     redisClient,
 		appriseClient:   appriseClient,
-	}
+	}, nil
 }
 
 // ProcessMedia processes a media file through the subtitle pipeline.

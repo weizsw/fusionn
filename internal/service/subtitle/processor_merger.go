@@ -16,14 +16,31 @@ import (
 
 // MergerProcessor merges English and Chinese subtitles using DuoSubs.
 type MergerProcessor struct {
-	duosubsConfig config.DuoSubsConfig
+	duosubsExecutor *executor.DuoSubsConfig
 }
 
 // NewMergerProcessor creates a new merger processor.
-func NewMergerProcessor(cfg config.DuoSubsConfig) *MergerProcessor {
-	return &MergerProcessor{
-		duosubsConfig: cfg,
+func NewMergerProcessor(cfg config.DuoSubsConfig) (*MergerProcessor, error) {
+	// Convert config to executor config
+	execCfg := executor.DuoSubsConfig{
+		Mode:                executor.DuoSubsMode(cfg.Mode),
+		Model:               cfg.Model,
+		Device:              cfg.Device,
+		Timeout:             time.Duration(cfg.TimeoutMinutes) * time.Minute,
+		HTTPURL:             cfg.HTTPURL,
+		HTTPContainerPrefix: cfg.HTTPContainerPrefix,
+		HTTPHostPrefix:      cfg.HTTPHostPrefix,
 	}
+	
+	// Initialize executor (validates config, creates HTTP client if needed)
+	duosubsExec, err := executor.NewDuoSubsExecutor(execCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize duosubs executor: %w", err)
+	}
+	
+	return &MergerProcessor{
+		duosubsExecutor: duosubsExec,
+	}, nil
 }
 
 // Name returns the processor name.
@@ -41,22 +58,16 @@ func (p *MergerProcessor) ShouldRun(pctx *ProcessingContext) bool {
 func (p *MergerProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
 	logger.Info("Merging English + Chinese subtitles with DuoSubs")
 
-	// Create temporary output directory
-	tmpDir := os.TempDir()
-	outputDir := filepath.Join(tmpDir, fmt.Sprintf("fusionn-merge-%s", uuid.New().String()))
+	// Use the video's directory for temp output (shared volume, accessible from host)
+	// This ensures HTTP mode can create files that the container can access
+	videoDir := filepath.Dir(pctx.VideoPath)
+	outputDir := filepath.Join(videoDir, fmt.Sprintf(".fusionn-merge-%s", uuid.New().String()))
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// Build DuoSubs config
-	duosubsCfg := executor.DuoSubsConfig{
-		Model:   p.duosubsConfig.Model,
-		Device:  p.duosubsConfig.Device,
-		Timeout: time.Duration(p.duosubsConfig.TimeoutMinutes) * time.Minute,
-	}
-
 	// Run DuoSubs - it will extract and return the path to the combined ASS file
-	mergedPath, err := executor.MergeDuoSubs(ctx, pctx.ChineseSubPath, pctx.EnglishSubPath, outputDir, duosubsCfg)
+	mergedPath, err := executor.MergeDuoSubs(ctx, pctx.ChineseSubPath, pctx.EnglishSubPath, outputDir, *p.duosubsExecutor)
 	if err != nil {
 		return fmt.Errorf("duosubs merge failed: %w", err)
 	}

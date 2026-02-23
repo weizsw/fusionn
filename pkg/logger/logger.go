@@ -1,6 +1,8 @@
 package logger
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"time"
 
@@ -69,3 +71,41 @@ func Warn(args ...interface{})                    { Log.Warn(args...) }
 func Warnf(template string, args ...interface{})  { Log.Warnf(template, args...) }
 func Fatal(args ...interface{})                   { Log.Fatal(args...); os.Exit(1) }
 func Fatalf(template string, args ...interface{}) { Log.Fatalf(template, args...); os.Exit(1) }
+
+// InfoWriter returns an io.Writer that writes subprocess output to stderr.
+// Lines are prefixed with │ to visually distinguish from service logs.
+type infoWriter struct {
+	prefix string
+	buffer []byte
+}
+
+func NewInfoWriter() *infoWriter {
+	return &infoWriter{
+		prefix: "  │ ",
+		buffer: make([]byte, 0, 1024),
+	}
+}
+
+func (w *infoWriter) Write(p []byte) (n int, err error) {
+	w.buffer = append(w.buffer, p...)
+	
+	// Process complete lines (split on \n or \r for progress bars)
+	for {
+		idx := bytes.IndexByte(w.buffer, '\n')
+		if idx == -1 {
+			idx = bytes.IndexByte(w.buffer, '\r')
+			if idx == -1 {
+				break
+			}
+		}
+		
+		line := string(w.buffer[:idx])
+		if len(line) > 0 {
+			// Write directly to stderr with prefix, then flush
+			fmt.Fprintf(os.Stderr, "%s%s\n", w.prefix, line)
+		}
+		w.buffer = w.buffer[idx+1:]
+	}
+	
+	return len(p), nil
+}

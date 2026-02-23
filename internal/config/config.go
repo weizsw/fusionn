@@ -43,9 +43,15 @@ type SubtitleConfig struct {
 
 // DuoSubsConfig holds DuoSubs settings.
 type DuoSubsConfig struct {
-	Model          string `mapstructure:"model"`
-	Device         string `mapstructure:"device"`
-	TimeoutMinutes int    `mapstructure:"timeout_minutes"`
+	Mode                string `mapstructure:"mode"` // "local" or "http"
+	Model               string `mapstructure:"model"`
+	Device              string `mapstructure:"device"`
+	TimeoutMinutes      int    `mapstructure:"timeout_minutes"`
+	
+	// HTTP mode settings
+	HTTPURL             string `mapstructure:"http_url"`
+	HTTPContainerPrefix string `mapstructure:"http_container_prefix"`
+	HTTPHostPrefix      string `mapstructure:"http_host_prefix"`
 }
 
 // OpenCCConfig holds OpenCC settings.

@@ -67,7 +67,10 @@ func main() {
 		)
 
 		// Create subtitle service
-		subtitleService = subtitle.NewService(cfg, redisQueueClient, mergeQueue)
+		subtitleService, err = subtitle.NewService(cfg, redisQueueClient, mergeQueue)
+		if err != nil {
+			logger.Fatalf("❌ Failed to initialize subtitle service: %v", err)
+		}
 
 		// Set the queue handler to use the subtitle service
 		mergeQueue = queue.NewMergeQueue(
@@ -80,7 +83,10 @@ func main() {
 		)
 
 		// Recreate subtitle service with the properly configured queue
-		subtitleService = subtitle.NewService(cfg, redisQueueClient, mergeQueue)
+		subtitleService, err = subtitle.NewService(cfg, redisQueueClient, mergeQueue)
+		if err != nil {
+			logger.Fatalf("❌ Failed to initialize subtitle service: %v", err)
+		}
 
 		// Start queue workers
 		mergeQueue.Start()
@@ -184,10 +190,8 @@ func registerRoutes(router *gin.Engine, cfg *config.Config, subtitleService *sub
 			api.POST("/webhook/radarr", webhookHandler.HandleRadarr)
 
 			// Callback endpoint for fusionn-subs
-			callbackHandler := handler.NewTranslationCallbackHandler(subtitleService)
-			api.POST("/callback/translation", func(c *gin.Context) {
-				callbackHandler.Handle(c.Writer, c.Request)
-			})
+			callbackHandler := handler.NewCallbackHandler(subtitleService)
+			api.POST("/callback/translation", callbackHandler.HandleTranslationCallback)
 		}
 	}
 }

@@ -14,11 +14,11 @@ import (
 
 // TranslationJob represents a translation job to be queued.
 type TranslationJob struct {
-	JobID       string `json:"job_id"`
-	VideoPath   string `json:"video_path"`
-	MediaType   string `json:"media_type"`
-	MediaTitle  string `json:"media_title"`
-	CallbackURL string `json:"callback_url"`
+	JobID        string `json:"job_id"`
+	VideoPath    string `json:"video_path"`
+	SubtitlePath string `json:"subtitle_path"`
+	MediaType    string `json:"media_type"`
+	MediaTitle   string `json:"media_title"`
 }
 
 // RedisClient wraps Redis client for job queue operations.
