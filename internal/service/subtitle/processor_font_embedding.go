@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fusionn/internal/config"
@@ -65,14 +66,16 @@ func (p *FontEmbeddingProcessor) Process(ctx context.Context, pctx *ProcessingCo
 	// Build output path for embedded file
 	dir := filepath.Dir(pctx.MergedSubPath)
 	base := filepath.Base(pctx.MergedSubPath)
-	embeddedPath := filepath.Join(dir, base[:len(base)-len(filepath.Ext(base))]+".embedded.ass")
+	ext := filepath.Ext(base)
+	nameWithoutExt := strings.TrimSuffix(base, ext)
+	embeddedPath := filepath.Join(dir, nameWithoutExt+".embedded.ass")
 
 	// Execute fusionn-font
 	output, err := p.executeFusionnFont(ctx, pctx.MergedSubPath, embeddedPath)
 	if err != nil {
 		logger.Warnf("⚠️ Font embedding failed: %v - using non-embedded subtitle", err)
 		if output != "" {
-			logger.Debugf("fusionn-font output: %s", output)
+			logger.Warnf("fusionn-font output: %s", output)
 		}
 		return nil
 	}

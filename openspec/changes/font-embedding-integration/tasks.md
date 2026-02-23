@@ -45,7 +45,7 @@
 ## 5. Docker Integration
 
 - [x] 5.1 Update `Dockerfile` to add fusionn-font binary download step
-- [x] 5.2 Add `ARG FUSIONN_FONT_VERSION=v1.0.2` to Dockerfile
+- [x] 5.2 Add `ARG FUSIONN_FONT_VERSION=v1.0.3` to Dockerfile
 - [x] 5.3 Add architecture detection logic using `$TARGETARCH`
 - [x] 5.4 Add wget/curl command to download appropriate binary from GitHub releases
 - [x] 5.5 Set executable permissions on downloaded binary
