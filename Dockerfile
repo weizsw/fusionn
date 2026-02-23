@@ -18,7 +18,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # ════════════════════════════════════════════════════════════════════════════
 # STAGE 2: Final image
 # ════════════════════════════════════════════════════════════════════════════
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 WORKDIR /app
 
@@ -38,7 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip3 install --no-cache-dir duosubs --break-system-packages
 
 # Download fusionn-font binary from GitHub releases
-ARG FUSIONN_FONT_VERSION=v1.0.3
+ARG FUSIONN_FONT_VERSION=v1.0.7
 ARG TARGETARCH
 
 RUN case ${TARGETARCH} in \
