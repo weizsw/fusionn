@@ -5,10 +5,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/fusionn/internal/executor"
 	"github.com/fusionn/pkg/logger"
+)
+
+const (
+	penaltyForcedDisposition = 100
+	penaltyForcedTitle       = 100
+	penaltySDHDisposition    = 10
+	penaltySDHTitle          = 10
+	penaltyLowFrameCount     = 50
+	penaltyLowByteCount      = 50
+	heuristicThreshold       = 0.25
 )
 
 // Track represents a detected subtitle track.
@@ -98,59 +109,221 @@ func (a *Analyzer) AnalyzeVideo(ctx context.Context, videoPath string) (*Analysi
 	}, nil
 }
 
-// detectEnglishSubtitle finds the best English subtitle track.
-func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *Track {
-	var best *Track
-
-	for _, stream := range streams {
-		track := a.matchEnglishTrack(stream)
-		if track != nil {
-			if best == nil || track.Priority < best.Priority {
-				best = track
-			}
-		}
-	}
-
-	return best
+// englishCandidate pairs a stream with its parsed metadata for scoring.
+type englishCandidate struct {
+	stream executor.StreamInfo
+	lang   string
+	title  string
+	frames int
+	bytes  int
 }
 
-// matchEnglishTrack checks if a stream is an English subtitle.
-func (a *Analyzer) matchEnglishTrack(stream executor.StreamInfo) *Track {
-	lang := strings.ToLower(getLanguage(stream))
-	title := strings.ToLower(getTitle(stream))
+// englishScore stores penalty breakdown by signal layer.
+type englishScore struct {
+	DispositionPenalty int
+	TitlePenalty       int
+	FramePenalty       int
+	BytePenalty        int
+	Total              int
+}
 
-	// Check if language is English first
-	isEnglish := false
-	for _, variant := range a.englishVariants {
-		if strings.EqualFold(lang, variant) {
-			isEnglish = true
-			break
+// detectEnglishSubtitle finds the best English subtitle using layered penalty scoring.
+// Pass 1: collect all English candidates and find max frames/bytes.
+// Pass 2: score each candidate, pick the lowest penalty (tie-break by frame count, then stream order).
+func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *Track {
+	log := logger.Indent()
+
+	var candidates []englishCandidate
+	maxFrames, maxBytes := 0, 0
+
+	for _, stream := range streams {
+		lang := strings.ToLower(getLanguage(stream))
+		if !a.isEnglishLang(lang) {
+			continue
+		}
+		title := strings.ToLower(getTitle(stream))
+		frames, _ := getFrameCount(stream)
+		bytes, _ := getByteCount(stream)
+
+		candidates = append(candidates, englishCandidate{
+			stream: stream,
+			lang:   lang,
+			title:  title,
+			frames: frames,
+			bytes:  bytes,
+		})
+
+		if frames > maxFrames {
+			maxFrames = frames
+		}
+		if bytes > maxBytes {
+			maxBytes = bytes
 		}
 	}
 
-	if !isEnglish {
+	if len(candidates) == 0 {
 		return nil
 	}
 
-	// Priority 1: Standard English (non-SDH)
-	if !strings.Contains(title, "sdh") {
-		return &Track{
-			Index:     stream.Index,
-			Language:  lang,
-			Title:     title,
-			CodecName: stream.CodecName,
-			Priority:  1,
+	scores := make([]englishScore, len(candidates))
+	bestIdx := -1
+	bestScore := englishScore{}
+
+	for i := range candidates {
+		c := &candidates[i]
+		score := scoreEnglishTrackDetails(c.stream, c.title, c.frames, c.bytes, maxFrames, maxBytes, len(candidates))
+		scores[i] = score
+
+		log.Infof("English candidate: index=%d, title=%q, total=%d (disposition=%d, title=%d, frame=%d, byte=%d) (frames=%d, bytes=%d)",
+			c.stream.Index, c.title, score.Total, score.DispositionPenalty, score.TitlePenalty, score.FramePenalty, score.BytePenalty, c.frames, c.bytes)
+
+		if bestIdx < 0 || score.Total < bestScore.Total || (score.Total == bestScore.Total && c.frames > candidates[bestIdx].frames) {
+			bestIdx = i
+			bestScore = score
 		}
 	}
 
-	// Priority 2: English SDH
-	return &Track{
-		Index:     stream.Index,
-		Language:  lang,
-		Title:     title,
-		CodecName: stream.CodecName,
-		Priority:  2,
+	if len(candidates) > 1 {
+		runnerUpIdx := -1
+		runnerUpScore := englishScore{}
+		for i := range candidates {
+			if i == bestIdx {
+				continue
+			}
+			score := scores[i]
+			if runnerUpIdx < 0 || score.Total < runnerUpScore.Total || (score.Total == runnerUpScore.Total && candidates[i].frames > candidates[runnerUpIdx].frames) {
+				runnerUpIdx = i
+				runnerUpScore = score
+			}
+		}
+
+		if runnerUpIdx >= 0 {
+			log.Infof("Selected English: index=%d (total=%d, disposition=%d, title=%d, frame=%d, byte=%d) over index=%d (total=%d)",
+				candidates[bestIdx].stream.Index, bestScore.Total, bestScore.DispositionPenalty, bestScore.TitlePenalty, bestScore.FramePenalty, bestScore.BytePenalty,
+				candidates[runnerUpIdx].stream.Index, runnerUpScore.Total)
+		} else {
+			log.Infof("Selected English: index=%d (total=%d)", candidates[bestIdx].stream.Index, bestScore.Total)
+		}
 	}
+
+	return &Track{
+		Index:     candidates[bestIdx].stream.Index,
+		Language:  candidates[bestIdx].lang,
+		Title:     candidates[bestIdx].title,
+		CodecName: candidates[bestIdx].stream.CodecName,
+		Priority:  bestScore.Total,
+	}
+}
+
+// scoreEnglishTrack computes a penalty score across four independent signal layers.
+// Lower score = better track. Layers: disposition flags, title keywords, frame heuristic, byte heuristic.
+func scoreEnglishTrack(stream executor.StreamInfo, title string, frames, bytes, maxFrames, maxBytes, candidateCount int) int {
+	return scoreEnglishTrackDetails(stream, title, frames, bytes, maxFrames, maxBytes, candidateCount).Total
+}
+
+func scoreEnglishTrackDetails(stream executor.StreamInfo, title string, frames, bytes, maxFrames, maxBytes, candidateCount int) englishScore {
+	score := englishScore{}
+
+	if isForced(stream) {
+		score.DispositionPenalty += penaltyForcedDisposition
+	}
+	if isHearingImpaired(stream) {
+		score.DispositionPenalty += penaltySDHDisposition
+	}
+
+	if isForcedByTitle(title) {
+		score.TitlePenalty += penaltyForcedTitle
+	}
+	if isSDHByTitle(title) {
+		score.TitlePenalty += penaltySDHTitle
+	}
+
+	if candidateCount > 1 {
+		if maxFrames > 0 && frames > 0 && float64(frames) < float64(maxFrames)*heuristicThreshold {
+			score.FramePenalty += penaltyLowFrameCount
+		}
+		if maxBytes > 0 && bytes > 0 && float64(bytes) < float64(maxBytes)*heuristicThreshold {
+			score.BytePenalty += penaltyLowByteCount
+		}
+	}
+
+	score.Total = score.DispositionPenalty + score.TitlePenalty + score.FramePenalty + score.BytePenalty
+	return score
+}
+
+func (a *Analyzer) isEnglishLang(lang string) bool {
+	for _, variant := range a.englishVariants {
+		if strings.EqualFold(lang, variant) {
+			return true
+		}
+	}
+	return false
+}
+
+func isForced(stream executor.StreamInfo) bool {
+	if stream.Disposition == nil {
+		return false
+	}
+	return stream.Disposition["forced"] == 1
+}
+
+func isHearingImpaired(stream executor.StreamInfo) bool {
+	if stream.Disposition == nil {
+		return false
+	}
+	return stream.Disposition["hearing_impaired"] == 1
+}
+
+func getFrameCount(stream executor.StreamInfo) (int, bool) {
+	if stream.Tags == nil {
+		return 0, false
+	}
+	v, ok := stream.Tags["NUMBER_OF_FRAMES"]
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+func getByteCount(stream executor.StreamInfo) (int, bool) {
+	if stream.Tags == nil {
+		return 0, false
+	}
+	v, ok := stream.Tags["NUMBER_OF_BYTES"]
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+var forcedTitleKeywords = []string{"forced", "signs & songs", "signs"}
+
+func isForcedByTitle(title string) bool {
+	for _, kw := range forcedTitleKeywords {
+		if strings.Contains(title, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+var sdhTitleKeywords = []string{"sdh", "hearing impaired", "cc"}
+
+func isSDHByTitle(title string) bool {
+	for _, kw := range sdhTitleKeywords {
+		if strings.Contains(title, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // detectChineseSubtitle finds the best Chinese subtitle track.
