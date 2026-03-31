@@ -54,6 +54,8 @@ func (p *NotificationProcessor) Process(ctx context.Context, pctx *ProcessingCon
 		chineseSub := "Extracted"
 		if pctx.NeedsTranslation {
 			chineseSub = "Queued for Translation"
+		} else if pctx.MediaType == "callback" {
+			chineseSub = "Translated"
 		}
 
 		body = fmt.Sprintf(
