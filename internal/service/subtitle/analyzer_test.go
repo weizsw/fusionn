@@ -15,8 +15,8 @@ func newAnalyzer() *Analyzer {
 	)
 }
 
-func makeStream(index int, lang, title string, disposition map[string]int, frames, bytes string) executor.StreamInfo {
-	tags := map[string]string{"language": lang}
+func makeStream(index int, title string, disposition map[string]int, frames, bytes string) executor.StreamInfo {
+	tags := map[string]string{"language": "eng"}
 	if title != "" {
 		tags["title"] = title
 	}
@@ -36,8 +36,8 @@ func makeStream(index int, lang, title string, disposition map[string]int, frame
 }
 
 func TestScoreEnglishTrack_ForcedDisposition(t *testing.T) {
-	forced := makeStream(2, "eng", "", map[string]int{"forced": 1}, "23", "496")
-	regular := makeStream(3, "eng", "", nil, "567", "16792")
+	forced := makeStream(2, "", map[string]int{"forced": 1}, "23", "496")
+	regular := makeStream(3, "", nil, "567", "16792")
 
 	forcedScore := scoreEnglishTrack(forced, "", 23, 496, 567, 16792, 2)
 	regularScore := scoreEnglishTrack(regular, "", 567, 16792, 567, 16792, 2)
@@ -48,8 +48,8 @@ func TestScoreEnglishTrack_ForcedDisposition(t *testing.T) {
 }
 
 func TestScoreEnglishTrack_ForcedByTitle(t *testing.T) {
-	forced := makeStream(2, "eng", "Forced", nil, "23", "496")
-	regular := makeStream(3, "eng", "", nil, "567", "16792")
+	forced := makeStream(2, "Forced", nil, "23", "496")
+	regular := makeStream(3, "", nil, "567", "16792")
 
 	forcedScore := scoreEnglishTrack(forced, "forced", 23, 496, 567, 16792, 2)
 	regularScore := scoreEnglishTrack(regular, "", 567, 16792, 567, 16792, 2)
@@ -61,8 +61,8 @@ func TestScoreEnglishTrack_ForcedByTitle(t *testing.T) {
 
 func TestScoreEnglishTrack_ForcedByFrameHeuristic(t *testing.T) {
 	// No disposition, no title — only frame/byte count distinguishes
-	forced := makeStream(2, "eng", "", nil, "23", "496")
-	regular := makeStream(3, "eng", "", nil, "567", "16792")
+	forced := makeStream(2, "", nil, "23", "496")
+	regular := makeStream(3, "", nil, "567", "16792")
 
 	forcedScore := scoreEnglishTrack(forced, "", 23, 496, 567, 16792, 2)
 	regularScore := scoreEnglishTrack(regular, "", 567, 16792, 567, 16792, 2)
@@ -74,8 +74,8 @@ func TestScoreEnglishTrack_ForcedByFrameHeuristic(t *testing.T) {
 
 func TestScoreEnglishTrack_ByteHeuristicOnly(t *testing.T) {
 	// Same frame count so only byte heuristic can differ.
-	smallBytes := makeStream(2, "eng", "", nil, "400", "1000")
-	largeBytes := makeStream(3, "eng", "", nil, "400", "10000")
+	smallBytes := makeStream(2, "", nil, "400", "1000")
+	largeBytes := makeStream(3, "", nil, "400", "10000")
 
 	smallScore := scoreEnglishTrack(smallBytes, "", 400, 1000, 400, 10000, 2)
 	largeScore := scoreEnglishTrack(largeBytes, "", 400, 10000, 400, 10000, 2)
@@ -86,8 +86,8 @@ func TestScoreEnglishTrack_ByteHeuristicOnly(t *testing.T) {
 }
 
 func TestScoreEnglishTrack_SDHByTitleOnly(t *testing.T) {
-	sdhTitleOnly := makeStream(4, "eng", "SDH", nil, "567", "16792")
-	regular := makeStream(3, "eng", "", nil, "567", "16792")
+	sdhTitleOnly := makeStream(4, "SDH", nil, "567", "16792")
+	regular := makeStream(3, "", nil, "567", "16792")
 
 	sdhScore := scoreEnglishTrack(sdhTitleOnly, "sdh", 567, 16792, 567, 16792, 2)
 	regularScore := scoreEnglishTrack(regular, "", 567, 16792, 567, 16792, 2)
@@ -98,7 +98,7 @@ func TestScoreEnglishTrack_SDHByTitleOnly(t *testing.T) {
 }
 
 func TestScoreEnglishTrack_MissingFrameByteTagsNoHeuristicPenalty(t *testing.T) {
-	noStats := makeStream(2, "eng", "", nil, "", "")
+	noStats := makeStream(2, "", nil, "", "")
 
 	score := scoreEnglishTrack(noStats, "", 0, 0, 567, 16792, 2)
 	if score != 0 {
@@ -108,7 +108,7 @@ func TestScoreEnglishTrack_MissingFrameByteTagsNoHeuristicPenalty(t *testing.T) 
 
 func TestScoreEnglishTrack_HeuristicBoundaryAt25Percent(t *testing.T) {
 	// Exactly 25% should NOT be penalized because the condition is strictly less-than.
-	boundary := makeStream(2, "eng", "", nil, "100", "1000")
+	boundary := makeStream(2, "", nil, "100", "1000")
 
 	score := scoreEnglishTrack(boundary, "", 100, 1000, 400, 4000, 2)
 	if score != 0 {
@@ -117,9 +117,9 @@ func TestScoreEnglishTrack_HeuristicBoundaryAt25Percent(t *testing.T) {
 }
 
 func TestScoreEnglishTrack_SDH(t *testing.T) {
-	sdh := makeStream(4, "eng", "SDH", map[string]int{"hearing_impaired": 1}, "714", "20287")
-	regular := makeStream(3, "eng", "", nil, "567", "16792")
-	forced := makeStream(2, "eng", "Forced", map[string]int{"forced": 1}, "23", "496")
+	sdh := makeStream(4, "SDH", map[string]int{"hearing_impaired": 1}, "714", "20287")
+	regular := makeStream(3, "", nil, "567", "16792")
+	forced := makeStream(2, "Forced", map[string]int{"forced": 1}, "23", "496")
 
 	sdhScore := scoreEnglishTrack(sdh, "sdh", 714, 20287, 714, 20287, 3)
 	regularScore := scoreEnglishTrack(regular, "", 567, 16792, 714, 20287, 3)
@@ -137,7 +137,7 @@ func TestDetectEnglishSubtitle_SingleTrack(t *testing.T) {
 	a := newAnalyzer()
 
 	streams := []executor.StreamInfo{
-		makeStream(2, "eng", "Forced", map[string]int{"forced": 1}, "23", "496"),
+		makeStream(2, "Forced", map[string]int{"forced": 1}, "23", "496"),
 	}
 
 	track := a.detectEnglishSubtitle(streams)
@@ -154,8 +154,8 @@ func TestDetectEnglishSubtitle_TieBreakByFrameCount(t *testing.T) {
 
 	// Two tracks with identical metadata except frame count
 	streams := []executor.StreamInfo{
-		makeStream(3, "eng", "", nil, "400", "10000"),
-		makeStream(4, "eng", "", nil, "600", "10000"),
+		makeStream(3, "", nil, "400", "10000"),
+		makeStream(4, "", nil, "600", "10000"),
 	}
 
 	track := a.detectEnglishSubtitle(streams)
@@ -171,13 +171,13 @@ func TestDetectEnglishSubtitle_RealWorld3Tracks(t *testing.T) {
 	a := newAnalyzer()
 
 	streams := []executor.StreamInfo{
-		makeStream(2, "eng", "Forced", map[string]int{
+		makeStream(2, "Forced", map[string]int{
 			"default": 1, "original": 1, "forced": 1,
 		}, "23", "496"),
-		makeStream(3, "eng", "", map[string]int{
+		makeStream(3, "", map[string]int{
 			"original": 1,
 		}, "567", "16792"),
-		makeStream(4, "eng", "SDH", map[string]int{
+		makeStream(4, "SDH", map[string]int{
 			"original": 1, "hearing_impaired": 1,
 		}, "714", "20287"),
 	}
@@ -195,8 +195,8 @@ func TestDetectEnglishSubtitle_FallbackToSDHOverForced(t *testing.T) {
 	a := newAnalyzer()
 
 	streams := []executor.StreamInfo{
-		makeStream(2, "eng", "Forced", map[string]int{"forced": 1}, "23", "496"),
-		makeStream(4, "eng", "SDH", map[string]int{"hearing_impaired": 1}, "714", "20287"),
+		makeStream(2, "Forced", map[string]int{"forced": 1}, "23", "496"),
+		makeStream(4, "SDH", map[string]int{"hearing_impaired": 1}, "714", "20287"),
 	}
 
 	track := a.detectEnglishSubtitle(streams)
@@ -214,8 +214,8 @@ func TestDetectEnglishSubtitle_AllMetadataMissingFallsBackToStreamOrder(t *testi
 	// Same language, no title/disposition/frame/byte metadata.
 	// Both tracks score equally and have equal frame counts (0), so stream order wins.
 	streams := []executor.StreamInfo{
-		makeStream(2, "eng", "", nil, "", ""),
-		makeStream(3, "eng", "", nil, "", ""),
+		makeStream(2, "", nil, "", ""),
+		makeStream(3, "", nil, "", ""),
 	}
 
 	track := a.detectEnglishSubtitle(streams)
@@ -274,7 +274,7 @@ func TestHelpers_TitleKeywords(t *testing.T) {
 }
 
 func TestHelpers_FrameByteCount(t *testing.T) {
-	stream := makeStream(0, "eng", "", nil, "567", "16792")
+	stream := makeStream(0, "", nil, "567", "16792")
 	frames, ok := getFrameCount(stream)
 	if !ok || frames != 567 {
 		t.Errorf("expected frames=567, got %d (ok=%v)", frames, ok)
