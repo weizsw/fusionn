@@ -109,13 +109,20 @@ func (h *WebhookHandler) HandleSonarr(c *gin.Context) {
 	// Process subtitle in background (non-blocking)
 	if h.subtitleService != nil {
 		go func() {
-			// Use background context since this runs after HTTP response
 			ctx := context.Background()
+			sonarrEpisodeID := 0
+			if len(payload.Episodes) > 0 {
+				sonarrEpisodeID = payload.Episodes[0].ID
+			}
 			if err := h.subtitleService.ProcessMedia(
 				ctx,
-				payload.EpisodeFile.Path,
-				"episode",
-				mediaTitle,
+				subtitle.MediaParams{
+					Path:            payload.EpisodeFile.Path,
+					MediaType:       "episode",
+					Title:           mediaTitle,
+					SonarrSeriesID:  payload.Series.ID,
+					SonarrEpisodeID: sonarrEpisodeID,
+				},
 			); err != nil {
 				logger.Errorf("Subtitle processing failed for %s: %v", mediaTitle, err)
 			}
@@ -162,13 +169,15 @@ func (h *WebhookHandler) HandleRadarr(c *gin.Context) {
 	// Process subtitle in background (non-blocking)
 	if h.subtitleService != nil {
 		go func() {
-			// Use background context since this runs after HTTP response
 			ctx := context.Background()
 			if err := h.subtitleService.ProcessMedia(
 				ctx,
-				payload.MovieFile.Path,
-				"movie",
-				mediaTitle,
+				subtitle.MediaParams{
+					Path:      payload.MovieFile.Path,
+					MediaType: "movie",
+					Title:     mediaTitle,
+					RadarrID:  payload.Movie.ID,
+				},
 			); err != nil {
 				logger.Errorf("Subtitle processing failed for %s: %v", mediaTitle, err)
 			}

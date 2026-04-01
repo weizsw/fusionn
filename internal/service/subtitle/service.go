@@ -89,37 +89,35 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 // ProcessMedia processes a media file through the subtitle pipeline.
 // Phase 1: Analyze + Extract (fast, synchronous)
 // Phase 2: Merge (slow, enqueued to worker)
-func (s *Service) ProcessMedia(ctx context.Context, videoPath, mediaType, mediaTitle string) error {
-	// Generate job ID
+func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) error {
 	jobID := uuid.New().String()
 
-	// Create processing context
 	pctx := &ProcessingContext{
-		VideoPath:  videoPath,
-		MediaType:  mediaType,
-		MediaTitle: mediaTitle,
-		JobID:      jobID,
-		Metadata:   make(map[string]interface{}),
+		VideoPath:       params.Path,
+		MediaType:       params.MediaType,
+		MediaTitle:      params.Title,
+		JobID:           jobID,
+		SonarrSeriesID:  params.SonarrSeriesID,
+		SonarrEpisodeID: params.SonarrEpisodeID,
+		RadarrID:        params.RadarrID,
+		Metadata:        make(map[string]interface{}),
 	}
 
-	logger.Infof("📝 Analyzing subtitles for %s (job: %s)", mediaTitle, jobID)
+	logger.Infof("📝 Analyzing subtitles for %s (job: %s)", params.Title, jobID)
 
-	// Phase 1: Execute analyze pipeline (fast, synchronous)
 	if err := s.analyzePipeline.Execute(ctx, pctx); err != nil {
 		logger.Errorf("Analyze pipeline failed (job: %s): %v", jobID, err)
 		return err
 	}
 
-	// Check if we have both subtitles ready for merge
 	if pctx.EnglishSubPath != "" && pctx.ChineseSubPath != "" {
-		// Enqueue merge job
 		mergeJob := &queue.MergeJob{
 			JobID:       jobID,
-			VideoPath:   videoPath,
+			VideoPath:   params.Path,
 			EnglishPath: pctx.EnglishSubPath,
 			ChinesePath: pctx.ChineseSubPath,
-			MediaTitle:  mediaTitle,
-			MediaType:   mediaType,
+			MediaTitle:  params.Title,
+			MediaType:   params.MediaType,
 		}
 
 		if err := s.mergeQueue.Enqueue(mergeJob); err != nil {
@@ -128,7 +126,6 @@ func (s *Service) ProcessMedia(ctx context.Context, videoPath, mediaType, mediaT
 
 		logger.Infof("✅ Analysis complete, merge job enqueued (job: %s)", jobID)
 	} else {
-		// No merge needed (either missing subs or queued for translation)
 		logger.Infof("✅ Analysis complete (job: %s)", jobID)
 	}
 

@@ -15,6 +15,11 @@ type ProcessingContext struct {
 	MediaTitle string
 	JobID      string
 
+	// Sonarr/Radarr IDs for Bazarr API
+	SonarrSeriesID  int
+	SonarrEpisodeID int
+	RadarrID        int
+
 	// Analysis results
 	Analysis *AnalysisResult
 
@@ -29,6 +34,16 @@ type ProcessingContext struct {
 
 	// Metadata for notifications/logging
 	Metadata map[string]interface{}
+}
+
+// MediaParams holds the parameters for processing a media file.
+type MediaParams struct {
+	Path            string
+	MediaType       string
+	Title           string
+	SonarrSeriesID  int
+	SonarrEpisodeID int
+	RadarrID        int
 }
 
 // Processor represents a single step in the subtitle processing pipeline.
