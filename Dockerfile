@@ -33,9 +33,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Install DuoSubs Python package
+# Install Python packages: DuoSubs (bilingual merge) and cleanit (SDH subtitle filter)
 # Note: First run will download ~2GB LaBSE model to HuggingFace cache
-RUN pip3 install --no-cache-dir duosubs --break-system-packages
+RUN pip3 install --no-cache-dir duosubs cleanit --break-system-packages
 
 # Download fusionn-font binary from GitHub releases
 ARG FUSIONN_FONT_VERSION=v1.0.7
