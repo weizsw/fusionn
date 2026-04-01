@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/fusionn/internal/client/bazarr"
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/handler"
 	"github.com/fusionn/internal/queue"
@@ -52,6 +53,13 @@ func main() {
 		}
 	}
 
+	// Initialize Bazarr client (for subtitle search)
+	var bazarrClient *bazarr.Client
+	if cfg.Bazarr.Enabled {
+		bazarrClient = bazarr.NewClient(cfg.Bazarr.URL, cfg.Bazarr.APIKey, cfg.Bazarr.SearchTimeout)
+		logger.Infof("✅ Bazarr integration enabled: %s", cfg.Bazarr.URL)
+	}
+
 	// Initialize Merge Queue and Subtitle Service (if enabled)
 	var mergeQueue *queue.MergeQueue
 	var subtitleService *subtitle.Service
@@ -67,7 +75,7 @@ func main() {
 		)
 
 		// Create subtitle service
-		subtitleService, err = subtitle.NewService(cfg, redisQueueClient, mergeQueue)
+		subtitleService, err = subtitle.NewService(cfg, redisQueueClient, mergeQueue, bazarrClient)
 		if err != nil {
 			logger.Fatalf("❌ Failed to initialize subtitle service: %v", err)
 		}
@@ -83,7 +91,7 @@ func main() {
 		)
 
 		// Recreate subtitle service with the properly configured queue
-		subtitleService, err = subtitle.NewService(cfg, redisQueueClient, mergeQueue)
+		subtitleService, err = subtitle.NewService(cfg, redisQueueClient, mergeQueue, bazarrClient)
 		if err != nil {
 			logger.Fatalf("❌ Failed to initialize subtitle service: %v", err)
 		}
