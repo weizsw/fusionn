@@ -47,14 +47,13 @@ func (p *NotificationProcessor) Process(ctx context.Context, pctx *ProcessingCon
 
 	// Determine notification type based on processing result
 	if pctx.MergedSubPath != "" {
-		// Success: subtitle merged
 		title = "✅ Subtitle Merge Complete"
 
-		// Determine Chinese subtitle source
 		chineseSub := "Extracted"
-		if pctx.NeedsTranslation {
-			chineseSub = "Queued for Translation"
-		} else if pctx.MediaType == "callback" {
+		switch pctx.ChineseSubSource {
+		case ChineseSourceBazarr:
+			chineseSub = "Downloaded by Bazarr"
+		case ChineseSourceTranslated:
 			chineseSub = "Translated"
 		}
 

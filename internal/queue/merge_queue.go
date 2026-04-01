@@ -12,17 +12,18 @@ import (
 
 // MergeJob represents a subtitle merge job.
 type MergeJob struct {
-	JobID       string
-	VideoPath   string
-	EnglishPath string
-	ChinesePath string
-	MediaTitle  string
-	MediaType   string
-	Status      string
-	CreatedAt   time.Time
-	StartedAt   *time.Time
-	CompletedAt *time.Time
-	Error       string
+	JobID            string
+	VideoPath        string
+	EnglishPath      string
+	ChinesePath      string
+	MediaTitle       string
+	MediaType        string
+	ChineseSubSource string
+	Status           string
+	CreatedAt        time.Time
+	StartedAt        *time.Time
+	CompletedAt      *time.Time
+	Error            string
 }
 
 // JobHandler is a function that processes a merge job.

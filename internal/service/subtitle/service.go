@@ -116,12 +116,13 @@ func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) error {
 
 	if pctx.EnglishSubPath != "" && pctx.ChineseSubPath != "" {
 		mergeJob := &queue.MergeJob{
-			JobID:       jobID,
-			VideoPath:   params.Path,
-			EnglishPath: pctx.EnglishSubPath,
-			ChinesePath: pctx.ChineseSubPath,
-			MediaTitle:  params.Title,
-			MediaType:   params.MediaType,
+			JobID:            jobID,
+			VideoPath:        params.Path,
+			EnglishPath:      pctx.EnglishSubPath,
+			ChinesePath:      pctx.ChineseSubPath,
+			MediaTitle:       params.Title,
+			MediaType:        params.MediaType,
+			ChineseSubSource: pctx.ChineseSubSource,
 		}
 
 		if err := s.mergeQueue.Enqueue(mergeJob); err != nil {
@@ -144,12 +145,13 @@ func (s *Service) ProcessWithSubtitles(ctx context.Context, videoPath, engSubPat
 
 	// Enqueue merge job
 	mergeJob := &queue.MergeJob{
-		JobID:       jobID,
-		VideoPath:   videoPath,
-		EnglishPath: engSubPath,
-		ChinesePath: chsSubPath,
-		MediaTitle:  videoPath,
-		MediaType:   "callback",
+		JobID:            jobID,
+		VideoPath:        videoPath,
+		EnglishPath:      engSubPath,
+		ChinesePath:      chsSubPath,
+		MediaTitle:       videoPath,
+		MediaType:        "callback",
+		ChineseSubSource: ChineseSourceTranslated,
 	}
 
 	if err := s.mergeQueue.Enqueue(mergeJob); err != nil {
@@ -170,7 +172,8 @@ func (s *Service) ProcessMergeJob(ctx context.Context, job *queue.MergeJob) erro
 		JobID:            job.JobID,
 		EnglishSubPath:   job.EnglishPath,
 		ChineseSubPath:   job.ChinesePath,
-		NeedsConversion:  false, // Will be determined by conversion processor
+		ChineseSubSource: job.ChineseSubSource,
+		NeedsConversion:  false,
 		NeedsTranslation: false,
 		Metadata:         make(map[string]interface{}),
 	}
