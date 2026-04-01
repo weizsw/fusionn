@@ -40,7 +40,7 @@ func (p *ExtractorProcessor) Process(ctx context.Context, pctx *ProcessingContex
 	}
 	if pctx.Analysis.ChineseTrack != nil {
 		pctx.ChineseSubPath = pctx.Analysis.ChineseTrack.ExtractedPath
-		// Set flag if conversion is needed (Traditional → Simplified)
+		pctx.ChineseSubSource = ChineseSourceExtracted
 		pctx.NeedsConversion = pctx.Analysis.ChineseTrack.NeedsConversion
 	}
 

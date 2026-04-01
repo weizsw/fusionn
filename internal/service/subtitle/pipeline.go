@@ -7,6 +7,12 @@ import (
 	"github.com/fusionn/pkg/logger"
 )
 
+const (
+	ChineseSourceExtracted  = "extracted"
+	ChineseSourceBazarr     = "bazarr"
+	ChineseSourceTranslated = "translated"
+)
+
 // ProcessingContext holds the state throughout the subtitle processing pipeline.
 type ProcessingContext struct {
 	// Input
@@ -29,8 +35,9 @@ type ProcessingContext struct {
 	MergedSubPath  string // Path to final merged subtitle
 
 	// Flags
-	NeedsConversion  bool // Traditional → Simplified Chinese conversion needed
-	NeedsTranslation bool // Chinese subtitle missing, needs translation
+	NeedsConversion  bool   // Traditional → Simplified Chinese conversion needed
+	NeedsTranslation bool   // Chinese subtitle missing, needs translation
+	ChineseSubSource string // Where the Chinese subtitle came from: "extracted", "bazarr", "translated"
 
 	// Metadata for notifications/logging
 	Metadata map[string]interface{}

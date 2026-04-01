@@ -108,6 +108,7 @@ func (p *BazarrSearchProcessor) checkAndSetSubtitle(pctx *ProcessingContext, sub
 	if subPath != "" {
 		log.Infof("Found Chinese subtitle from Bazarr: %s", subPath)
 		pctx.ChineseSubPath = subPath
+		pctx.ChineseSubSource = ChineseSourceBazarr
 		return nil
 	}
 
@@ -116,6 +117,7 @@ func (p *BazarrSearchProcessor) checkAndSetSubtitle(pctx *ProcessingContext, sub
 			if _, err := os.Stat(s.Path); err == nil {
 				log.Infof("Found Chinese subtitle from Bazarr API path: %s", s.Path)
 				pctx.ChineseSubPath = s.Path
+				pctx.ChineseSubSource = ChineseSourceBazarr
 				return nil
 			}
 		}

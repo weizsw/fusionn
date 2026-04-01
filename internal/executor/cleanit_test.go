@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"testing"
 )
 
@@ -13,7 +14,7 @@ func TestRunCleanit_FileNotFound(t *testing.T) {
 	if !IsCleanitAvailable() {
 		t.Skip("cleanit not available")
 	}
-	err := RunCleanit(t.Context(), "/nonexistent/file.srt")
+	err := RunCleanit(context.Background(), "/nonexistent/file.srt")
 	if err == nil {
 		t.Error("expected error for nonexistent file")
 	}
