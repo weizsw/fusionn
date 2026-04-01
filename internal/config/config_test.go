@@ -358,3 +358,65 @@ subtitle:
 		})
 	}
 }
+
+func TestBazarrConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configContent := `
+server:
+  port: 8080
+bazarr:
+  enabled: true
+  url: "http://bazarr:6767"
+  api_key: "test-api-key"
+  search_timeout: 180
+  language_code: "zh"
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to create test config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if !cfg.Bazarr.Enabled {
+		t.Error("Expected bazarr.enabled to be true")
+	}
+	if cfg.Bazarr.URL != "http://bazarr:6767" {
+		t.Errorf("Expected url 'http://bazarr:6767', got %s", cfg.Bazarr.URL)
+	}
+	if cfg.Bazarr.APIKey != "test-api-key" {
+		t.Errorf("Expected api_key 'test-api-key', got %s", cfg.Bazarr.APIKey)
+	}
+	if cfg.Bazarr.SearchTimeout != 180 {
+		t.Errorf("Expected search_timeout 180, got %d", cfg.Bazarr.SearchTimeout)
+	}
+	if cfg.Bazarr.LanguageCode != "zh" {
+		t.Errorf("Expected language_code 'zh', got %s", cfg.Bazarr.LanguageCode)
+	}
+}
+
+func TestBazarrConfigDisabledByDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configContent := `
+server:
+  port: 8080
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to create test config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Bazarr.Enabled {
+		t.Error("Expected bazarr.enabled to be false by default")
+	}
+}

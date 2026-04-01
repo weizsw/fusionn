@@ -94,6 +94,14 @@ queue:
   queue_size: 100 # Max pending jobs in queue
   max_retries: 3 # Max retry attempts for failed jobs
 
+# Bazarr integration (search for Chinese subtitles before translating)
+bazarr:
+  enabled: false
+  url: "http://bazarr:6767"
+  api_key: ""
+  search_timeout: 180   # seconds — max time for Bazarr to search providers
+  language_code: "zh"   # Bazarr language code for Chinese subtitles
+
 # ════════════════════════════════════════════════════════════════════════════
 # DOCKER SETUP
 # ════════════════════════════════════════════════════════════════════════════

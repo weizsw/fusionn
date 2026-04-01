@@ -20,6 +20,7 @@ type Config struct {
 	Redis    RedisConfig    `mapstructure:"redis"`
 	Apprise  AppriseConfig  `mapstructure:"apprise"`
 	Queue    QueueConfig    `mapstructure:"queue"`
+	Bazarr   BazarrConfig   `mapstructure:"bazarr"`
 }
 
 // ServerConfig holds server settings.
@@ -110,6 +111,15 @@ type QueueConfig struct {
 	Workers    int `mapstructure:"workers"`     // Number of concurrent workers (default: 1)
 	QueueSize  int `mapstructure:"queue_size"`  // Max pending jobs (default: 100)
 	MaxRetries int `mapstructure:"max_retries"` // Max retry attempts (default: 3)
+}
+
+// BazarrConfig holds Bazarr integration settings.
+type BazarrConfig struct {
+	Enabled       bool   `mapstructure:"enabled"`
+	URL           string `mapstructure:"url"`
+	APIKey        string `mapstructure:"api_key"`
+	SearchTimeout int    `mapstructure:"search_timeout"`
+	LanguageCode  string `mapstructure:"language_code"`
 }
 
 // ChangeCallback is called when config changes. Receives old and new config.
