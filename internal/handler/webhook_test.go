@@ -127,6 +127,89 @@ func TestHandleSonarr(t *testing.T) {
 	}
 }
 
+func TestSonarrPayloadParseIDs(t *testing.T) {
+	handler := NewWebhookHandler(nil)
+
+	payload := SonarrPayload{
+		EventType: "Download",
+		Series: SeriesInfo{
+			ID:    42,
+			Title: "Test Series",
+			Path:  "/tv/Test Series",
+		},
+		Episodes: []EpisodeInfo{
+			{
+				ID:            101,
+				Title:         "Test Episode",
+				EpisodeNumber: 1,
+				SeasonNumber:  1,
+			},
+		},
+		EpisodeFile: EpisodeFile{
+			Path: "/tv/Test Series/Season 01/S01E01.mkv",
+		},
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	body, _ := json.Marshal(payload)
+	c.Request = httptest.NewRequest("POST", "/api/v1/webhook/sonarr", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.HandleSonarr(c)
+
+	if w.Code != http.StatusAccepted {
+		t.Errorf("Expected status %d, got %d", http.StatusAccepted, w.Code)
+	}
+
+	// Verify IDs are parsed by re-marshaling and checking
+	var roundTrip SonarrPayload
+	body2, _ := json.Marshal(payload)
+	json.Unmarshal(body2, &roundTrip)
+	if roundTrip.Series.ID != 42 {
+		t.Errorf("Expected series ID 42, got %d", roundTrip.Series.ID)
+	}
+	if roundTrip.Episodes[0].ID != 101 {
+		t.Errorf("Expected episode ID 101, got %d", roundTrip.Episodes[0].ID)
+	}
+}
+
+func TestRadarrPayloadParseIDs(t *testing.T) {
+	handler := NewWebhookHandler(nil)
+
+	payload := RadarrPayload{
+		EventType: "Download",
+		Movie: MovieInfo{
+			ID:     99,
+			Title:  "Test Movie",
+			Year:   2024,
+			ImdbID: "tt1234567",
+		},
+		MovieFile: MovieFile{
+			Path: "/movies/Test Movie (2024)/Movie.mkv",
+		},
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	body, _ := json.Marshal(payload)
+	c.Request = httptest.NewRequest("POST", "/api/v1/webhook/radarr", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.HandleRadarr(c)
+
+	if w.Code != http.StatusAccepted {
+		t.Errorf("Expected status %d, got %d", http.StatusAccepted, w.Code)
+	}
+
+	var roundTrip RadarrPayload
+	body2, _ := json.Marshal(payload)
+	json.Unmarshal(body2, &roundTrip)
+	if roundTrip.Movie.ID != 99 {
+		t.Errorf("Expected movie ID 99, got %d", roundTrip.Movie.ID)
+	}
+}
+
 func TestHandleRadarr(t *testing.T) {
 	handler := NewWebhookHandler(nil) // Pass nil for testing
 

@@ -33,12 +33,14 @@ type SonarrPayload struct {
 
 // SeriesInfo contains series metadata.
 type SeriesInfo struct {
+	ID    int    `json:"id"`
 	Title string `json:"title"`
 	Path  string `json:"path"`
 }
 
 // EpisodeInfo contains episode metadata.
 type EpisodeInfo struct {
+	ID            int    `json:"id"`
 	Title         string `json:"title"`
 	EpisodeNumber int    `json:"episodeNumber"`
 	SeasonNumber  int    `json:"seasonNumber"`
@@ -59,6 +61,7 @@ type RadarrPayload struct {
 
 // MovieInfo contains movie metadata.
 type MovieInfo struct {
+	ID     int    `json:"id"`
 	Title  string `json:"title"`
 	Year   int    `json:"year"`
 	ImdbID string `json:"imdbId"`
