@@ -295,3 +295,62 @@ func TestHelpers_FrameByteCount(t *testing.T) {
 		t.Error("expected ok=false for nil tags")
 	}
 }
+
+func TestDetectEnglishSubtitle_SetsIsSDH(t *testing.T) {
+	analyzer := NewAnalyzer([]string{"eng"}, nil, nil, nil)
+
+	tests := []struct {
+		name      string
+		streams   []executor.StreamInfo
+		wantIsSDH bool
+	}{
+		{
+			name: "SDH by disposition",
+			streams: []executor.StreamInfo{
+				{Index: 2, CodecType: "subtitle", CodecName: "subrip",
+					Tags:        map[string]string{"language": "eng"},
+					Disposition: map[string]int{"hearing_impaired": 1}},
+			},
+			wantIsSDH: true,
+		},
+		{
+			name: "SDH by title",
+			streams: []executor.StreamInfo{
+				{Index: 2, CodecType: "subtitle", CodecName: "subrip",
+					Tags: map[string]string{"language": "eng", "title": "English SDH"}},
+			},
+			wantIsSDH: true,
+		},
+		{
+			name: "Non-SDH track",
+			streams: []executor.StreamInfo{
+				{Index: 2, CodecType: "subtitle", CodecName: "subrip",
+					Tags: map[string]string{"language": "eng", "title": "English"}},
+			},
+			wantIsSDH: false,
+		},
+		{
+			name: "SDH exists but non-SDH wins",
+			streams: []executor.StreamInfo{
+				{Index: 2, CodecType: "subtitle", CodecName: "subrip",
+					Tags: map[string]string{"language": "eng", "title": "English"}},
+				{Index: 3, CodecType: "subtitle", CodecName: "subrip",
+					Tags:        map[string]string{"language": "eng", "title": "English SDH"},
+					Disposition: map[string]int{"hearing_impaired": 1}},
+			},
+			wantIsSDH: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			track := analyzer.detectEnglishSubtitle(tt.streams)
+			if track == nil {
+				t.Fatal("expected a track, got nil")
+			}
+			if track.IsSDH != tt.wantIsSDH {
+				t.Errorf("IsSDH = %v, want %v", track.IsSDH, tt.wantIsSDH)
+			}
+		})
+	}
+}
