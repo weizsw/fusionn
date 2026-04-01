@@ -75,6 +75,11 @@ func NewMergeQueue(cfg Config, handler JobHandler) *MergeQueue {
 	return q
 }
 
+// SetHandler sets the job handler. Must be called before Start.
+func (q *MergeQueue) SetHandler(handler JobHandler) {
+	q.handler = handler
+}
+
 // Start starts the worker pool.
 func (q *MergeQueue) Start() {
 	logger.Infof("🚀 Starting merge queue with %d worker(s)", q.workers)

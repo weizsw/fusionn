@@ -80,21 +80,8 @@ func main() {
 			logger.Fatalf("❌ Failed to initialize subtitle service: %v", err)
 		}
 
-		// Set the queue handler to use the subtitle service
-		mergeQueue = queue.NewMergeQueue(
-			queue.Config{
-				Workers:    cfg.Queue.Workers,
-				QueueSize:  cfg.Queue.QueueSize,
-				MaxRetries: cfg.Queue.MaxRetries,
-			},
-			subtitleService.ProcessMergeJob,
-		)
-
-		// Recreate subtitle service with the properly configured queue
-		subtitleService, err = subtitle.NewService(cfg, redisQueueClient, mergeQueue, bazarrClient)
-		if err != nil {
-			logger.Fatalf("❌ Failed to initialize subtitle service: %v", err)
-		}
+		// Wire the queue handler now that the service exists
+		mergeQueue.SetHandler(subtitleService.ProcessMergeJob)
 
 		// Start queue workers
 		mergeQueue.Start()
