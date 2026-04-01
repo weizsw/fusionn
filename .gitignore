@@ -28,7 +28,6 @@ config/config.yaml
 # Data directories
 data/
 *.log
-internal/service/subtitle/
 
 # IDE
 .idea/
