@@ -45,6 +45,7 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 	analyzePipeline := NewPipeline()
 	analyzePipeline.AddProcessor(NewAnalyzerProcessor(analyzer))
 	analyzePipeline.AddProcessor(NewExtractorProcessor(analyzer))
+	analyzePipeline.AddProcessor(NewSDHFilterProcessor())
 	analyzePipeline.AddProcessor(NewTranslationQueueProcessor(redisClient, ""))
 
 	// Build merge pipeline (slow, runs asynchronously in queue)
@@ -69,6 +70,10 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 		if !isFusionnFontAvailable() {
 			logger.Warn("⚠️ fusionn-font binary not found - font embedding disabled")
 		}
+	}
+
+	if !IsCleanitAvailable() {
+		logger.Warn("⚠️ cleanit not found in PATH - SDH subtitle filtering disabled")
 	}
 
 	return &Service{

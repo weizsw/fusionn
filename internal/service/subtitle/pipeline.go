@@ -59,6 +59,7 @@ var processorEmojis = map[string]string{
 	"Output":            "💾",
 	"Notification":      "📢",
 	"Cleanup":           "🧹",
+	"SDHFilter":         "🔇",
 	"TranslationQueue":  "🌐",
 }
 
