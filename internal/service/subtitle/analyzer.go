@@ -31,6 +31,7 @@ type Track struct {
 	Priority        int    // Lower = higher priority
 	NeedsConversion bool   // For Traditional Chinese → Simplified
 	ExtractedPath   string // Path to extracted SRT file
+	IsSDH           bool
 }
 
 // AnalysisResult contains the result of subtitle analysis.
@@ -206,12 +207,14 @@ func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *Track {
 		}
 	}
 
+	best := &candidates[bestIdx]
 	return &Track{
-		Index:     candidates[bestIdx].stream.Index,
-		Language:  candidates[bestIdx].lang,
-		Title:     candidates[bestIdx].title,
-		CodecName: candidates[bestIdx].stream.CodecName,
+		Index:     best.stream.Index,
+		Language:  best.lang,
+		Title:     best.title,
+		CodecName: best.stream.CodecName,
 		Priority:  bestScore.Total,
+		IsSDH:     isHearingImpaired(best.stream) || isSDHByTitle(best.title),
 	}
 }
 
