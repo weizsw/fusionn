@@ -32,10 +32,10 @@ func (p *TranslationQueueProcessor) Name() string {
 
 // ShouldRun determines if translation queueing should run.
 func (p *TranslationQueueProcessor) ShouldRun(pctx *ProcessingContext) bool {
-	// Queue if we have English but missing Chinese subtitle
 	return pctx.Analysis != nil &&
 		pctx.Analysis.EnglishTrack != nil &&
-		pctx.Analysis.ChineseTrack == nil
+		pctx.Analysis.ChineseTrack == nil &&
+		pctx.ChineseSubPath == ""
 }
 
 // Process queues a translation job.
