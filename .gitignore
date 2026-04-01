@@ -36,6 +36,9 @@ data/
 *.swo
 *~
 
+# Temp merge directories (created by MergerProcessor during tests/runs)
+.fusionn-merge-*
+
 # OS
 .DS_Store
 Thumbs.db

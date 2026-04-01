@@ -44,6 +44,12 @@ func (p *CleanupProcessor) Process(ctx context.Context, pctx *ProcessingContext)
 		}
 	}
 
+	if pctx.TempMergeDir != "" {
+		if err := os.RemoveAll(pctx.TempMergeDir); err != nil {
+			log.Warnf("Failed to remove temp merge dir %s: %v", pctx.TempMergeDir, err)
+		}
+	}
+
 	log.Info("✅ Cleanup completed")
 	return nil
 }
