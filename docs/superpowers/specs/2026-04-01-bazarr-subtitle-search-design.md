@@ -21,10 +21,16 @@ Analyzer → Extractor → SDHFilter → [BazarrSearchProcessor] → Translation
 
 The new processor only activates when:
 - Bazarr integration is enabled in config
-- No Chinese subtitle was found by the analyzer
+- English subtitle was found (no point searching Chinese if there's no English to merge with)
+- No Chinese subtitle was found by the analyzer (`Analysis.ChineseTrack == nil`)
+- `ChineseSubPath` is empty (not already set by a prior step)
 - The required Sonarr/Radarr IDs are present in the processing context
 
 If any condition is not met, the processor is a no-op.
+
+### TranslationQueueProcessor Interaction
+
+`TranslationQueueProcessor.ShouldRun` currently checks `Analysis.ChineseTrack == nil`. When Bazarr finds a subtitle, `ChineseSubPath` is set but `Analysis.ChineseTrack` remains nil (the track was not in the media container). The `ShouldRun` condition must be extended to also require `pctx.ChineseSubPath == ""`, so translation is skipped when Bazarr already provided a Chinese subtitle.
 
 ## Bazarr API Interaction
 
@@ -32,19 +38,23 @@ Bazarr's REST API (flask-restx, auth via `X-API-KEY` header) provides synchronou
 
 ### TV Episodes
 
-1. **Trigger search:** `PATCH /api/episodes/subtitles` with `seriesid`, `episodeid`, `language=zh`, `hi=False`, `forced=False`
-2. **Check result:** `GET /api/episodes?episodeid[]=X` — inspect `subtitles` and `missing_subtitles` fields
+1. **Trigger search:** `PATCH /api/episodes/subtitles` with form/query params: `seriesid` (int), `episodeid` (int), `language` (string, e.g. `"zh"`), `hi` (string `"False"`), `forced` (string `"False"`). Note: Bazarr parses `hi` and `forced` as **strings**, not booleans.
+2. **Check result:** `GET /api/episodes?episodeid[]=X` — response is a `{"data": [...]}` array. Each element has `subtitles` (list of existing subs with paths) and `missing_subtitles` (list of languages still needed).
+3. The PATCH returns **204 with no body** — the subtitle state must be read from the subsequent GET.
 
 ### Movies
 
-1. **Trigger search:** `PATCH /api/movies/subtitles` with `radarrid`, `language=zh`, `hi=False`, `forced=False`
-2. **Check result:** `GET /api/movies?radarrid[]=X` — inspect `subtitles` and `missing_subtitles` fields
+1. **Trigger search:** `PATCH /api/movies/subtitles` with form/query params: `radarrid` (int), `language` (string, e.g. `"zh"`), `hi` (string `"False"`), `forced` (string `"False"`).
+2. **Check result:** `GET /api/movies?radarrid[]=X` — response is `{"data": [...], "total": N}` wrapper. Each element has `subtitles` and `missing_subtitles` fields.
+3. Same as episodes: PATCH returns 204 with no body.
 
 ### Subtitle File Pickup
 
 Bazarr places downloaded subtitles as sidecar files next to the video (e.g., `video.zh.srt`). After a successful search:
-1. Use the subtitle path from Bazarr's GET response if available
-2. Fall back to scanning the video's directory for newly created Chinese `.srt` files
+1. Scan the video's parent directory for Chinese `.srt` files relative to `VideoPath` (most reliable — avoids path mapping mismatches between Bazarr and fusionn container mounts)
+2. Optionally cross-reference with the `subtitles` field from Bazarr's GET response for validation
+
+**Path mapping caveat:** Bazarr stores and returns paths after applying its own path mappings. These strings may not match fusionn's mount layout. Prefer scanning relative to `VideoPath` (which fusionn already knows) rather than trusting Bazarr's stored paths directly.
 
 ## Data Flow Changes
 
@@ -54,7 +64,7 @@ Sonarr and Radarr webhooks already include numeric IDs that Bazarr uses as its p
 
 **Sonarr additions:**
 - `series.id` → `SonarrSeriesID`
-- `episodes[].id` → `SonarrEpisodeID`
+- `episodes[].id` → `SonarrEpisodeID` — Sonarr webhook payloads can include multiple episodes (e.g., multi-episode files). Use the first episode's ID since each webhook corresponds to a single `episodeFile.path`.
 
 **Radarr additions:**
 - `movie.id` → `RadarrID`
@@ -112,8 +122,8 @@ The HTTP client's timeout is set from `bazarr.search_timeout`.
 
 Pipeline processor implementing the `Processor` interface:
 
-- `Name()` → `"BazarrSearch"`
-- `ShouldRun(pctx)` → true when enabled, no Chinese subtitle found, and IDs are present
+- `Name()` → `"BazarrSearch"` (add to `processorEmojis` map in `pipeline.go` for consistent logging)
+- `ShouldRun(pctx)` → true when enabled, English track present, no Chinese track found, `ChineseSubPath` is empty, and IDs are present
 - `Process(ctx, pctx)` → triggers search, checks result, sets `pctx.ChineseSubPath` if found
 
 ## Error Handling
@@ -121,9 +131,12 @@ Pipeline processor implementing the `Processor` interface:
 All Bazarr failures are non-fatal. The processor logs a warning and returns `nil`, allowing `TranslationQueueProcessor` to handle the fallback:
 
 - Network errors (Bazarr unreachable)
-- API errors (auth failure, 404, 500)
+- Authentication failure (wrong API key → 401)
+- Episode/movie not found in Bazarr (404 — sync lag between Sonarr/Radarr and Bazarr)
+- Save/permission failure (409 — Bazarr couldn't write the subtitle file)
+- Other server errors (500)
 - Timeout (provider search takes too long)
-- Subtitle file not accessible after download
+- Subtitle file not accessible after download (path mapping mismatch or permission issue)
 
 ## Wiring
 
