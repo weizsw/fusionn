@@ -76,6 +76,7 @@ var processorEmojis = map[string]string{
 	"Cleanup":           "🧹",
 	"SDHFilter":         "🔇",
 	"TranslationQueue":  "🌐",
+	"BazarrSearch":      "🔎",
 }
 
 // getProcessorEmoji returns the emoji for a processor, or empty string if not found
