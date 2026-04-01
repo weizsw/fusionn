@@ -33,6 +33,7 @@ type ProcessingContext struct {
 	EnglishSubPath string // Path to extracted/processed English subtitle
 	ChineseSubPath string // Path to extracted/processed Chinese subtitle
 	MergedSubPath  string // Path to final merged subtitle
+	TempMergeDir   string // Temp directory created by merger, cleaned up after pipeline
 
 	// Flags
 	NeedsConversion  bool   // Traditional → Simplified Chinese conversion needed

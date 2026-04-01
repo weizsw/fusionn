@@ -67,13 +67,14 @@ func (p *MergerProcessor) Process(ctx context.Context, pctx *ProcessingContext) 
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
+	pctx.TempMergeDir = outputDir
+
 	// Run DuoSubs - it will extract and return the path to the combined ASS file
 	mergedPath, err := executor.MergeDuoSubs(ctx, pctx.ChineseSubPath, pctx.EnglishSubPath, outputDir, *p.duosubsExecutor)
 	if err != nil {
 		return fmt.Errorf("duosubs merge failed: %w", err)
 	}
 
-	// Update context with merged subtitle path
 	pctx.MergedSubPath = mergedPath
 
 	log.Infof("✅ Merge completed: %s", mergedPath)
