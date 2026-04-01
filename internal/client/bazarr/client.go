@@ -73,7 +73,7 @@ func (c *Client) SearchEpisodeSubtitle(ctx context.Context, seriesID, episodeID 
 	params.Set("hi", "False")
 	params.Set("forced", "False")
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.baseURL+"/api/episodes/subtitles?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.baseURL+"/api/episodes/subtitles?"+params.Encode(), http.NoBody)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -84,7 +84,7 @@ func (c *Client) SearchEpisodeSubtitle(ctx context.Context, seriesID, episodeID 
 		return fmt.Errorf("bazarr episode search failed: %w", err)
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bazarr episode search returned status %d", resp.StatusCode)
@@ -99,7 +99,7 @@ func (c *Client) SearchMovieSubtitle(ctx context.Context, radarrID int, language
 	params.Set("hi", "False")
 	params.Set("forced", "False")
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.baseURL+"/api/movies/subtitles?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.baseURL+"/api/movies/subtitles?"+params.Encode(), http.NoBody)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -110,7 +110,7 @@ func (c *Client) SearchMovieSubtitle(ctx context.Context, radarrID int, language
 		return fmt.Errorf("bazarr movie search failed: %w", err)
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bazarr movie search returned status %d", resp.StatusCode)
@@ -120,7 +120,7 @@ func (c *Client) SearchMovieSubtitle(ctx context.Context, radarrID int, language
 
 func (c *Client) GetEpisodeSubtitles(ctx context.Context, episodeID int) (*EpisodeData, error) {
 	reqURL := fmt.Sprintf("%s/api/episodes?episodeid[]=%d", c.baseURL, episodeID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -133,7 +133,7 @@ func (c *Client) GetEpisodeSubtitles(ctx context.Context, episodeID int) (*Episo
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("bazarr get episode returned status %d", resp.StatusCode)
 	}
 
@@ -150,7 +150,7 @@ func (c *Client) GetEpisodeSubtitles(ctx context.Context, episodeID int) (*Episo
 
 func (c *Client) GetMovieSubtitles(ctx context.Context, radarrID int) (*MovieData, error) {
 	reqURL := fmt.Sprintf("%s/api/movies?radarrid[]=%d", c.baseURL, radarrID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -163,7 +163,7 @@ func (c *Client) GetMovieSubtitles(ctx context.Context, radarrID int) (*MovieDat
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("bazarr get movie returned status %d", resp.StatusCode)
 	}
 
