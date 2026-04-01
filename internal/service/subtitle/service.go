@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fusionn/internal/client/bazarr"
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/notification"
 	"github.com/fusionn/internal/queue"
@@ -22,7 +23,7 @@ type Service struct {
 }
 
 // NewService creates a new subtitle service with all processors configured.
-func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.MergeQueue) (*Service, error) {
+func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.MergeQueue, bazarrClient *bazarr.Client) (*Service, error) {
 	// Create analyzer
 	analyzer := NewAnalyzer(
 		cfg.Subtitle.EnglishVariants,
@@ -46,6 +47,9 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 	analyzePipeline.AddProcessor(NewAnalyzerProcessor(analyzer))
 	analyzePipeline.AddProcessor(NewExtractorProcessor(analyzer))
 	analyzePipeline.AddProcessor(NewSDHFilterProcessor())
+	if bazarrClient != nil {
+		analyzePipeline.AddProcessor(NewBazarrSearchProcessor(bazarrClient, cfg.Bazarr.LanguageCode))
+	}
 	analyzePipeline.AddProcessor(NewTranslationQueueProcessor(redisClient, ""))
 
 	// Build merge pipeline (slow, runs asynchronously in queue)
