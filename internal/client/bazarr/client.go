@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/fusionn/pkg/logger"
 )
 
 type Client struct {
@@ -73,21 +75,28 @@ func (c *Client) SearchEpisodeSubtitle(ctx context.Context, seriesID, episodeID 
 	params.Set("hi", "False")
 	params.Set("forced", "False")
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.baseURL+"/api/episodes/subtitles?"+params.Encode(), http.NoBody)
+	reqURL := c.baseURL + "/api/episodes/subtitles?" + params.Encode()
+	logger.Debugf("Bazarr PATCH request: %s", reqURL)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, reqURL, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("X-API-KEY", c.apiKey)
 
+	start := time.Now()
 	resp, err := c.httpClient.Do(req)
+	elapsed := time.Since(start)
 	if err != nil {
-		return fmt.Errorf("bazarr episode search failed: %w", err)
+		return fmt.Errorf("bazarr episode search failed (took %s): %w", elapsed, err)
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+
+	body, _ := io.ReadAll(resp.Body)
+	logger.Debugf("Bazarr PATCH response: status=%d, took=%s, body=%s", resp.StatusCode, elapsed, string(body))
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bazarr episode search returned status %d", resp.StatusCode)
+		return fmt.Errorf("bazarr episode search returned status %d (took %s): %s", resp.StatusCode, elapsed, string(body))
 	}
 	return nil
 }
@@ -99,21 +108,28 @@ func (c *Client) SearchMovieSubtitle(ctx context.Context, radarrID int, language
 	params.Set("hi", "False")
 	params.Set("forced", "False")
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.baseURL+"/api/movies/subtitles?"+params.Encode(), http.NoBody)
+	reqURL := c.baseURL + "/api/movies/subtitles?" + params.Encode()
+	logger.Debugf("Bazarr PATCH request: %s", reqURL)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, reqURL, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("X-API-KEY", c.apiKey)
 
+	start := time.Now()
 	resp, err := c.httpClient.Do(req)
+	elapsed := time.Since(start)
 	if err != nil {
-		return fmt.Errorf("bazarr movie search failed: %w", err)
+		return fmt.Errorf("bazarr movie search failed (took %s): %w", elapsed, err)
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+
+	body, _ := io.ReadAll(resp.Body)
+	logger.Debugf("Bazarr PATCH response: status=%d, took=%s, body=%s", resp.StatusCode, elapsed, string(body))
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bazarr movie search returned status %d", resp.StatusCode)
+		return fmt.Errorf("bazarr movie search returned status %d (took %s): %s", resp.StatusCode, elapsed, string(body))
 	}
 	return nil
 }
@@ -137,8 +153,14 @@ func (c *Client) GetEpisodeSubtitles(ctx context.Context, episodeID int) (*Episo
 		return nil, fmt.Errorf("bazarr get episode returned status %d", resp.StatusCode)
 	}
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read episode response: %w", err)
+	}
+	logger.Debugf("Bazarr GET episodes response (episodeId=%d): %s", episodeID, string(body))
+
 	var listResp EpisodeListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&listResp); err != nil {
+	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("decode episode response: %w", err)
 	}
 
@@ -167,8 +189,14 @@ func (c *Client) GetMovieSubtitles(ctx context.Context, radarrID int) (*MovieDat
 		return nil, fmt.Errorf("bazarr get movie returned status %d", resp.StatusCode)
 	}
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read movie response: %w", err)
+	}
+	logger.Debugf("Bazarr GET movies response (radarrId=%d): %s", radarrID, string(body))
+
 	var listResp MovieListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&listResp); err != nil {
+	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("decode movie response: %w", err)
 	}
 

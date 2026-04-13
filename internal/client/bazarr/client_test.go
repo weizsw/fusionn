@@ -5,8 +5,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
+
+	"github.com/fusionn/pkg/logger"
 )
+
+func TestMain(m *testing.M) {
+	logger.Init(true)
+	os.Exit(m.Run())
+}
 
 func TestSearchEpisodeSubtitle(t *testing.T) {
 	called := false
