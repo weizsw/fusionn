@@ -48,12 +48,16 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 	analyzePipeline.AddProcessor(NewExtractorProcessor(analyzer))
 	analyzePipeline.AddProcessor(NewSDHFilterProcessor())
 	if bazarrClient != nil {
-		analyzePipeline.AddProcessor(NewBazarrSearchProcessor(bazarrClient, cfg.Bazarr.LanguageCode))
+		analyzePipeline.AddProcessor(NewBazarrSearchProcessor(
+			bazarrClient, cfg.Bazarr.LanguageCode,
+			cfg.Bazarr.PollIntervalSeconds, cfg.Bazarr.PollTimeoutSeconds,
+		))
 	}
 	analyzePipeline.AddProcessor(NewTranslationQueueProcessor(redisClient, ""))
 
 	// Build merge pipeline (slow, runs asynchronously in queue)
 	mergePipeline := NewPipeline()
+	mergePipeline.AddProcessor(NewDualLanguageProcessor(cfg.Subtitle.OpenCC))
 	mergePipeline.AddProcessor(NewConversionProcessor(cfg.Subtitle.OpenCC))
 
 	// Create merger processor (may fail if HTTP service is unreachable)

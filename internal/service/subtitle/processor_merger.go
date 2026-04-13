@@ -50,8 +50,7 @@ func (p *MergerProcessor) Name() string {
 
 // ShouldRun determines if merging should run.
 func (p *MergerProcessor) ShouldRun(pctx *ProcessingContext) bool {
-	// Run if we have both English and Chinese subtitles
-	return pctx.EnglishSubPath != "" && pctx.ChineseSubPath != ""
+	return pctx.MergedSubPath == "" && pctx.EnglishSubPath != "" && pctx.ChineseSubPath != ""
 }
 
 // Process merges English and Chinese subtitles.
