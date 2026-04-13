@@ -246,21 +246,22 @@ func detectDualLanguageASS(content string) bool {
 	// Pattern 2: single style with \N-separated bilingual text
 	bilingualCount := 0
 	for _, d := range dialogues[:sampleSize] {
-		if strings.Contains(d.text, "\\N") {
-			parts := strings.Split(d.text, "\\N")
-			hasCJK := false
-			hasLatin := false
-			for _, p := range parts {
-				if containsCJK(p) {
-					hasCJK = true
-				}
-				if containsLatin(p) {
-					hasLatin = true
-				}
+		if !strings.Contains(d.text, "\\N") {
+			continue
+		}
+		parts := strings.Split(d.text, "\\N")
+		hasCJK := false
+		hasLatin := false
+		for _, p := range parts {
+			if containsCJK(p) {
+				hasCJK = true
 			}
-			if hasCJK && hasLatin {
-				bilingualCount++
+			if containsLatin(p) {
+				hasLatin = true
 			}
+		}
+		if hasCJK && hasLatin {
+			bilingualCount++
 		}
 	}
 
@@ -286,7 +287,7 @@ func classifyLine(line string) lineLanguage {
 
 func srtTimeToASS(srtTime string) string {
 	t := strings.Replace(srtTime, ",", ".", 1)
-	if len(t) > 0 && t[0] == '0' {
+	if t != "" && t[0] == '0' {
 		t = t[1:]
 	}
 	if idx := strings.LastIndex(t, "."); idx >= 0 && len(t)-idx == 4 {
