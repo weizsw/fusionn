@@ -380,3 +380,98 @@ func convertDualLanguageSRTToASS(content string) (string, error) {
 
 	return sb.String(), nil
 }
+
+func remapDualLanguageASS(content string) (string, error) {
+	dialogues := parseASSDialogues(content)
+	if len(dialogues) == 0 {
+		return "", fmt.Errorf("no dialogues found in ASS")
+	}
+
+	// Determine which style is CJK-dominant vs Latin-dominant
+	styleCJKCount := make(map[string]int)
+	styleLatinCount := make(map[string]int)
+
+	for _, d := range dialogues {
+		if containsCJK(d.text) {
+			styleCJKCount[d.style]++
+		}
+		if containsLatin(d.text) && !containsCJK(d.text) {
+			styleLatinCount[d.style]++
+		}
+	}
+
+	styleLanguage := make(map[string]lineLanguage)
+	allStyles := make(map[string]bool)
+	for s := range styleCJKCount {
+		allStyles[s] = true
+	}
+	for s := range styleLatinCount {
+		allStyles[s] = true
+	}
+	for style := range allStyles {
+		if styleCJKCount[style] > styleLatinCount[style] {
+			styleLanguage[style] = langChinese
+		} else if styleLatinCount[style] > styleCJKCount[style] {
+			styleLanguage[style] = langEnglish
+		}
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString("[Script Info]\n")
+	sb.WriteString("ScriptType: v4.00+\n")
+	sb.WriteString("WrapStyle: 0\n")
+	sb.WriteString("ScaledBorderAndShadow: yes\n")
+	sb.WriteString("PlayResX: 384\n")
+	sb.WriteString("PlayResY: 288\n\n")
+
+	sb.WriteString("[V4+ Styles]\n")
+	sb.WriteString("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
+	sb.WriteString("Style: Default,Arial,20,&H00FFFFFF,&H0000ffff,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1.0,0.0,2,10,10,10,1\n")
+	sb.WriteString("Style: Default_1,Arial,14,&H00FFFFFF,&H0000ffff,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1.0,0.0,2,10,10,10,1\n\n")
+
+	sb.WriteString("[Events]\n")
+	sb.WriteString("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+
+	for _, d := range dialogues {
+		// Check for \N-separated bilingual text within a single dialogue
+		if strings.Contains(d.text, "\\N") {
+			parts := strings.Split(d.text, "\\N")
+			var chParts, enParts []string
+			for _, p := range parts {
+				p = strings.TrimSpace(p)
+				if containsCJK(p) {
+					chParts = append(chParts, p)
+				} else if containsLatin(p) {
+					enParts = append(enParts, p)
+				}
+			}
+			if len(chParts) > 0 {
+				sb.WriteString(fmt.Sprintf("Dialogue: %s,%s,%s,Default,%s,%s,%s,%s,%s,%s\n",
+					d.layer, d.start, d.end, d.name, d.marginL, d.marginR, d.marginV, d.effect,
+					strings.Join(chParts, "\\N")))
+			}
+			if len(enParts) > 0 {
+				sb.WriteString(fmt.Sprintf("Dialogue: %s,%s,%s,Default_1,%s,%s,%s,%s,%s,%s\n",
+					d.layer, d.start, d.end, d.name, d.marginL, d.marginR, d.marginV, d.effect,
+					strings.Join(enParts, "\\N")))
+			}
+			continue
+		}
+
+		// Map style based on language analysis
+		newStyle := "Default"
+		if lang, ok := styleLanguage[d.style]; ok && lang == langEnglish {
+			newStyle = "Default_1"
+		} else if !ok {
+			if containsLatin(d.text) && !containsCJK(d.text) {
+				newStyle = "Default_1"
+			}
+		}
+
+		sb.WriteString(fmt.Sprintf("Dialogue: %s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
+			d.layer, d.start, d.end, newStyle, d.name, d.marginL, d.marginR, d.marginV, d.effect, d.text))
+	}
+
+	return sb.String(), nil
+}
