@@ -146,5 +146,72 @@ func TestDetectDualLanguageSRT(t *testing.T) {
 	}
 }
 
+func TestDetectDualLanguageASS(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{
+			name: "dual language with two styles",
+			content: `[Script Info]
+ScriptType: v4.00+
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour
+Style: Chinese,Arial,20,&H00FFFFFF
+Style: English,Arial,16,&H00FFFF00
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.00,0:00:03.00,Chinese,,0,0,0,,你好世界
+Dialogue: 0,0:00:01.00,0:00:03.00,English,,0,0,0,,Hello World
+Dialogue: 0,0:00:04.00,0:00:06.00,Chinese,,0,0,0,,再见
+Dialogue: 0,0:00:04.00,0:00:06.00,English,,0,0,0,,Goodbye
+`,
+			want: true,
+		},
+		{
+			name: "chinese only ASS",
+			content: `[Script Info]
+ScriptType: v4.00+
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour
+Style: Default,Arial,20,&H00FFFFFF
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,你好世界
+Dialogue: 0,0:00:04.00,0:00:06.00,Default,,0,0,0,,再见
+`,
+			want: false,
+		},
+		{
+			name: "bilingual text in single style with backslash N",
+			content: `[Script Info]
+ScriptType: v4.00+
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour
+Style: Default,Arial,20,&H00FFFFFF
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,你好世界\NHello World
+Dialogue: 0,0:00:04.00,0:00:06.00,Default,,0,0,0,,再见\NGoodbye
+`,
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := detectDualLanguageASS(tt.content); got != tt.want {
+				t.Errorf("detectDualLanguageASS() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // Suppress unused import warning — strings used in later tasks
 var _ = strings.Contains
