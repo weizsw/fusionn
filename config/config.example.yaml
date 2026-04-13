@@ -99,8 +99,10 @@ bazarr:
   enabled: false
   url: "http://bazarr:6767"
   api_key: ""
-  search_timeout: 180   # seconds — max time for Bazarr to search providers
-  language_code: "zh"   # Bazarr language code for Chinese subtitles
+  search_timeout: 180          # seconds — max time for Bazarr PATCH request
+  language_code: "zh"          # Bazarr language code for Chinese subtitles
+  poll_interval_seconds: 5     # seconds — how often to poll Bazarr after triggering search
+  poll_timeout_seconds: 60     # seconds — max time to wait for Bazarr to download subtitle
 
 # ════════════════════════════════════════════════════════════════════════════
 # DOCKER SETUP

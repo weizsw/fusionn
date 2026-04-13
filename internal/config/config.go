@@ -115,11 +115,13 @@ type QueueConfig struct {
 
 // BazarrConfig holds Bazarr integration settings.
 type BazarrConfig struct {
-	Enabled       bool   `mapstructure:"enabled"`
-	URL           string `mapstructure:"url"`
-	APIKey        string `mapstructure:"api_key"`
-	SearchTimeout int    `mapstructure:"search_timeout"`
-	LanguageCode  string `mapstructure:"language_code"`
+	Enabled             bool   `mapstructure:"enabled"`
+	URL                 string `mapstructure:"url"`
+	APIKey              string `mapstructure:"api_key"`
+	SearchTimeout       int    `mapstructure:"search_timeout"`
+	LanguageCode        string `mapstructure:"language_code"`
+	PollIntervalSeconds int    `mapstructure:"poll_interval_seconds"`
+	PollTimeoutSeconds  int    `mapstructure:"poll_timeout_seconds"`
 }
 
 // ChangeCallback is called when config changes. Receives old and new config.
