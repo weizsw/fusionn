@@ -213,6 +213,73 @@ Dialogue: 0,0:00:04.00,0:00:06.00,Default,,0,0,0,,再见\NGoodbye
 	}
 }
 
+func TestRemapDualLanguageASS(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantCH  string
+		wantEN  string
+		wantErr bool
+	}{
+		{
+			name: "two styles remapped to Default and Default_1",
+			input: `[Script Info]
+ScriptType: v4.00+
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: ChiStyle,Arial,20,&H00FFFFFF,&H0000ffff,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1.0,0.0,2,10,10,10,1
+Style: EngStyle,Arial,14,&H00FFFFFF,&H0000ffff,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1.0,0.0,2,10,10,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.00,0:00:03.00,ChiStyle,,0,0,0,,你好世界
+Dialogue: 0,0:00:01.00,0:00:03.00,EngStyle,,0,0,0,,Hello World
+`,
+			wantCH:  "Default,,0,0,0,,你好世界",
+			wantEN:  "Default_1,,0,0,0,,Hello World",
+			wantErr: false,
+		},
+		{
+			name: "single style with backslash-N split into two events",
+			input: `[Script Info]
+ScriptType: v4.00+
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,20,&H00FFFFFF,&H0000ffff,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1.0,0.0,2,10,10,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,你好世界\NHello World
+`,
+			wantCH:  "Default,,0,0,0,,你好世界",
+			wantEN:  "Default_1,,0,0,0,,Hello World",
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := remapDualLanguageASS(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("remapDualLanguageASS() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !strings.Contains(result, tt.wantCH) {
+				t.Errorf("result missing Chinese line %q\ngot:\n%s", tt.wantCH, result)
+			}
+			if !strings.Contains(result, tt.wantEN) {
+				t.Errorf("result missing English line %q\ngot:\n%s", tt.wantEN, result)
+			}
+			if !strings.Contains(result, "Style: Default,") {
+				t.Error("result missing Default style definition")
+			}
+			if !strings.Contains(result, "Style: Default_1,") {
+				t.Error("result missing Default_1 style definition")
+			}
+		})
+	}
+}
+
 func TestConvertDualLanguageSRTToASS(t *testing.T) {
 	input := "1\n00:00:01,000 --> 00:00:03,000\n你好世界\nHello World\n\n" +
 		"2\n00:00:04,500 --> 00:00:06,200\n再见\nGoodbye\n\n"
