@@ -283,3 +283,100 @@ func classifyLine(line string) lineLanguage {
 		return langUnknown
 	}
 }
+
+func srtTimeToASS(srtTime string) string {
+	t := strings.Replace(srtTime, ",", ".", 1)
+	if len(t) > 0 && t[0] == '0' {
+		t = t[1:]
+	}
+	if idx := strings.LastIndex(t, "."); idx >= 0 && len(t)-idx == 4 {
+		t = t[:len(t)-1]
+	}
+	return t
+}
+
+func splitMixedLine(line string) (chinese, english string) {
+	runes := []rune(line)
+	lastCJKIdx := -1
+	for i, r := range runes {
+		if isCJK(r) {
+			lastCJKIdx = i
+		}
+	}
+
+	if lastCJKIdx < 0 || lastCJKIdx >= len(runes)-1 {
+		if containsCJK(line) {
+			return line, ""
+		}
+		return "", line
+	}
+
+	chinese = strings.TrimSpace(string(runes[:lastCJKIdx+1]))
+	english = strings.TrimSpace(string(runes[lastCJKIdx+1:]))
+	return chinese, english
+}
+
+func separateCueLanguages(lines []string) (chineseLines, englishLines []string) {
+	normalized := normalizeCueLines(lines)
+
+	for _, line := range normalized {
+		lang := classifyLine(line)
+		switch lang {
+		case langChinese:
+			chineseLines = append(chineseLines, line)
+		case langEnglish:
+			englishLines = append(englishLines, line)
+		case langMixed:
+			ch, en := splitMixedLine(line)
+			if ch != "" {
+				chineseLines = append(chineseLines, ch)
+			}
+			if en != "" {
+				englishLines = append(englishLines, en)
+			}
+		}
+	}
+	return chineseLines, englishLines
+}
+
+func convertDualLanguageSRTToASS(content string) (string, error) {
+	cues, err := parseSRTCues(content)
+	if err != nil {
+		return "", fmt.Errorf("parse SRT: %w", err)
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString("[Script Info]\n")
+	sb.WriteString("ScriptType: v4.00+\n")
+	sb.WriteString("WrapStyle: 0\n")
+	sb.WriteString("ScaledBorderAndShadow: yes\n")
+	sb.WriteString("PlayResX: 384\n")
+	sb.WriteString("PlayResY: 288\n\n")
+
+	sb.WriteString("[V4+ Styles]\n")
+	sb.WriteString("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
+	sb.WriteString("Style: Default,Arial,20,&H00FFFFFF,&H0000ffff,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1.0,0.0,2,10,10,10,1\n")
+	sb.WriteString("Style: Default_1,Arial,14,&H00FFFFFF,&H0000ffff,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1.0,0.0,2,10,10,10,1\n\n")
+
+	sb.WriteString("[Events]\n")
+	sb.WriteString("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+
+	for _, cue := range cues {
+		startASS := srtTimeToASS(cue.startTime)
+		endASS := srtTimeToASS(cue.endTime)
+
+		chineseLines, englishLines := separateCueLanguages(cue.lines)
+
+		if len(chineseLines) > 0 {
+			text := strings.Join(chineseLines, "\\N")
+			sb.WriteString(fmt.Sprintf("Dialogue: 0,%s,%s,Default,,0,0,0,,%s\n", startASS, endASS, text))
+		}
+		if len(englishLines) > 0 {
+			text := strings.Join(englishLines, "\\N")
+			sb.WriteString(fmt.Sprintf("Dialogue: 0,%s,%s,Default_1,,0,0,0,,%s\n", startASS, endASS, text))
+		}
+	}
+
+	return sb.String(), nil
+}
