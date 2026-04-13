@@ -1,6 +1,7 @@
 package subtitle
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -71,3 +72,79 @@ func TestClassifyLine(t *testing.T) {
 		})
 	}
 }
+
+func TestParseSRTCues(t *testing.T) {
+	input := "1\n00:00:01,000 --> 00:00:03,000\n你好世界\nHello World\n\n2\n00:00:04,000 --> 00:00:06,000\n再见\nGoodbye\n\n"
+
+	cues, err := parseSRTCues(input)
+	if err != nil {
+		t.Fatalf("parseSRTCues() error = %v", err)
+	}
+	if len(cues) != 2 {
+		t.Fatalf("parseSRTCues() got %d cues, want 2", len(cues))
+	}
+	if cues[0].startTime != "00:00:01,000" || cues[0].endTime != "00:00:03,000" {
+		t.Errorf("cue[0] times = %q-%q, want 00:00:01,000-00:00:03,000", cues[0].startTime, cues[0].endTime)
+	}
+	if len(cues[0].lines) != 2 {
+		t.Errorf("cue[0] lines = %d, want 2", len(cues[0].lines))
+	}
+}
+
+func TestDetectDualLanguageSRT(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{
+			name: "dual language alternating lines",
+			content: "1\n00:00:01,000 --> 00:00:03,000\n你好世界\nHello World\n\n" +
+				"2\n00:00:04,000 --> 00:00:06,000\n再见\nGoodbye\n\n" +
+				"3\n00:00:07,000 --> 00:00:09,000\n谢谢\nThank you\n\n",
+			want: true,
+		},
+		{
+			name: "dual language with backslash N",
+			content: "1\n00:00:01,000 --> 00:00:03,000\n你好世界\\NHello World\n\n" +
+				"2\n00:00:04,000 --> 00:00:06,000\n再见\\NGoodbye\n\n",
+			want: true,
+		},
+		{
+			name: "chinese only",
+			content: "1\n00:00:01,000 --> 00:00:03,000\n你好世界\n\n" +
+				"2\n00:00:04,000 --> 00:00:06,000\n再见\n\n",
+			want: false,
+		},
+		{
+			name: "english only",
+			content: "1\n00:00:01,000 --> 00:00:03,000\nHello World\n\n" +
+				"2\n00:00:04,000 --> 00:00:06,000\nGoodbye\n\n",
+			want: false,
+		},
+		{
+			name: "mostly dual with some chinese only",
+			content: "1\n00:00:01,000 --> 00:00:03,000\n你好世界\nHello World\n\n" +
+				"2\n00:00:04,000 --> 00:00:06,000\n再见\nGoodbye\n\n" +
+				"3\n00:00:07,000 --> 00:00:09,000\n谢谢\n\n" +
+				"4\n00:00:10,000 --> 00:00:12,000\n对不起\nSorry\n\n",
+			want: true,
+		},
+		{
+			name: "single line mixed characters",
+			content: "1\n00:00:01,000 --> 00:00:03,000\n你好世界 Hello World\n\n" +
+				"2\n00:00:04,000 --> 00:00:06,000\n再见 Goodbye\n\n",
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := detectDualLanguageSRT(tt.content); got != tt.want {
+				t.Errorf("detectDualLanguageSRT() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// Suppress unused import warning — strings used in later tasks
+var _ = strings.Contains
