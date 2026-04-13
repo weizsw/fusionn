@@ -55,6 +55,15 @@ func TestMergerProcessor_ShouldRun(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name: "skip when merged path already set",
+			pctx: &ProcessingContext{
+				EnglishSubPath: "/path/to/english.srt",
+				ChineseSubPath: "/path/to/chinese.srt",
+				MergedSubPath:  "/path/to/already_merged.ass",
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
