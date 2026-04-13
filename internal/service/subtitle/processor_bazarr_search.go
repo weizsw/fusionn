@@ -219,14 +219,14 @@ func (p *BazarrSearchProcessor) checkAndSetSubtitle(pctx *ProcessingContext, sub
 
 	for _, s := range subtitles {
 		if s.Code2 == p.languageCode && s.Path != "" {
-			if _, statErr := os.Stat(s.Path); statErr == nil {
+			_, statErr := os.Stat(s.Path)
+			if statErr == nil {
 				log.Infof("Found Chinese subtitle from Bazarr API path: %s", s.Path)
 				pctx.ChineseSubPath = s.Path
 				pctx.ChineseSubSource = ChineseSourceBazarr
 				return nil
-			} else {
-				log.Debugf("Bazarr API subtitle path not accessible: %s (err: %v)", s.Path, statErr)
 			}
+			log.Debugf("Bazarr API subtitle path not accessible: %s (err: %v)", s.Path, statErr)
 		}
 	}
 
