@@ -52,35 +52,34 @@ func TestEventTypeValidation(t *testing.T) {
 	}{
 		{
 			name:          "Download event",
-			eventType:     "Download",
+			eventType:     WebhookEventDownload,
 			shouldProcess: true,
 		},
 		{
 			name:          "Upgrade event",
-			eventType:     "Upgrade",
+			eventType:     WebhookEventUpgrade,
 			shouldProcess: true,
 		},
 		{
 			name:          "Test event - ignored",
-			eventType:     "Test",
+			eventType:     WebhookEventTest,
 			shouldProcess: false,
 		},
 		{
 			name:          "Grab event - ignored",
-			eventType:     "Grab",
+			eventType:     WebhookEventGrab,
 			shouldProcess: false,
 		},
 		{
 			name:          "Rename event - ignored",
-			eventType:     "Rename",
+			eventType:     WebhookEventRename,
 			shouldProcess: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Simulate validation logic from HandleSonarr/HandleRadarr
-			shouldProcess := (tt.eventType == "Download" || tt.eventType == "Upgrade")
+			shouldProcess := shouldProcessEvent(tt.eventType)
 
 			if shouldProcess != tt.shouldProcess {
 				t.Errorf("Event %s: got shouldProcess=%v, want %v",

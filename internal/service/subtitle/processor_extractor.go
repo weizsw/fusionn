@@ -19,7 +19,7 @@ func NewExtractorProcessor(analyzer *Analyzer) *ExtractorProcessor {
 
 // Name returns the processor name.
 func (p *ExtractorProcessor) Name() string {
-	return "Extractor"
+	return ProcessorNameExtractor
 }
 
 // ShouldRun determines if extraction should run.

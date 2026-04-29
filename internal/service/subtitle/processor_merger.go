@@ -45,7 +45,7 @@ func NewMergerProcessor(cfg config.DuoSubsConfig) (*MergerProcessor, error) {
 
 // Name returns the processor name.
 func (p *MergerProcessor) Name() string {
-	return "Merger"
+	return ProcessorNameMerger
 }
 
 // ShouldRun determines if merging should run.

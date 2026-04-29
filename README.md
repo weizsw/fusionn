@@ -101,6 +101,27 @@ When Chinese subtitles are missing from media files, fusionn will:
 
 The translation service (like [fusionn-subs](https://github.com/weizsw/fusionn-subs)) polls the Redis queue, translates subtitles using AI, and callbacks to fusionn when complete.
 
+Queued jobs use the fusionn-subs-compatible JSON shape. The identity fields are optional but are included when Sonarr/Radarr provides them so downstream glossary reuse can key terms by stable media IDs:
+
+```json
+{
+  "job_id": "uuid",
+  "video_path": "/media/Show/S01E01.mkv",
+  "subtitle_path": "/media/Show/S01E01.eng.srt",
+  "media_title": "Show S01E01",
+  "media_type": "episode",
+  "source_system": "sonarr",
+  "media_id": "42",
+  "external_ids": {
+    "sonarr": "42",
+    "tvdb": "355620",
+    "imdb": "tt8201186"
+  },
+  "season": 1,
+  "episode": 1
+}
+```
+
 See `config/config.example.yaml` for full configuration options.
 
 ### Font Embedding

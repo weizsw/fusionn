@@ -14,11 +14,16 @@ import (
 
 // TranslationJob represents a translation job to be queued.
 type TranslationJob struct {
-	JobID        string `json:"job_id"`
-	VideoPath    string `json:"video_path"`
-	SubtitlePath string `json:"subtitle_path"`
-	MediaType    string `json:"media_type"`
-	MediaTitle   string `json:"media_title"`
+	JobID        string            `json:"job_id"`
+	VideoPath    string            `json:"video_path"`
+	SubtitlePath string            `json:"subtitle_path"`
+	MediaType    string            `json:"media_type"`
+	MediaTitle   string            `json:"media_title"`
+	SourceSystem string            `json:"source_system,omitempty"`
+	MediaID      string            `json:"media_id,omitempty"`
+	ExternalIDs  map[string]string `json:"external_ids,omitempty"`
+	Season       int               `json:"season,omitempty"`
+	Episode      int               `json:"episode,omitempty"`
 }
 
 // RedisClient wraps Redis client for job queue operations.

@@ -27,7 +27,7 @@ func NewTranslationQueueProcessor(queueClient QueueClient, _ string) *Translatio
 
 // Name returns the processor name.
 func (p *TranslationQueueProcessor) Name() string {
-	return "TranslationQueue"
+	return ProcessorNameTranslationQueue
 }
 
 // ShouldRun determines if translation queueing should run.
@@ -49,6 +49,11 @@ func (p *TranslationQueueProcessor) Process(ctx context.Context, pctx *Processin
 		SubtitlePath: pctx.EnglishSubPath,
 		MediaType:    pctx.MediaType,
 		MediaTitle:   pctx.MediaTitle,
+		SourceSystem: pctx.SourceSystem,
+		MediaID:      pctx.MediaID,
+		ExternalIDs:  pctx.ExternalIDs,
+		Season:       pctx.Season,
+		Episode:      pctx.Episode,
 	}
 
 	if err := p.queueClient.EnqueueTranslation(ctx, job); err != nil {

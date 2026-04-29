@@ -137,3 +137,138 @@ func TestSDHFilterProcessor_Process_WithCleanit(t *testing.T) {
 		t.Errorf("SDH content was not removed: %s", cleaned)
 	}
 }
+
+func TestBazarrSDHFilterProcessor_ShouldRun(t *testing.T) {
+	tests := []struct {
+		name string
+		pctx *ProcessingContext
+		want bool
+	}{
+		{
+			name: "bazarr srt subtitle",
+			pctx: &ProcessingContext{
+				ChineseSubSource: ChineseSourceBazarr,
+				ChineseSubPath:   "/tmp/bazarr.zh.srt",
+			},
+			want: true,
+		},
+		{
+			name: "embedded subtitle",
+			pctx: &ProcessingContext{
+				ChineseSubSource: ChineseSourceExtracted,
+				ChineseSubPath:   "/tmp/embedded.zh.srt",
+			},
+			want: false,
+		},
+		{
+			name: "bazarr ass subtitle",
+			pctx: &ProcessingContext{
+				ChineseSubSource: ChineseSourceBazarr,
+				ChineseSubPath:   "/tmp/bazarr.zh.ass",
+			},
+			want: false,
+		},
+		{
+			name: "missing path",
+			pctx: &ProcessingContext{
+				ChineseSubSource: ChineseSourceBazarr,
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewBazarrSDHFilterProcessor()
+			if got := p.ShouldRun(tt.pctx); got != tt.want {
+				t.Fatalf("ShouldRun() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBazarrSDHFilterProcessor_Process_FiltersDualLanguageSRT(t *testing.T) {
+	originalCleanitAvailable := isCleanitAvailableFunc
+	originalRunCleanit := runCleanitFunc
+	t.Cleanup(func() {
+		isCleanitAvailableFunc = originalCleanitAvailable
+		runCleanitFunc = originalRunCleanit
+	})
+
+	isCleanitAvailableFunc = func() bool { return true }
+	runCleanitFunc = func(_ context.Context, path string) error {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		cleaned := strings.ReplaceAll(string(data), "[music playing]\n", "")
+		return os.WriteFile(path, []byte(cleaned), 0644)
+	}
+
+	tmpDir := t.TempDir()
+	srtPath := filepath.Join(tmpDir, "bazarr.zh.srt")
+	content := "1\n00:00:01,000 --> 00:00:02,000\n你好\n[music playing]\nHello\n\n" +
+		"2\n00:00:03,000 --> 00:00:04,000\n再见\nGoodbye\n\n"
+	if err := os.WriteFile(srtPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	p := NewBazarrSDHFilterProcessor()
+	pctx := &ProcessingContext{
+		ChineseSubSource: ChineseSourceBazarr,
+		ChineseSubPath:   srtPath,
+	}
+
+	if err := p.Process(context.Background(), pctx); err != nil {
+		t.Fatalf("Process() error: %v", err)
+	}
+
+	data, err := os.ReadFile(srtPath)
+	if err != nil {
+		t.Fatalf("read result: %v", err)
+	}
+	if strings.Contains(string(data), "[music playing]") {
+		t.Fatalf("SDH content was not removed: %s", string(data))
+	}
+}
+
+func TestBazarrSDHFilterProcessor_Process_SkipsChineseOnlySRT(t *testing.T) {
+	originalCleanitAvailable := isCleanitAvailableFunc
+	originalRunCleanit := runCleanitFunc
+	t.Cleanup(func() {
+		isCleanitAvailableFunc = originalCleanitAvailable
+		runCleanitFunc = originalRunCleanit
+	})
+
+	isCleanitAvailableFunc = func() bool { return true }
+	runCleanitFunc = func(_ context.Context, _ string) error {
+		t.Fatal("cleanit should not run for Chinese-only Bazarr subtitle")
+		return nil
+	}
+
+	tmpDir := t.TempDir()
+	srtPath := filepath.Join(tmpDir, "bazarr.zh.srt")
+	content := "1\n00:00:01,000 --> 00:00:02,000\n你好\n\n" +
+		"2\n00:00:03,000 --> 00:00:04,000\n再见\n\n"
+	if err := os.WriteFile(srtPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	p := NewBazarrSDHFilterProcessor()
+	pctx := &ProcessingContext{
+		ChineseSubSource: ChineseSourceBazarr,
+		ChineseSubPath:   srtPath,
+	}
+
+	if err := p.Process(context.Background(), pctx); err != nil {
+		t.Fatalf("Process() error: %v", err)
+	}
+
+	data, err := os.ReadFile(srtPath)
+	if err != nil {
+		t.Fatalf("read result: %v", err)
+	}
+	if string(data) != content {
+		t.Fatalf("Chinese-only subtitle changed:\n%s", string(data))
+	}
+}

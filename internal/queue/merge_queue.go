@@ -26,6 +26,13 @@ type MergeJob struct {
 	Error            string
 }
 
+const (
+	JobStatusPending    = "pending"
+	JobStatusProcessing = "processing"
+	JobStatusFailed     = "failed"
+	JobStatusCompleted  = "completed"
+)
+
 // JobHandler is a function that processes a merge job.
 type JobHandler func(ctx context.Context, job *MergeJob) error
 
@@ -105,7 +112,7 @@ func (q *MergeQueue) Enqueue(job *MergeJob) error {
 	if job.JobID == "" {
 		job.JobID = uuid.New().String()
 	}
-	job.Status = "pending"
+	job.Status = JobStatusPending
 	job.CreatedAt = time.Now()
 
 	// Store job for status tracking
@@ -164,7 +171,7 @@ func (q *MergeQueue) worker(id int) {
 func (q *MergeQueue) processJob(workerID int, job *MergeJob) {
 	startTime := time.Now()
 	job.StartedAt = &startTime
-	job.Status = "processing"
+	job.Status = JobStatusProcessing
 
 	logger.Infof("🔧 Worker %d processing: %s (%s)", workerID, job.JobID, job.MediaTitle)
 
@@ -176,14 +183,14 @@ func (q *MergeQueue) processJob(workerID int, job *MergeJob) {
 	duration := completedTime.Sub(startTime)
 
 	if err != nil {
-		job.Status = "failed"
+		job.Status = JobStatusFailed
 		job.Error = err.Error()
 		logger.Errorf("❌ Worker %d failed: %s (%s) - %v [%.1fs]",
 			workerID, job.JobID, job.MediaTitle, err, duration.Seconds())
 
 		// TODO: Implement retry logic here if needed
 	} else {
-		job.Status = "completed"
+		job.Status = JobStatusCompleted
 		logger.Infof("✅ Worker %d completed: %s (%s) [%.1fs]",
 			workerID, job.JobID, job.MediaTitle, duration.Seconds())
 	}

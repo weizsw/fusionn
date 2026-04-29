@@ -23,7 +23,7 @@ func NewOutputProcessor(outputSameDir bool) *OutputProcessor {
 
 // Name returns the processor name.
 func (p *OutputProcessor) Name() string {
-	return "Output"
+	return ProcessorNameOutput
 }
 
 // ShouldRun determines if output should run.

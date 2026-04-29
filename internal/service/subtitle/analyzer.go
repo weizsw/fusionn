@@ -22,6 +22,16 @@ const (
 	heuristicThreshold       = 0.25
 )
 
+const (
+	codecTypeSubtitle          = "subtitle"
+	dispositionForced          = "forced"
+	dispositionHearingImpaired = "hearing_impaired"
+	tagLanguage                = "language"
+	tagTitle                   = "title"
+	tagNumberOfFrames          = "NUMBER_OF_FRAMES"
+	tagNumberOfBytes           = "NUMBER_OF_BYTES"
+)
+
 // Track represents a detected subtitle track.
 type Track struct {
 	Index           int
@@ -78,7 +88,7 @@ func (a *Analyzer) AnalyzeVideo(ctx context.Context, videoPath string) (*Analysi
 	// Filter subtitle streams
 	var subtitleStreams []executor.StreamInfo
 	for _, stream := range probeOutput.Streams {
-		if stream.CodecType == "subtitle" {
+		if stream.CodecType == codecTypeSubtitle {
 			subtitleStreams = append(subtitleStreams, stream)
 		}
 	}
@@ -267,21 +277,21 @@ func isForced(stream executor.StreamInfo) bool {
 	if stream.Disposition == nil {
 		return false
 	}
-	return stream.Disposition["forced"] == 1
+	return stream.Disposition[dispositionForced] == 1
 }
 
 func isHearingImpaired(stream executor.StreamInfo) bool {
 	if stream.Disposition == nil {
 		return false
 	}
-	return stream.Disposition["hearing_impaired"] == 1
+	return stream.Disposition[dispositionHearingImpaired] == 1
 }
 
 func getFrameCount(stream executor.StreamInfo) (int, bool) {
 	if stream.Tags == nil {
 		return 0, false
 	}
-	v, ok := stream.Tags["NUMBER_OF_FRAMES"]
+	v, ok := stream.Tags[tagNumberOfFrames]
 	if !ok {
 		return 0, false
 	}
@@ -296,7 +306,7 @@ func getByteCount(stream executor.StreamInfo) (int, bool) {
 	if stream.Tags == nil {
 		return 0, false
 	}
-	v, ok := stream.Tags["NUMBER_OF_BYTES"]
+	v, ok := stream.Tags[tagNumberOfBytes]
 	if !ok {
 		return 0, false
 	}
@@ -453,7 +463,7 @@ func (a *Analyzer) Cleanup(result *AnalysisResult) {
 
 func getLanguage(stream executor.StreamInfo) string {
 	if stream.Tags != nil {
-		if lang, ok := stream.Tags["language"]; ok {
+		if lang, ok := stream.Tags[tagLanguage]; ok {
 			return lang
 		}
 	}
@@ -462,7 +472,7 @@ func getLanguage(stream executor.StreamInfo) string {
 
 func getTitle(stream executor.StreamInfo) string {
 	if stream.Tags != nil {
-		if title, ok := stream.Tags["title"]; ok {
+		if title, ok := stream.Tags[tagTitle]; ok {
 			return title
 		}
 	}

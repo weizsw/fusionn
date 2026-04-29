@@ -24,7 +24,7 @@ func NewStyleProcessor(cfg config.ASSStyleConfig) *StyleProcessor {
 
 // Name returns the processor name.
 func (p *StyleProcessor) Name() string {
-	return "Style"
+	return ProcessorNameStyle
 }
 
 // ShouldRun runs if ASS styling is enabled and we have a merged subtitle.
