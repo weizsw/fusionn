@@ -13,13 +13,37 @@ const (
 	ChineseSourceTranslated = "translated"
 )
 
+const (
+	ProcessorNameAnalyzer         = "AnalyzerProcessor"
+	ProcessorNameExtractor        = "Extractor"
+	ProcessorNameConversion       = "Conversion"
+	ProcessorNameMerger           = "Merger"
+	ProcessorNameStyle            = "Style"
+	ProcessorNameFontEmbedding    = "FontEmbedding"
+	ProcessorNameOutput           = "Output"
+	ProcessorNameNotification     = "Notification"
+	ProcessorNameCleanup          = "Cleanup"
+	ProcessorNameSDHFilter        = "SDHFilter"
+	ProcessorNameBazarrSDHFilter  = "BazarrSDHFilter"
+	ProcessorNameTranslationQueue = "TranslationQueue"
+	ProcessorNameBazarrSearch     = "BazarrSearch"
+	ProcessorNameDualLanguage     = "DualLanguage"
+)
+
 // ProcessingContext holds the state throughout the subtitle processing pipeline.
 type ProcessingContext struct {
 	// Input
 	VideoPath  string
-	MediaType  string // "movie" or "episode"
+	MediaType  string
 	MediaTitle string
 	JobID      string
+
+	// Stable media identity for downstream services such as glossary reuse.
+	SourceSystem string
+	MediaID      string
+	ExternalIDs  map[string]string
+	Season       int
+	Episode      int
 
 	// Sonarr/Radarr IDs for Bazarr API
 	SonarrSeriesID  int
@@ -52,6 +76,11 @@ type MediaParams struct {
 	SonarrSeriesID  int
 	SonarrEpisodeID int
 	RadarrID        int
+	SourceSystem    string
+	MediaID         string
+	ExternalIDs     map[string]string
+	Season          int
+	Episode         int
 }
 
 // Processor represents a single step in the subtitle processing pipeline.
@@ -73,19 +102,20 @@ type Pipeline struct {
 
 // processorEmojis maps processor names to their visual identifiers
 var processorEmojis = map[string]string{
-	"AnalyzerProcessor": "🔍",
-	"Extractor":         "📤",
-	"Conversion":        "🔄",
-	"Merger":            "🔀",
-	"Style":             "🎨",
-	"FontEmbedding":     "🔤",
-	"Output":            "💾",
-	"Notification":      "📢",
-	"Cleanup":           "🧹",
-	"SDHFilter":         "🔇",
-	"TranslationQueue":  "🌐",
-	"BazarrSearch":      "🔎",
-	"DualLanguage":      "🗂️",
+	ProcessorNameAnalyzer:         "🔍",
+	ProcessorNameExtractor:        "📤",
+	ProcessorNameConversion:       "🔄",
+	ProcessorNameMerger:           "🔀",
+	ProcessorNameStyle:            "🎨",
+	ProcessorNameFontEmbedding:    "🔤",
+	ProcessorNameOutput:           "💾",
+	ProcessorNameNotification:     "📢",
+	ProcessorNameCleanup:          "🧹",
+	ProcessorNameSDHFilter:        "🔇",
+	ProcessorNameBazarrSDHFilter:  "🔇",
+	ProcessorNameTranslationQueue: "🌐",
+	ProcessorNameBazarrSearch:     "🔎",
+	ProcessorNameDualLanguage:     "🗂️",
 }
 
 // getProcessorEmoji returns the emoji for a processor, or empty string if not found

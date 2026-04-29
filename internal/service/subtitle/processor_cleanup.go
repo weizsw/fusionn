@@ -17,7 +17,7 @@ func NewCleanupProcessor() *CleanupProcessor {
 
 // Name returns the processor name.
 func (p *CleanupProcessor) Name() string {
-	return "Cleanup"
+	return ProcessorNameCleanup
 }
 
 // ShouldRun determines if cleanup should run.

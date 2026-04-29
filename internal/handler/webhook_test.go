@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/fusionn/internal/service/subtitle"
 	"github.com/fusionn/pkg/logger"
 )
 
@@ -30,7 +31,7 @@ func TestHandleSonarr(t *testing.T) {
 		{
 			name: "Valid Download Event",
 			payload: SonarrPayload{
-				EventType: "Download",
+				EventType: WebhookEventDownload,
 				Series: SeriesInfo{
 					Title: "Test Series",
 					Path:  "/tv/Test Series",
@@ -53,7 +54,7 @@ func TestHandleSonarr(t *testing.T) {
 		{
 			name: "Valid Upgrade Event",
 			payload: SonarrPayload{
-				EventType: "Upgrade",
+				EventType: WebhookEventUpgrade,
 				Series: SeriesInfo{
 					Title: "Test Series",
 				},
@@ -70,7 +71,7 @@ func TestHandleSonarr(t *testing.T) {
 		{
 			name: "Ignored Test Event",
 			payload: SonarrPayload{
-				EventType: "Test",
+				EventType: WebhookEventTest,
 				Series:    SeriesInfo{Title: "Test"},
 				Episodes:  []EpisodeInfo{{EpisodeNumber: 1}},
 				EpisodeFile: EpisodeFile{
@@ -83,7 +84,7 @@ func TestHandleSonarr(t *testing.T) {
 		{
 			name: "Missing File Path",
 			payload: SonarrPayload{
-				EventType:   "Download",
+				EventType:   WebhookEventDownload,
 				Series:      SeriesInfo{Title: "Test"},
 				Episodes:    []EpisodeInfo{{EpisodeNumber: 1}},
 				EpisodeFile: EpisodeFile{},
@@ -131,7 +132,7 @@ func TestSonarrPayloadParseIDs(t *testing.T) {
 	handler := NewWebhookHandler(nil)
 
 	payload := SonarrPayload{
-		EventType: "Download",
+		EventType: WebhookEventDownload,
 		Series: SeriesInfo{
 			ID:    42,
 			Title: "Test Series",
@@ -174,11 +175,54 @@ func TestSonarrPayloadParseIDs(t *testing.T) {
 	}
 }
 
+func TestSonarrMediaParamsIncludeGlossaryIdentity(t *testing.T) {
+	payload := SonarrPayload{
+		EventType: WebhookEventDownload,
+		Series: SeriesInfo{
+			ID:     42,
+			Title:  "The Capture",
+			Path:   "/tv/The Capture",
+			TVDBID: 355620,
+			ImdbID: "tt8201186",
+		},
+		Episodes: []EpisodeInfo{{
+			ID:            101,
+			Title:         "Correction",
+			EpisodeNumber: 1,
+			SeasonNumber:  1,
+		}},
+		EpisodeFile: EpisodeFile{
+			Path: "/tv/The Capture/Season 01/S01E01.mkv",
+		},
+	}
+
+	params := sonarrMediaParams(payload)
+
+	if params.SourceSystem != subtitle.SourceSystemSonarr {
+		t.Fatalf("source system = %q", params.SourceSystem)
+	}
+	if params.MediaID != "42" {
+		t.Fatalf("media id = %q", params.MediaID)
+	}
+	if params.ExternalIDs[subtitle.ExternalIDSonarr] != "42" {
+		t.Fatalf("sonarr external id = %q", params.ExternalIDs[subtitle.ExternalIDSonarr])
+	}
+	if params.ExternalIDs[subtitle.ExternalIDTVDB] != "355620" {
+		t.Fatalf("tvdb id = %q", params.ExternalIDs[subtitle.ExternalIDTVDB])
+	}
+	if params.ExternalIDs[subtitle.ExternalIDIMDB] != "tt8201186" {
+		t.Fatalf("imdb id = %q", params.ExternalIDs[subtitle.ExternalIDIMDB])
+	}
+	if params.Season != 1 || params.Episode != 1 {
+		t.Fatalf("season/episode = %d/%d", params.Season, params.Episode)
+	}
+}
+
 func TestRadarrPayloadParseIDs(t *testing.T) {
 	handler := NewWebhookHandler(nil)
 
 	payload := RadarrPayload{
-		EventType: "Download",
+		EventType: WebhookEventDownload,
 		Movie: MovieInfo{
 			ID:     99,
 			Title:  "Test Movie",
@@ -210,6 +254,40 @@ func TestRadarrPayloadParseIDs(t *testing.T) {
 	}
 }
 
+func TestRadarrMediaParamsIncludeGlossaryIdentity(t *testing.T) {
+	payload := RadarrPayload{
+		EventType: WebhookEventDownload,
+		Movie: MovieInfo{
+			ID:     99,
+			Title:  "Test Movie",
+			Year:   2024,
+			ImdbID: "tt1234567",
+			TMDBID: 12345,
+		},
+		MovieFile: MovieFile{
+			Path: "/movies/Test Movie (2024)/Movie.mkv",
+		},
+	}
+
+	params := radarrMediaParams(payload)
+
+	if params.SourceSystem != subtitle.SourceSystemRadarr {
+		t.Fatalf("source system = %q", params.SourceSystem)
+	}
+	if params.MediaID != "99" {
+		t.Fatalf("media id = %q", params.MediaID)
+	}
+	if params.ExternalIDs[subtitle.ExternalIDRadarr] != "99" {
+		t.Fatalf("radarr external id = %q", params.ExternalIDs[subtitle.ExternalIDRadarr])
+	}
+	if params.ExternalIDs[subtitle.ExternalIDTMDB] != "12345" {
+		t.Fatalf("tmdb id = %q", params.ExternalIDs[subtitle.ExternalIDTMDB])
+	}
+	if params.ExternalIDs[subtitle.ExternalIDIMDB] != "tt1234567" {
+		t.Fatalf("imdb id = %q", params.ExternalIDs[subtitle.ExternalIDIMDB])
+	}
+}
+
 func TestHandleRadarr(t *testing.T) {
 	handler := NewWebhookHandler(nil) // Pass nil for testing
 
@@ -222,7 +300,7 @@ func TestHandleRadarr(t *testing.T) {
 		{
 			name: "Valid Download Event",
 			payload: RadarrPayload{
-				EventType: "Download",
+				EventType: WebhookEventDownload,
 				Movie: MovieInfo{
 					Title:  "Test Movie",
 					Year:   2024,
@@ -239,7 +317,7 @@ func TestHandleRadarr(t *testing.T) {
 		{
 			name: "Valid Upgrade Event",
 			payload: RadarrPayload{
-				EventType: "Upgrade",
+				EventType: WebhookEventUpgrade,
 				Movie: MovieInfo{
 					Title: "Test Movie",
 					Year:  2024,
@@ -254,7 +332,7 @@ func TestHandleRadarr(t *testing.T) {
 		{
 			name: "Ignored Rename Event",
 			payload: RadarrPayload{
-				EventType: "Rename",
+				EventType: WebhookEventRename,
 				Movie:     MovieInfo{Title: "Test"},
 				MovieFile: MovieFile{
 					Path: "/movies/test.mkv",
@@ -266,7 +344,7 @@ func TestHandleRadarr(t *testing.T) {
 		{
 			name: "Missing File Path",
 			payload: RadarrPayload{
-				EventType: "Download",
+				EventType: WebhookEventDownload,
 				Movie:     MovieInfo{Title: "Test"},
 				MovieFile: MovieFile{},
 			},

@@ -36,7 +36,7 @@ func NewBazarrSearchProcessor(client *bazarr.Client, languageCode string, pollIn
 }
 
 func (p *BazarrSearchProcessor) Name() string {
-	return "BazarrSearch"
+	return ProcessorNameBazarrSearch
 }
 
 func (p *BazarrSearchProcessor) ShouldRun(pctx *ProcessingContext) bool {
@@ -52,10 +52,10 @@ func (p *BazarrSearchProcessor) ShouldRun(pctx *ProcessingContext) bool {
 	if pctx.Analysis.ChineseTrack != nil {
 		return false
 	}
-	if pctx.MediaType == "episode" && pctx.SonarrEpisodeID == 0 {
+	if pctx.MediaType == MediaTypeEpisode && pctx.SonarrEpisodeID == 0 {
 		return false
 	}
-	if pctx.MediaType == "movie" && pctx.RadarrID == 0 {
+	if pctx.MediaType == MediaTypeMovie && pctx.RadarrID == 0 {
 		return false
 	}
 	return true
@@ -67,9 +67,9 @@ func (p *BazarrSearchProcessor) Process(ctx context.Context, pctx *ProcessingCon
 
 	var err error
 	switch pctx.MediaType {
-	case "episode":
+	case MediaTypeEpisode:
 		err = p.searchEpisode(ctx, pctx, log)
-	case "movie":
+	case MediaTypeMovie:
 		err = p.searchMovie(ctx, pctx, log)
 	default:
 		log.Warnf("Unknown media type %q, skipping Bazarr search", pctx.MediaType)

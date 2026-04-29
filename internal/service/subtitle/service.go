@@ -52,6 +52,7 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 			bazarrClient, cfg.Bazarr.LanguageCode,
 			cfg.Bazarr.PollIntervalSeconds, cfg.Bazarr.PollTimeoutSeconds,
 		))
+		analyzePipeline.AddProcessor(NewBazarrSDHFilterProcessor())
 	}
 	analyzePipeline.AddProcessor(NewTranslationQueueProcessor(redisClient, ""))
 
@@ -105,6 +106,11 @@ func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) error {
 		MediaType:       params.MediaType,
 		MediaTitle:      params.Title,
 		JobID:           jobID,
+		SourceSystem:    params.SourceSystem,
+		MediaID:         params.MediaID,
+		ExternalIDs:     params.ExternalIDs,
+		Season:          params.Season,
+		Episode:         params.Episode,
 		SonarrSeriesID:  params.SonarrSeriesID,
 		SonarrEpisodeID: params.SonarrEpisodeID,
 		RadarrID:        params.RadarrID,
@@ -154,7 +160,7 @@ func (s *Service) ProcessWithSubtitles(ctx context.Context, videoPath, engSubPat
 		EnglishPath:      engSubPath,
 		ChinesePath:      chsSubPath,
 		MediaTitle:       videoPath,
-		MediaType:        "callback",
+		MediaType:        MediaTypeCallback,
 		ChineseSubSource: ChineseSourceTranslated,
 	}
 

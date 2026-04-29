@@ -21,7 +21,7 @@ func NewAnalyzerProcessor(analyzer *Analyzer) *AnalyzerProcessor {
 
 // Name returns the processor name.
 func (p *AnalyzerProcessor) Name() string {
-	return "AnalyzerProcessor"
+	return ProcessorNameAnalyzer
 }
 
 // ShouldRun always runs to detect subtitle tracks.

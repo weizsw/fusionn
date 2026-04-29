@@ -27,7 +27,7 @@ func NewFontEmbeddingProcessor(cfg config.FontEmbeddingConfig) *FontEmbeddingPro
 
 // Name returns the processor name.
 func (p *FontEmbeddingProcessor) Name() string {
-	return "FontEmbedding"
+	return ProcessorNameFontEmbedding
 }
 
 // ShouldRun determines if font embedding should run.

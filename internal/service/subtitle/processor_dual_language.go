@@ -25,7 +25,7 @@ func NewDualLanguageProcessor(openccCfg config.OpenCCConfig) *DualLanguageProces
 }
 
 func (p *DualLanguageProcessor) Name() string {
-	return "DualLanguage"
+	return ProcessorNameDualLanguage
 }
 
 func (p *DualLanguageProcessor) ShouldRun(pctx *ProcessingContext) bool {

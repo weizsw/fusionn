@@ -25,7 +25,7 @@ func NewNotificationProcessor(client *notification.AppriseClient, enabled bool) 
 
 // Name returns the processor name.
 func (p *NotificationProcessor) Name() string {
-	return "Notification"
+	return ProcessorNameNotification
 }
 
 // ShouldRun runs if Apprise is enabled.

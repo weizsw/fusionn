@@ -24,7 +24,7 @@ func NewConversionProcessor(cfg config.OpenCCConfig) *ConversionProcessor {
 
 // Name returns the processor name.
 func (p *ConversionProcessor) Name() string {
-	return "Conversion"
+	return ProcessorNameConversion
 }
 
 // ShouldRun determines if conversion should run.

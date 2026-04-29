@@ -19,6 +19,17 @@ type Client struct {
 	httpClient *http.Client
 }
 
+const (
+	querySeriesID  = "seriesid"
+	queryEpisodeID = "episodeid"
+	queryRadarrID  = "radarrid"
+	queryLanguage  = "language"
+	queryHI        = "hi"
+	queryForced    = "forced"
+
+	bazarrFalse = "False"
+)
+
 type SubtitleInfo struct {
 	Path  string `json:"path"`
 	Code2 string `json:"code2"`
@@ -69,11 +80,11 @@ func NewClient(baseURL, apiKey string, timeoutSeconds int) *Client {
 
 func (c *Client) SearchEpisodeSubtitle(ctx context.Context, seriesID, episodeID int, language string) error {
 	params := url.Values{}
-	params.Set("seriesid", strconv.Itoa(seriesID))
-	params.Set("episodeid", strconv.Itoa(episodeID))
-	params.Set("language", language)
-	params.Set("hi", "False")
-	params.Set("forced", "False")
+	params.Set(querySeriesID, strconv.Itoa(seriesID))
+	params.Set(queryEpisodeID, strconv.Itoa(episodeID))
+	params.Set(queryLanguage, language)
+	params.Set(queryHI, bazarrFalse)
+	params.Set(queryForced, bazarrFalse)
 
 	reqURL := c.baseURL + "/api/episodes/subtitles?" + params.Encode()
 	logger.Debugf("Bazarr PATCH request: %s", reqURL)
@@ -103,10 +114,10 @@ func (c *Client) SearchEpisodeSubtitle(ctx context.Context, seriesID, episodeID 
 
 func (c *Client) SearchMovieSubtitle(ctx context.Context, radarrID int, language string) error {
 	params := url.Values{}
-	params.Set("radarrid", strconv.Itoa(radarrID))
-	params.Set("language", language)
-	params.Set("hi", "False")
-	params.Set("forced", "False")
+	params.Set(queryRadarrID, strconv.Itoa(radarrID))
+	params.Set(queryLanguage, language)
+	params.Set(queryHI, bazarrFalse)
+	params.Set(queryForced, bazarrFalse)
 
 	reqURL := c.baseURL + "/api/movies/subtitles?" + params.Encode()
 	logger.Debugf("Bazarr PATCH request: %s", reqURL)
