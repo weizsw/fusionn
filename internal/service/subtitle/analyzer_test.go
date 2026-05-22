@@ -35,6 +35,12 @@ func makeStream(index int, title string, disposition map[string]int, frames, byt
 	}
 }
 
+func makeStreamWithCodec(index int, codecName, title string, disposition map[string]int, frames, bytes string) executor.StreamInfo {
+	stream := makeStream(index, title, disposition, frames, bytes)
+	stream.CodecName = codecName
+	return stream
+}
+
 func TestScoreEnglishTrack_ForcedDisposition(t *testing.T) {
 	forced := makeStream(2, "", map[string]int{"forced": 1}, "23", "496")
 	regular := makeStream(3, "", nil, "567", "16792")
@@ -188,6 +194,23 @@ func TestDetectEnglishSubtitle_RealWorld3Tracks(t *testing.T) {
 	}
 	if track.Index != 3 {
 		t.Errorf("expected regular English at index 3, got index %d", track.Index)
+	}
+}
+
+func TestDetectEnglishSubtitle_PrefersTextSubtitleOverBitmapSDH(t *testing.T) {
+	a := newAnalyzer()
+
+	streams := []executor.StreamInfo{
+		makeStreamWithCodec(2, "subrip", "English [SRT]", nil, "1381", "43181"),
+		makeStreamWithCodec(3, "hdmv_pgs_subtitle", "English [SDH]", nil, "3462", "27044840"),
+	}
+
+	track := a.detectEnglishSubtitle(streams)
+	if track == nil {
+		t.Fatal("expected a track to be selected")
+	}
+	if track.Index != 2 {
+		t.Errorf("expected extractable text subtitle at index 2, got index %d", track.Index)
 	}
 }
 

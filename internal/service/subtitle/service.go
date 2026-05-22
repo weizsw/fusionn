@@ -54,7 +54,9 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 		))
 		analyzePipeline.AddProcessor(NewBazarrSDHFilterProcessor())
 	}
-	analyzePipeline.AddProcessor(NewTranslationQueueProcessor(redisClient, ""))
+	if redisClient != nil {
+		analyzePipeline.AddProcessor(NewTranslationQueueProcessor(redisClient, ""))
+	}
 
 	// Build merge pipeline (slow, runs asynchronously in queue)
 	mergePipeline := NewPipeline()
