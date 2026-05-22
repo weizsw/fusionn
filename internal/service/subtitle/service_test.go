@@ -15,7 +15,7 @@ func TestNewServiceAnalyzePipelineRunsBazarrSDHFilterAfterBazarrSearch(t *testin
 	})
 	service, err := NewService(
 		&config.Config{Subtitle: config.SubtitleConfig{DuoSubs: config.DuoSubsConfig{Mode: "local"}}},
-		nil,
+		&recordingQueueClient{},
 		mergeQueue,
 		bazarr.NewClient("http://bazarr", "key", 1),
 	)
@@ -43,6 +43,27 @@ func TestNewServiceAnalyzePipelineRunsBazarrSDHFilterAfterBazarrSearch(t *testin
 	for i := range want {
 		if names[i] != want[i] {
 			t.Fatalf("processor names = %#v, want %#v", names, want)
+		}
+	}
+}
+
+func TestNewServiceAnalyzePipelineSkipsTranslationQueueWithoutRedisClient(t *testing.T) {
+	mergeQueue := queue.NewMergeQueue(queue.Config{}, func(context.Context, *queue.MergeJob) error {
+		return nil
+	})
+	service, err := NewService(
+		&config.Config{Subtitle: config.SubtitleConfig{DuoSubs: config.DuoSubsConfig{Mode: "local"}}},
+		nil,
+		mergeQueue,
+		bazarr.NewClient("http://bazarr", "key", 1),
+	)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	for _, proc := range service.GetAnalyzePipeline().GetProcessors() {
+		if proc.Name() == ProcessorNameTranslationQueue {
+			t.Fatalf("translation queue processor should not be registered without Redis client")
 		}
 	}
 }

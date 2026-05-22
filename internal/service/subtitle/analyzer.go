@@ -15,6 +15,7 @@ import (
 const (
 	penaltyForcedDisposition = 100
 	penaltyForcedTitle       = 100
+	penaltyNonTextCodec      = 100
 	penaltySDHDisposition    = 10
 	penaltySDHTitle          = 10
 	penaltyLowFrameCount     = 50
@@ -131,6 +132,7 @@ type englishCandidate struct {
 
 // englishScore stores penalty breakdown by signal layer.
 type englishScore struct {
+	CodecPenalty       int
 	DispositionPenalty int
 	TitlePenalty       int
 	FramePenalty       int
@@ -185,8 +187,8 @@ func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *Track {
 		score := scoreEnglishTrackDetails(c.stream, c.title, c.frames, c.bytes, maxFrames, maxBytes, len(candidates))
 		scores[i] = score
 
-		log.Infof("English candidate: index=%d, title=%q, total=%d (disposition=%d, title=%d, frame=%d, byte=%d) (frames=%d, bytes=%d)",
-			c.stream.Index, c.title, score.Total, score.DispositionPenalty, score.TitlePenalty, score.FramePenalty, score.BytePenalty, c.frames, c.bytes)
+		log.Infof("English candidate: index=%d, title=%q, total=%d (codec=%d, disposition=%d, title=%d, frame=%d, byte=%d) (codec=%s, frames=%d, bytes=%d)",
+			c.stream.Index, c.title, score.Total, score.CodecPenalty, score.DispositionPenalty, score.TitlePenalty, score.FramePenalty, score.BytePenalty, c.stream.CodecName, c.frames, c.bytes)
 
 		if bestIdx < 0 || score.Total < bestScore.Total || (score.Total == bestScore.Total && c.frames > candidates[bestIdx].frames) {
 			bestIdx = i
@@ -209,8 +211,8 @@ func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *Track {
 		}
 
 		if runnerUpIdx >= 0 {
-			log.Infof("Selected English: index=%d (total=%d, disposition=%d, title=%d, frame=%d, byte=%d) over index=%d (total=%d)",
-				candidates[bestIdx].stream.Index, bestScore.Total, bestScore.DispositionPenalty, bestScore.TitlePenalty, bestScore.FramePenalty, bestScore.BytePenalty,
+			log.Infof("Selected English: index=%d (total=%d, codec=%d, disposition=%d, title=%d, frame=%d, byte=%d) over index=%d (total=%d)",
+				candidates[bestIdx].stream.Index, bestScore.Total, bestScore.CodecPenalty, bestScore.DispositionPenalty, bestScore.TitlePenalty, bestScore.FramePenalty, bestScore.BytePenalty,
 				candidates[runnerUpIdx].stream.Index, runnerUpScore.Total)
 		} else {
 			log.Infof("Selected English: index=%d (total=%d)", candidates[bestIdx].stream.Index, bestScore.Total)
@@ -237,6 +239,10 @@ func scoreEnglishTrack(stream executor.StreamInfo, title string, frames, bytes, 
 func scoreEnglishTrackDetails(stream executor.StreamInfo, title string, frames, bytes, maxFrames, maxBytes, candidateCount int) englishScore {
 	score := englishScore{}
 
+	if !isTextSubtitleCodec(stream.CodecName) {
+		score.CodecPenalty += penaltyNonTextCodec
+	}
+
 	if isForced(stream) {
 		score.DispositionPenalty += penaltyForcedDisposition
 	}
@@ -260,8 +266,17 @@ func scoreEnglishTrackDetails(stream executor.StreamInfo, title string, frames, 
 		}
 	}
 
-	score.Total = score.DispositionPenalty + score.TitlePenalty + score.FramePenalty + score.BytePenalty
+	score.Total = score.CodecPenalty + score.DispositionPenalty + score.TitlePenalty + score.FramePenalty + score.BytePenalty
 	return score
+}
+
+func isTextSubtitleCodec(codecName string) bool {
+	switch strings.ToLower(codecName) {
+	case "", "ass", "mov_text", "ssa", "subrip", "text", "webvtt":
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *Analyzer) isEnglishLang(lang string) bool {
