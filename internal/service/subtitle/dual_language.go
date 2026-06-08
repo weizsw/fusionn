@@ -352,6 +352,7 @@ func convertDualLanguageSRTToASS(content string) (string, error) {
 	sb.WriteString("ScriptType: v4.00+\n")
 	sb.WriteString("WrapStyle: 0\n")
 	sb.WriteString("ScaledBorderAndShadow: yes\n")
+	sb.WriteString("YCbCr Matrix: None\n")
 	sb.WriteString("PlayResX: 384\n")
 	sb.WriteString("PlayResY: 288\n\n")
 
@@ -423,6 +424,7 @@ func remapDualLanguageASS(content string) (string, error) {
 	sb.WriteString("ScriptType: v4.00+\n")
 	sb.WriteString("WrapStyle: 0\n")
 	sb.WriteString("ScaledBorderAndShadow: yes\n")
+	sb.WriteString("YCbCr Matrix: None\n")
 	sb.WriteString("PlayResX: 384\n")
 	sb.WriteString("PlayResY: 288\n\n")
 

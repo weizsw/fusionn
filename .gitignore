@@ -35,6 +35,8 @@ data/
 *.swp
 *.swo
 *~
+.codegraph/
+.cursor/
 
 # Temp merge directories (created by MergerProcessor during tests/runs)
 .fusionn-merge-*
