@@ -276,6 +276,9 @@ Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,你好世界\NHello World
 			if !strings.Contains(result, "Style: Default_1,") {
 				t.Error("result missing Default_1 style definition")
 			}
+			if !strings.Contains(result, "YCbCr Matrix: None") {
+				t.Error("result missing YCbCr Matrix header")
+			}
 		})
 	}
 }
@@ -291,6 +294,9 @@ func TestConvertDualLanguageSRTToASS(t *testing.T) {
 
 	if !strings.Contains(result, "[Script Info]") {
 		t.Error("missing [Script Info] section")
+	}
+	if !strings.Contains(result, "YCbCr Matrix: None") {
+		t.Error("missing YCbCr Matrix header")
 	}
 	if !strings.Contains(result, "[V4+ Styles]") {
 		t.Error("missing [V4+ Styles] section")

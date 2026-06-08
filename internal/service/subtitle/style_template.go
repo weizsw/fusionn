@@ -93,6 +93,7 @@ WrapStyle: %s
 ScaledBorderAndShadow: yes
 Collisions: Normal
 ScriptType: v4.00+
+YCbCr Matrix: None
 PlayResX: 384
 PlayResY: 288
 

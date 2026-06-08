@@ -69,6 +69,7 @@ func TestGenerateStylesWithDefaults(t *testing.T) {
 func TestGetScriptInfoDefaultWrapStyle(t *testing.T) {
 	scriptInfo := GetScriptInfo("")
 	assert.Contains(t, scriptInfo, "WrapStyle: 0")
+	assert.Contains(t, scriptInfo, "YCbCr Matrix: None")
 	assert.Contains(t, scriptInfo, "PlayResX: 384")
 	assert.Contains(t, scriptInfo, "PlayResY: 288")
 }
