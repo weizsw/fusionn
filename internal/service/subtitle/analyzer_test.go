@@ -214,6 +214,40 @@ func TestDetectEnglishSubtitle_PrefersTextSubtitleOverBitmapSDH(t *testing.T) {
 	}
 }
 
+func TestDetectEnglishSubtitle_SkipsBitmapOnlySubtitle(t *testing.T) {
+	a := newAnalyzer()
+
+	streams := []executor.StreamInfo{
+		makeStreamWithCodec(3, "hdmv_pgs_subtitle", "English [PGS]", nil, "3462", "27044840"),
+	}
+
+	track := a.detectEnglishSubtitle(streams)
+	if track != nil {
+		t.Fatalf("expected bitmap subtitle to be skipped, got index %d", track.Index)
+	}
+}
+
+func TestDetectChineseSubtitle_SkipsBitmapOnlySubtitle(t *testing.T) {
+	a := newAnalyzer()
+
+	streams := []executor.StreamInfo{
+		{
+			Index:     3,
+			CodecType: "subtitle",
+			CodecName: "hdmv_pgs_subtitle",
+			Tags: map[string]string{
+				"language": "zho",
+				"title":    "繁體 [PGS]",
+			},
+		},
+	}
+
+	track := a.detectChineseSubtitle(streams)
+	if track != nil {
+		t.Fatalf("expected bitmap subtitle to be skipped, got index %d", track.Index)
+	}
+}
+
 func TestDetectEnglishSubtitle_FallbackToSDHOverForced(t *testing.T) {
 	a := newAnalyzer()
 
@@ -268,6 +302,22 @@ func TestHelpers_IsHearingImpaired(t *testing.T) {
 	}
 	if isHearingImpaired(executor.StreamInfo{Disposition: nil}) {
 		t.Error("expected isHearingImpaired=false for nil disposition")
+	}
+}
+
+func TestHelpers_IsTextSubtitleCodec(t *testing.T) {
+	tests := map[string]bool{
+		"ass":               true,
+		"subrip":            true,
+		"webvtt":            true,
+		"":                  false,
+		"hdmv_pgs_subtitle": false,
+	}
+
+	for codec, want := range tests {
+		if got := isTextSubtitleCodec(codec); got != want {
+			t.Errorf("isTextSubtitleCodec(%q) = %v, want %v", codec, got, want)
+		}
 	}
 }
 

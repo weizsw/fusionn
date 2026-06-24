@@ -150,6 +150,9 @@ func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *Track {
 	maxFrames, maxBytes := 0, 0
 
 	for _, stream := range streams {
+		if !isTextSubtitleCodec(stream.CodecName) {
+			continue
+		}
 		lang := strings.ToLower(getLanguage(stream))
 		if !a.isEnglishLang(lang) {
 			continue
@@ -272,7 +275,7 @@ func scoreEnglishTrackDetails(stream executor.StreamInfo, title string, frames, 
 
 func isTextSubtitleCodec(codecName string) bool {
 	switch strings.ToLower(codecName) {
-	case "", "ass", "mov_text", "ssa", "subrip", "text", "webvtt":
+	case "ass", "mov_text", "ssa", "subrip", "text", "webvtt":
 		return true
 	default:
 		return false
@@ -372,6 +375,10 @@ func (a *Analyzer) detectChineseSubtitle(streams []executor.StreamInfo) *Track {
 
 // matchChineseTrack checks if a stream is a Chinese subtitle.
 func (a *Analyzer) matchChineseTrack(stream executor.StreamInfo) *Track {
+	if !isTextSubtitleCodec(stream.CodecName) {
+		return nil
+	}
+
 	lang := strings.ToLower(getLanguage(stream))
 	title := strings.ToLower(getTitle(stream))
 
