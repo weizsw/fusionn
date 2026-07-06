@@ -22,7 +22,7 @@ FROM debian:trixie-slim
 
 WORKDIR /app
 
-# Install runtime dependencies including Python for DuoSubs
+# Install runtime dependencies including Python for cleanit
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     tzdata \
@@ -33,9 +33,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python packages: DuoSubs (bilingual merge) and cleanit (SDH subtitle filter)
-# Note: First run will download ~2GB LaBSE model to HuggingFace cache
-RUN pip3 install --no-cache-dir duosubs cleanit --break-system-packages
+# Install Python package for SDH subtitle filtering.
+RUN pip3 install --no-cache-dir cleanit --break-system-packages
 
 # Download fusionn-font binary from GitHub releases
 ARG FUSIONN_FONT_VERSION=v1.0.7
@@ -57,12 +56,9 @@ COPY --from=go-builder /app/fusionn .
 # Create data directories
 RUN mkdir -p /data
 
-# Set HuggingFace cache directory for model persistence
-ENV HF_HOME=/root/.cache/huggingface
 ENV ENV=production
 ENV CONFIG_PATH=/app/config/config.yaml
 
 EXPOSE 8080
 
 CMD ["./fusionn"]
-
