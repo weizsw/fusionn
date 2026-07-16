@@ -59,7 +59,7 @@ subtitle:
     bold: true # Bold text
     outline: 0.5 # Outline width
     shadow: 0.5 # Shadow depth
-    margin_v: 5 # Vertical margin (bottom margin from screen edge)
+    margin_v: 5 # Reference bottom margin for 16:9 video; adjusted for wider media
     margin_left: 10 # Left margin (pixels from left edge)
     margin_right: 10 # Right margin (pixels from right edge)
     alignment: 2 # Subtitle position (1-9 numpad layout: 1=bottom-left, 2=bottom-center, 3=bottom-right, 4=middle-left, 5=center, 6=middle-right, 7=top-left, 8=top-center, 9=top-right)
