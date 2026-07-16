@@ -21,6 +21,8 @@ type StreamInfo struct {
 	Index       int               `json:"index"`
 	CodecType   string            `json:"codec_type"`
 	CodecName   string            `json:"codec_name"`
+	Width       int               `json:"width"`
+	Height      int               `json:"height"`
 	Tags        map[string]string `json:"tags"`
 	Disposition map[string]int    `json:"disposition"`
 }

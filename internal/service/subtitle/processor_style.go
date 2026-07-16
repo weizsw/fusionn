@@ -3,22 +3,26 @@ package subtitle
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
 	"github.com/fusionn/internal/config"
+	"github.com/fusionn/internal/executor"
 	"github.com/fusionn/pkg/logger"
 )
 
 // StyleProcessor injects custom ASS styles into merged subtitle files.
 type StyleProcessor struct {
 	config config.ASSStyleConfig
+	probe  func(context.Context, string) (*executor.FFProbeOutput, error)
 }
 
 // NewStyleProcessor creates a new style processor.
 func NewStyleProcessor(cfg config.ASSStyleConfig) *StyleProcessor {
 	return &StyleProcessor{
 		config: cfg,
+		probe:  executor.FFProbe,
 	}
 }
 
@@ -50,9 +54,21 @@ func (p *StyleProcessor) Process(ctx context.Context, pctx *ProcessingContext) e
 		return nil // Don't fail the job, just skip styling
 	}
 
+	styleConfig := p.config
+	if pctx.VideoPath != "" {
+		probeOutput, probeErr := p.probe(ctx, pctx.VideoPath)
+		if probeErr != nil {
+			log.Warnf("Failed to detect video resolution, using configured MarginV: %v", probeErr)
+		} else if width, height, ok := videoDimensions(probeOutput); ok {
+			styleConfig.MarginV = adjustedMarginV(styleConfig.MarginV, width, height)
+		} else {
+			log.Warn("Failed to detect video resolution, using configured MarginV")
+		}
+	}
+
 	// Generate custom styles
 	scriptInfo := GetScriptInfo(p.config.WrapStyle)
-	styles := GenerateStyles(p.config)
+	styles := GenerateStyles(styleConfig)
 
 	// Reconstruct ASS file
 	newContent := scriptInfo + styles + eventsSection
@@ -64,6 +80,31 @@ func (p *StyleProcessor) Process(ctx context.Context, pctx *ProcessingContext) e
 
 	log.Infof("✅ Custom styles injected: %s", pctx.MergedSubPath)
 	return nil
+}
+
+func videoDimensions(probeOutput *executor.FFProbeOutput) (int, int, bool) {
+	for _, stream := range probeOutput.Streams {
+		if stream.CodecType == "video" &&
+			stream.Disposition["attached_pic"] != 1 &&
+			stream.Width > 0 && stream.Height > 0 {
+			return stream.Width, stream.Height, true
+		}
+	}
+	return 0, 0, false
+}
+
+func adjustedMarginV(configuredMarginV, width, height int) int {
+	// Keep the style margin at the same position on a centered 16:9 output canvas.
+	canvasHeight := float64(width) * 9 / 16
+	if float64(height) >= canvasHeight {
+		return configuredMarginV
+	}
+
+	bottomBar := (canvasHeight - float64(height)) / 2
+	verticalScale := float64(height) / assPlayResY
+	targetBottomGap := float64(configuredMarginV) * canvasHeight / assPlayResY
+
+	return int(math.Round((targetBottomGap - bottomBar) / verticalScale))
 }
 
 // extractEventsSection extracts the [Events] section and everything after it.

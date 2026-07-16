@@ -11,6 +11,11 @@ const stylesHeaderTemplate = `[V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 `
 
+const (
+	assPlayResX = 384
+	assPlayResY = 288
+)
+
 // GenerateStyles generates the complete V4+ Styles section from config.
 func GenerateStyles(cfg config.ASSStyleConfig) string {
 	var sb strings.Builder
@@ -94,8 +99,8 @@ ScaledBorderAndShadow: yes
 Collisions: Normal
 ScriptType: v4.00+
 YCbCr Matrix: None
-PlayResX: 384
-PlayResY: 288
+PlayResX: %d
+PlayResY: %d
 
-`, wrapStyle)
+`, wrapStyle, assPlayResX, assPlayResY)
 }
