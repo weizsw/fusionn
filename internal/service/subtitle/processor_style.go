@@ -58,11 +58,16 @@ func (p *StyleProcessor) Process(ctx context.Context, pctx *ProcessingContext) e
 	if pctx.VideoPath != "" {
 		probeOutput, probeErr := p.probe(ctx, pctx.VideoPath)
 		if probeErr != nil {
-			log.Warnf("Failed to detect video resolution, using configured MarginV: %v", probeErr)
+			log.Warnf("Failed to detect video resolution, using configured ASS style: %v", probeErr)
 		} else if width, height, ok := videoDimensions(probeOutput); ok {
+			scale := referencePlaybackCanvasScale(width, height)
+			styleConfig.PrimarySize = int(math.Round(float64(styleConfig.PrimarySize) * scale))
+			styleConfig.SecondarySize = int(math.Round(float64(styleConfig.SecondarySize) * scale))
+			styleConfig.Outline *= scale
+			styleConfig.Shadow *= scale
 			styleConfig.MarginV = adjustedMarginV(styleConfig.MarginV, width, height)
 		} else {
-			log.Warn("Failed to detect video resolution, using configured MarginV")
+			log.Warn("Failed to detect video resolution, using configured ASS style")
 		}
 	}
 
@@ -93,13 +98,22 @@ func videoDimensions(probeOutput *executor.FFProbeOutput) (int, int, bool) {
 	return 0, 0, false
 }
 
-func adjustedMarginV(configuredMarginV, width, height int) int {
-	// Keep the style margin at the same position on a centered 16:9 output canvas.
+func referencePlaybackCanvasScale(width, height int) float64 {
 	canvasHeight := float64(width) * 9 / 16
 	if float64(height) >= canvasHeight {
+		return 1
+	}
+	return canvasHeight / float64(height)
+}
+
+func adjustedMarginV(configuredMarginV, width, height int) int {
+	// Keep the style margin at the same position on a centered 16:9 output canvas.
+	scale := referencePlaybackCanvasScale(width, height)
+	if scale == 1 {
 		return configuredMarginV
 	}
 
+	canvasHeight := float64(height) * scale
 	bottomBar := (canvasHeight - float64(height)) / 2
 	verticalScale := float64(height) / assPlayResY
 	targetBottomGap := float64(configuredMarginV) * canvasHeight / assPlayResY

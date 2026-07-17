@@ -51,14 +51,14 @@ subtitle:
   ass_style:
     enabled: true
     primary_font: "WenQuanYi Micro Hei" # Font for Chinese (primary line)
-    primary_size: 20 # Font size for Chinese
+    primary_size: 20 # Reference font size for Chinese on 16:9 video; adjusted for wider media
     primary_color: "&H00c8c8c8" # Color for Chinese (ASS format: &HAABBGGRR)
     secondary_font: "WenQuanYi Micro Hei" # Font for English (secondary line)
-    secondary_size: 13 # Font size for English
+    secondary_size: 13 # Reference font size for English on 16:9 video; adjusted for wider media
     secondary_color: "&H0010b8ff" # Color for English (orange)
     bold: true # Bold text
-    outline: 0.5 # Outline width
-    shadow: 0.5 # Shadow depth
+    outline: 0.5 # Reference outline width for 16:9 video; adjusted for wider media
+    shadow: 0.5 # Reference shadow depth for 16:9 video; adjusted for wider media
     margin_v: 5 # Reference bottom margin for 16:9 video; adjusted for wider media
     margin_left: 10 # Left margin (pixels from left edge)
     margin_right: 10 # Right margin (pixels from right edge)
@@ -154,4 +154,3 @@ bazarr:
 # POST /api/v1/callback/translation     - Translation completion callback
 #
 # ════════════════════════════════════════════════════════════════════════════
-
