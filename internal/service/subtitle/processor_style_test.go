@@ -154,13 +154,55 @@ No events here
 	}
 }
 
-func TestStyleProcessorKeepsConsistentSubtitlePlacementForWideVideo(t *testing.T) {
-	assFile := filepath.Join(t.TempDir(), "test.ass")
-	if err := os.WriteFile(assFile, []byte("[Events]\nDialogue: test\n"), 0644); err != nil {
-		t.Fatalf("Failed to create test file: %v", err)
+func TestStyleProcessorKeepsConsistentSubtitlePlacementAndScale(t *testing.T) {
+	tests := []struct {
+		name      string
+		width     int
+		height    int
+		wantParts []string
+	}{
+		{
+			name:   "4K full frame",
+			width:  3840,
+			height: 2160,
+			wantParts: []string{
+				"Style: Default,Arial,20,",
+				"Style: Default_1,Arial,13,",
+				",1,0.5,0.5,2,10,10,5,1",
+			},
+		},
+		{
+			name:   "4:3 frame",
+			width:  1440,
+			height: 1080,
+			wantParts: []string{
+				"Style: Default,Arial,20,",
+				"Style: Default_1,Arial,13,",
+				",1,0.5,0.5,2,10,10,5,1",
+			},
+		},
+		{
+			name:   "confirmed Infuse sample",
+			width:  3840,
+			height: 1606,
+			wantParts: []string{
+				"Style: Default,Arial,27,",
+				"Style: Default_1,Arial,17,",
+				",1,0.7,0.7,2,10,10,-43,1",
+			},
+		},
+		{
+			name:   "extreme-wide frame",
+			width:  3840,
+			height: 800,
+			wantParts: []string{
+				"Style: Default,Arial,54,",
+				"Style: Default_1,Arial,35,",
+				",1,1.4,1.4,2,10,10,-231,1",
+			},
+		},
 	}
-
-	processor := NewStyleProcessor(config.ASSStyleConfig{
+	styleConfig := config.ASSStyleConfig{
 		Enabled:        true,
 		PrimaryFont:    "Arial",
 		PrimarySize:    20,
@@ -168,28 +210,43 @@ func TestStyleProcessorKeepsConsistentSubtitlePlacementForWideVideo(t *testing.T
 		SecondaryFont:  "Arial",
 		SecondarySize:  13,
 		SecondaryColor: "&H00FF0000",
+		Outline:        0.5,
+		Shadow:         0.5,
 		MarginV:        5,
-	})
-	processor.probe = func(context.Context, string) (*executor.FFProbeOutput, error) {
-		return &executor.FFProbeOutput{Streams: []executor.StreamInfo{
-			{CodecType: "video", Width: 3840, Height: 1560},
-		}}, nil
 	}
 
-	err := processor.Process(context.Background(), &ProcessingContext{
-		VideoPath:     "/media/movie.mkv",
-		MergedSubPath: assFile,
-	})
-	if err != nil {
-		t.Fatalf("Process() error = %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assFile := filepath.Join(t.TempDir(), "test.ass")
+			if err := os.WriteFile(assFile, []byte("[Events]\nDialogue: test\n"), 0644); err != nil {
+				t.Fatalf("Failed to create test file: %v", err)
+			}
 
-	result, err := os.ReadFile(assFile)
-	if err != nil {
-		t.Fatalf("Failed to read result file: %v", err)
-	}
-	if !strings.Contains(string(result), ",2,10,10,-48,1") {
-		t.Fatalf("Result does not contain adaptive MarginV -48:\n%s", result)
+			processor := NewStyleProcessor(styleConfig)
+			processor.probe = func(context.Context, string) (*executor.FFProbeOutput, error) {
+				return &executor.FFProbeOutput{Streams: []executor.StreamInfo{
+					{CodecType: "video", Width: tt.width, Height: tt.height},
+				}}, nil
+			}
+
+			err := processor.Process(context.Background(), &ProcessingContext{
+				VideoPath:     "/media/movie.mkv",
+				MergedSubPath: assFile,
+			})
+			if err != nil {
+				t.Fatalf("Process() error = %v", err)
+			}
+
+			result, err := os.ReadFile(assFile)
+			if err != nil {
+				t.Fatalf("Failed to read result file: %v", err)
+			}
+			for _, wantPart := range tt.wantParts {
+				if !strings.Contains(string(result), wantPart) {
+					t.Fatalf("Result does not contain %q:\n%s", wantPart, result)
+				}
+			}
+		})
 	}
 }
 
@@ -270,6 +327,8 @@ func TestStyleProcessorFallsBackAndPreservesDialogueMargin(t *testing.T) {
 				SecondaryFont:  "Arial",
 				SecondarySize:  13,
 				SecondaryColor: "&H00FF0000",
+				Outline:        0.5,
+				Shadow:         0.5,
 				MarginV:        5,
 			})
 			processor.probe = func(context.Context, string) (*executor.FFProbeOutput, error) {
@@ -291,6 +350,15 @@ func TestStyleProcessorFallsBackAndPreservesDialogueMargin(t *testing.T) {
 			resultString := string(result)
 			if !strings.Contains(resultString, ",2,10,10,5,1") {
 				t.Fatalf("Result does not contain configured MarginV 5:\n%s", result)
+			}
+			if !strings.Contains(resultString, "Style: Default,Arial,20") {
+				t.Fatalf("Result changed configured primary font size:\n%s", result)
+			}
+			if !strings.Contains(resultString, "Style: Default_1,Arial,13") {
+				t.Fatalf("Result changed configured secondary font size:\n%s", result)
+			}
+			if !strings.Contains(resultString, ",1,0.5,0.5,2,10,10,5,1") {
+				t.Fatalf("Result changed configured outline or shadow:\n%s", result)
 			}
 			if !strings.Contains(resultString, dialogue) {
 				t.Fatalf("Result changed dialogue-level MarginV:\n%s", result)

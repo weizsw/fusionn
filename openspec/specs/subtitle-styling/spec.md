@@ -85,6 +85,31 @@ The system SHALL allow users to configure ASS styling parameters via YAML config
 
 ---
 
+### Requirement: Consistent Subtitle Scale
+
+The system SHALL keep subtitle glyph height, outline, and shadow proportional to a centered 16:9 reference playback canvas.
+
+#### Scenario: Style wider-than-16:9 video
+
+**Given** the encoded video is wider than 16:9  
+**When** the style processor detects its dimensions  
+**Then** primary and secondary font sizes SHALL be multiplied by `(width × 9/16) / height` and rounded to the nearest integer  
+**And** outline and shadow SHALL be multiplied by the same uncapped factor and rendered to the nearest tenth  
+**And** the configured values SHALL remain the reference values for 16:9 video
+
+#### Scenario: Style 16:9 or taller video
+
+**Given** the encoded video is 16:9 or taller  
+**When** the style processor detects its dimensions  
+**Then** configured font sizes, outline, and shadow SHALL remain unchanged
+
+#### Scenario: Video dimension detection fails
+
+**When** the style processor cannot detect valid video dimensions  
+**Then** configured font sizes, outline, and shadow SHALL remain unchanged
+
+---
+
 ### Requirement: Pipeline Integration
 
 The StyleProcessor SHALL be integrated into the subtitle processing pipeline after the MergerProcessor.
@@ -214,4 +239,3 @@ The system SHALL allow users to configure line wrapping behavior via the `wrap_s
 **AND** the WrapStyle parameter SHALL be set correctly in the ASS file
 
 ---
-
