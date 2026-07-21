@@ -63,8 +63,6 @@ func (p *StyleProcessor) Process(ctx context.Context, pctx *ProcessingContext) e
 			scale := referencePlaybackCanvasScale(width, height)
 			styleConfig.PrimarySize = int(math.Round(float64(styleConfig.PrimarySize) * scale))
 			styleConfig.SecondarySize = int(math.Round(float64(styleConfig.SecondarySize) * scale))
-			styleConfig.Outline *= scale
-			styleConfig.Shadow *= scale
 			styleConfig.MarginV = adjustedMarginV(styleConfig.MarginV, width, height)
 		} else {
 			log.Warn("Failed to detect video resolution, using configured ASS style")

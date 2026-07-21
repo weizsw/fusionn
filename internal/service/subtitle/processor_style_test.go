@@ -154,7 +154,7 @@ No events here
 	}
 }
 
-func TestStyleProcessorKeepsConsistentSubtitlePlacementAndScale(t *testing.T) {
+func TestStyleProcessorAdaptsFontSizeAndPlacementOnly(t *testing.T) {
 	tests := []struct {
 		name      string
 		width     int
@@ -188,7 +188,7 @@ func TestStyleProcessorKeepsConsistentSubtitlePlacementAndScale(t *testing.T) {
 			wantParts: []string{
 				"Style: Default,Arial,27,",
 				"Style: Default_1,Arial,17,",
-				",1,0.7,0.7,2,10,10,-43,1",
+				",1,0.5,0.5,2,10,10,-43,1",
 			},
 		},
 		{
@@ -198,7 +198,7 @@ func TestStyleProcessorKeepsConsistentSubtitlePlacementAndScale(t *testing.T) {
 			wantParts: []string{
 				"Style: Default,Arial,54,",
 				"Style: Default_1,Arial,35,",
-				",1,1.4,1.4,2,10,10,-231,1",
+				",1,0.5,0.5,2,10,10,-231,1",
 			},
 		},
 	}
