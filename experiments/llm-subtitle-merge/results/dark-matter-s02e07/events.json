@@ -267,7 +267,7 @@
     ],
     "position_used": [
       960,
-      1048
+      922
     ]
   },
   {
@@ -295,7 +295,7 @@
     ],
     "position_used": [
       960,
-      1048
+      922
     ]
   },
   {
@@ -1197,24 +1197,25 @@
       45
     ],
     "zh_ids": [
-      46
+      46,
+      47
     ],
     "group": 43,
-    "strategy": "M:N_proportional_review",
+    "strategy": "M:N_chinese_hold_review",
     "top": false,
     "alignment": 2,
     "position": null,
     "ass_start": 252670,
     "ass_end": 259260,
     "en_display": "Our other versions picked up this virus and brought it back…",
-    "zh_display": "就在我们抵达之前 其他版本的我们…",
+    "zh_display": "就在我们抵达之前 其他版本的我们…\n　感染了这个病毒 并带回了这里",
     "band": [
-      922,
+      858,
       1048
     ],
     "position_used": [
       960,
-      1048
+      858
     ]
   },
   {
@@ -1224,24 +1225,25 @@
       46
     ],
     "zh_ids": [
+      46,
       47
     ],
     "group": 43,
-    "strategy": "M:N_proportional_review",
+    "strategy": "M:N_chinese_hold_review",
     "top": false,
     "alignment": 2,
     "position": null,
     "ass_start": 261300,
     "ass_end": 262640,
     "en_display": "before we got here.",
-    "zh_display": "感染了这个病毒 并带回了这里",
+    "zh_display": "就在我们抵达之前 其他版本的我们…\n　感染了这个病毒 并带回了这里",
     "band": [
-      922,
+      858,
       1048
     ],
     "position_used": [
       960,
-      1048
+      858
     ]
   },
   {
@@ -16039,24 +16041,25 @@
       591
     ],
     "zh_ids": [
-      597
+      597,
+      598
     ],
     "group": 592,
-    "strategy": "M:N_proportional_review",
+    "strategy": "M:N_chinese_hold_review",
     "top": false,
     "alignment": 2,
     "position": null,
     "ass_start": 2969260,
     "ass_end": 2973470,
     "en_display": "My favorite is this one of my dad.",
-    "zh_display": "我最爱看的一段",
+    "zh_display": "我最爱看的一段　是我爸在扫一整大堆的落叶",
     "band": [
       922,
       1048
     ],
     "position_used": [
       960,
-      1048
+      922
     ]
   },
   {
@@ -16066,24 +16069,25 @@
       592
     ],
     "zh_ids": [
+      597,
       598
     ],
     "group": 592,
-    "strategy": "M:N_proportional_review",
+    "strategy": "M:N_chinese_hold_review",
     "top": false,
     "alignment": 2,
     "position": null,
     "ass_start": 2974640,
     "ass_end": 2976850,
     "en_display": "He's raking this huge pile of leaves",
-    "zh_display": "是我爸在扫一整大堆的落叶",
+    "zh_display": "我最爱看的一段　是我爸在扫一整大堆的落叶",
     "band": [
       922,
       1048
     ],
     "position_used": [
       960,
-      1048
+      922
     ]
   },
   {
@@ -16120,24 +16124,25 @@
       594
     ],
     "zh_ids": [
-      600
+      600,
+      601
     ],
     "group": 594,
-    "strategy": "M:N_proportional_review",
+    "strategy": "M:N_chinese_hold_review",
     "top": false,
     "alignment": 2,
     "position": null,
     "ass_start": 2980480,
     "ass_end": 2985030,
     "en_display": "And the two of us are just laughing and laughing",
-    "zh_display": "看着那堆叶子越堆越高、越堆越大",
+    "zh_display": "看着那堆叶子越堆越高、\n越堆越大　我们俩就一直笑个不停",
     "band": [
-      922,
+      858,
       1048
     ],
     "position_used": [
       960,
-      1048
+      858
     ]
   },
   {
@@ -16147,24 +16152,25 @@
       595
     ],
     "zh_ids": [
+      600,
       601
     ],
     "group": 594,
-    "strategy": "M:N_proportional_review",
+    "strategy": "M:N_chinese_hold_review",
     "top": false,
     "alignment": 2,
     "position": null,
     "ass_start": 2985030,
     "ass_end": 2987320,
     "en_display": "as the pile gets bigger and bigger.",
-    "zh_display": "我们俩就一直笑个不停",
+    "zh_display": "看着那堆叶子越堆越高、\n越堆越大　我们俩就一直笑个不停",
     "band": [
-      922,
+      858,
       1048
     ],
     "position_used": [
       960,
-      1048
+      858
     ]
   },
   {
@@ -16564,7 +16570,7 @@
     ],
     "position_used": [
       960,
-      1048
+      922
     ]
   },
   {
@@ -16592,7 +16598,7 @@
     ],
     "position_used": [
       960,
-      1048
+      922
     ]
   },
   {
@@ -16629,24 +16635,26 @@
       610
     ],
     "zh_ids": [
-      619
+      619,
+      620,
+      621
     ],
     "group": 611,
-    "strategy": "M:N_proportional_review",
+    "strategy": "M:N_chinese_hold_review",
     "top": false,
     "alignment": 2,
     "position": null,
     "ass_start": 3098600,
     "ass_end": 3102440,
     "en_display": "that since you both were able to somehow rejuvenate",
-    "zh_display": "因为你们两人都从黑鸢尾瘟疫中 以某种方式恢复了青春\n活力",
+    "zh_display": "因为你们两人都从黑鸢尾瘟疫中 \n以某种方式恢复了青春活力　或许你们体内藏着研\n发疫苗的　- 关键线索   - 你知道他们…",
     "band": [
-      858,
+      794,
       1048
     ],
     "position_used": [
       960,
-      1048
+      794
     ]
   },
   {
@@ -16656,24 +16664,26 @@
       611
     ],
     "zh_ids": [
-      620
+      619,
+      620,
+      621
     ],
     "group": 611,
-    "strategy": "M:N_proportional_review",
+    "strategy": "M:N_chinese_hold_review",
     "top": false,
     "alignment": 2,
     "position": null,
     "ass_start": 3102440,
     "ass_end": 3105440,
     "en_display": "from the Black Iris plague, your bodies may contain the road map",
-    "zh_display": "或许你们体内藏着研发疫苗的",
+    "zh_display": "因为你们两人都从黑鸢尾瘟疫中 \n以某种方式恢复了青春活力　或许你们体内藏着研\n发疫苗的　- 关键线索   - 你知道他们…",
     "band": [
-      922,
+      794,
       1048
     ],
     "position_used": [
       960,
-      1048
+      794
     ]
   },
   {
@@ -16683,24 +16693,26 @@
       612
     ],
     "zh_ids": [
+      619,
+      620,
       621
     ],
     "group": 611,
-    "strategy": "M:N_proportional_review",
+    "strategy": "M:N_chinese_hold_review",
     "top": false,
     "alignment": 2,
     "position": null,
     "ass_start": 3105440,
     "ass_end": 3107360,
     "en_display": "- to developing a vaccine.   - You know they--",
-    "zh_display": "- 关键线索   - 你知道他们…",
+    "zh_display": "因为你们两人都从黑鸢尾瘟疫中 \n以某种方式恢复了青春活力　或许你们体内藏着研\n发疫苗的　- 关键线索   - 你知道他们…",
     "band": [
-      922,
+      794,
       1048
     ],
     "position_used": [
       960,
-      1048
+      794
     ]
   },
   {
@@ -16890,7 +16902,7 @@
     ],
     "position_used": [
       960,
-      1048
+      922
     ]
   },
   {
@@ -16918,7 +16930,7 @@
     ],
     "position_used": [
       960,
-      1048
+      922
     ]
   },
   {

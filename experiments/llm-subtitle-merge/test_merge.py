@@ -160,11 +160,63 @@ class Timing(unittest.TestCase):
         self.assertEqual(bs[0].zh_ids, [1, 2])
         self.assertIn("review", bs[0].strategy)
 
-    def test_many_to_many_retains_every_id_and_flags_heuristic(self):
-        bs = self.blocks([cue(1, text="a " * 40), cue(2, 3100, 6000, "b " * 40)],
-                         [cue(1, text="甲" * 20), cue(2, 4000, 6000, "乙" * 20)])
-        self.assertEqual({i for b in bs for i in b.zh_ids}, {1, 2})
-        self.assertTrue(all("review" in b.strategy for b in bs))
+    def test_many_to_many_holds_all_chinese_even_when_short(self):
+        for text in ("短", "长" * 30):
+            with self.subTest(text=text):
+                bs = self.blocks([cue(1, text="first"), cue(2, 3100, 6000, "second")],
+                                 [cue(1, text=text), cue(2, 4000, 6000, text)])
+                self.assertEqual([b.en_ids for b in bs], [[1], [2]])
+                self.assertEqual([b.zh_ids for b in bs], [[1, 2], [1, 2]])
+                self.assertTrue(all(b.strategy == "M:N_chinese_hold_review" for b in bs))
+                self.assertEqual(bs[0].end, bs[1].start)
+
+    def test_many_to_many_large_gap_and_overlap_preserved(self):
+        for start in (2900, 4000):
+            bs = self.blocks([cue(1), cue(2, start, 6000)], [cue(1), cue(2)])
+            self.assertEqual([(b.start, b.end) for b in bs], [(1000, 3000), (start, 6000)])
+            self.assertTrue(all(b.zh_ids == [1, 2] for b in bs))
+
+    def test_hold_balanced_wrap_preserves_glyphs_and_limits(self):
+        text = "甲" * 26
+        wrapped = m.wrap_display(text, "zh", 25, balanced=True)
+        self.assertEqual([len(s) for s in wrapped.splitlines()], [13, 13])
+        self.assertEqual(wrapped.replace("\n", ""), text)
+        text = "就在我们抵达之前 其他版本的我们…　感染了这个病毒 并带回了这里"
+        wrapped = m.wrap_display(text, "zh", 25, balanced=True)
+        self.assertTrue(all(len(s) <= 25 and not s.startswith("…") for s in wrapped.splitlines()))
+        self.assertEqual(wrapped.replace("\n", ""), text)
+
+    def test_episode_hold_regression_from_mapping_cache(self):
+        root = Path(__file__).parent / "results/dark-matter-s02e07"
+        b = m.source_bundle(root / "sources.json")
+        mapping = m.load(root / "alignment/mapping.json")
+        m.validate_mapping(mapping, b)
+        en, zh = m.track_dict(b, "en"), m.track_dict(b, "zh")
+        for group in (9, 43, 594):
+            r = mapping["groups"][group]
+            bs = m.build_blocks(r, en, zh, group, render_args())
+            self.assertEqual([v.en_ids for v in bs], [[i] for i in r["en_ids"]])
+            self.assertTrue(all(v.zh_ids == r["zh_ids"] for v in bs))
+            self.assertEqual(bs[0].start, en[r["en_ids"][0]].start)
+            self.assertEqual(bs[-1].end, en[r["en_ids"][-1]].end)
+
+    def test_hold_chinese_position_fixed_when_english_wrap_changes(self):
+        es = [cue(1, text="short"), cue(2, 3100, 6000, "long words " * 12)]
+        zs = [cue(1, text="前半" * 8), cue(2, 4000, 6000, "后半" * 8)]
+        b = bundle(es, zs)
+        mapping = {"source_fingerprint": b["fingerprint"], "parameters": {"max_distance_ms": 8000},
+                   "groups": [row([1, 2], [1, 2])]}
+        mapping["fingerprint"] = m.digest(mapping)
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            m.save(d / "sources.json", b)
+            m.save(d / "mapping.json", mapping)
+            m.render(render_args(sources=d / "sources.json", mapping=d / "mapping.json", out=d / "render"))
+            events = m.load(d / "render/events.json")
+            self.assertEqual(events[0]["zh_display"], events[1]["zh_display"])
+            self.assertEqual(events[0]["position_used"], events[1]["position_used"])
+            ass = pysubs2.load(str(d / "render/bilingual.ass"))
+            self.assertTrue(all(r"\an8" in e.text and r"\q2" in e.text for e in ass))
 
     def test_render_roundtrip_overlap_sdh_and_one_sided(self):
         es = [cue(1, 1000, 3000, "[phone ringing]"), cue(2, 2900, 5000, "Speech")]
