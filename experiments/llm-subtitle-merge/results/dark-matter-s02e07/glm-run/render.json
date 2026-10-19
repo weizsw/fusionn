@@ -1,0 +1,39 @@
+{
+  "seconds": 0.029,
+  "events": 720,
+  "strategies": {
+    "1:1_english_anchor": 693,
+    "M:N_chinese_hold_review": 13,
+    "short_join": 3,
+    "one_sided": 11
+  },
+  "top_events": 14,
+  "overlap_shifts": [],
+  "source_coverage": {
+    "en": 710,
+    "zh": 722
+  },
+  "text_provenance": "all source IDs represented; all rendered non-whitespace glyphs equal local source text",
+  "parameters": {
+    "en_chars": 65,
+    "zh_chars": 25,
+    "en_gap_ms": 400,
+    "zh_gap_ms": 500,
+    "span_ms": 5500,
+    "fill_gap_ms": 500,
+    "zh_font": "PingFang SC",
+    "en_font": "Helvetica Neue"
+  },
+  "review_groups": [
+    9,
+    43,
+    301,
+    317,
+    547,
+    609
+  ],
+  "warnings": [
+    "Character limits do not guarantee pixel fit or semantic correctness.",
+    "Position bands use estimated font metrics; verify with the playback renderer."
+  ]
+}

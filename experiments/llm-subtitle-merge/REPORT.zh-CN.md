@@ -10,6 +10,23 @@
 
 这不等于整集语义准确。长驻规避了上一版倒装分句互相错配的做法，但代价是中文后半提前可见、长组占用更多行，组级模型映射本身仍可能出错。当前结果供观影判断，未接入生产链。
 
+## GLM 补充对比
+
+按用户指定，用 `group/auto-gfmodel` 真实重跑相同 19 个窗口，产物独立在 `results/dark-matter-s02e07/glm-run/`；原 Gemini 的 52 个产物文件 SHA-256 全部未变。响应 model 字段是 `gfmodel`（用户标注路由为 GLM-5.3-flash，接口没有返回完整版本）。
+
+| 指标 | Gemini | GLM |
+| --- | ---: | ---: |
+| 请求成功 / 重试 | 19/19，0 | 19/19，0 |
+| 对齐耗时 | 178.290s | 250.196s |
+| 总 token（网关 usage） | 156,492 | 143,794 |
+| 原始 JSON 结构合规 | 19/19 | 19/19 |
+| 原始漏行 / 非法 ID / 重复 ID | 0 / 0 / 0 | 0 / 0 / 0 |
+| ASS 事件 | 720 | 720 |
+
+输入 payload 除 model 外完全相同。697 组（含 layer）完全一致，Gemini 共 712 组、GLM 共 711 组；相似但不等价。01:14、04:12 两段分组及四张实际渲染采样与 Gemini 完全一致；49:40 GLM 交叉配对 `E594↔C601`、`E595↔C600`，分别对应“笑个不停”和“叶子越堆越大”，不再形成 M:N。其他片段仍有 GLM 拆组导致语义不完整的风险，不能据单例推导整集质量排名。
+
+GLM 本机可播放 ASS：`/Users/maverick/.tds/artifacts/llm-subs-dark-matter-s02e07-01a152fd/glm-run/render/bilingual.ass`。性能、全部差异、JSON 检查与图片见 [GLM 完整对比报告](GLM-COMPARISON.zh-CN.md)，仓库字幕见 [GLM bilingual.ass](results/dark-matter-s02e07/glm-run/bilingual.ass)。以下原实验章节仍专指 Gemini，保留原始结果和统计。
+
 ## 如何观看与找到文件
 
 仓库内 [bilingual.ass](results/dark-matter-s02e07/bilingual.ass) 使用方案的 PingFang SC 52 / Helvetica Neue 36、中文上英文下、雾白/暖杏金、1920×1080。字体缺失的播放器可试 [bilingual-wqy.ass](results/dark-matter-s02e07/bilingual-wqy.ass)，它仅把中文字体换成 WenQuanYi Micro Hei；播放器须实际安装相应字体，ASS 没有打包字体。字体变体不改变 ID 或文字。

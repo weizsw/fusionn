@@ -63,6 +63,27 @@ R=experiments/llm-subtitle-merge/results/dark-matter-s02e07
 
 只有中英各自完整顺序去空白文本与源数据完全相等，比较器才按字符区间恢复 ID 连通组；不使用模糊匹配。不支持字幕内容改变或顺序改变后的猜测。
 
+## GLM 与 Gemini 对比
+
+GLM 产物独立位于 `results/dark-matter-s02e07/glm-run/`，Gemini 的 `alignment/` 和 ASS 不变。两次请求除模型名外 payload 相同，使用相同源指纹、19 个窗口、并发 3、json_object 和本地校验规则，渲染都采用路线 A。完整对比见报告的 GLM 章节及 `glm-run/model-comparison.json`。
+
+```bash
+R=experiments/llm-subtitle-merge/results/dark-matter-s02e07
+GLM=/Users/maverick/.tds/artifacts/llm-subs-dark-matter-s02e07-01a152fd/glm-run
+# 已有缓存会复用；需要另一轮真实模型试验时改用新目录。
+"$PY" -I experiments/llm-subtitle-merge/merge.py align \
+  --sources "$R/sources.json" --out "$GLM/alignment" \
+  --model group/auto-gfmodel --endpoint http://127.0.0.1:3425/v1 \
+  --response-format json_object --window-seconds 210 --overlap-seconds 15 --workers 3
+"$PY" -I experiments/llm-subtitle-merge/merge.py render \
+  --sources "$R/sources.json" --mapping "$GLM/alignment/mapping.json" --out "$GLM/render"
+"$PY" -I experiments/llm-subtitle-merge/compare_models.py \
+  --sources "$R/sources.json" --baseline "$R/alignment" \
+  --candidate "$GLM/alignment" --out "$GLM/model-comparison.json"
+```
+
+`compare_models.py` 全程离线：验证输入 payload 一致，统计原始响应结构、窗口漏行/非法/重复 ID，再比较本地校验与补回后的最终组。成员相同与 layer 相同分别统计，一致率不代表语义准确率。
+
 ## 处理规则与边界
 
 - `sources.json` 保存 raw/plain/display、格式变换记录、原时间、预对齐后时间、原样式、位置、多人破折号；SHA-256 指纹检查意外修改，进程内 Cue 不可变。没有翻译、繁简转换或 SDH 删除。

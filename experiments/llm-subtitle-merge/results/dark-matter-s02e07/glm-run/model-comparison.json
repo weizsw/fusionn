@@ -1,0 +1,2495 @@
+{
+  "source_fingerprint": "14ec9eb49624d94352152b8fa0cc0b6bacc81228c66919d9e6d4731f20018bd9",
+  "input_comparison": {
+    "same_window_indexes": true,
+    "payloads_equal_except_model": true,
+    "different_windows": []
+  },
+  "baseline": {
+    "run": {
+      "parameters": {
+        "window_ms": 210000,
+        "overlap_ms": 15000,
+        "max_distance_ms": 8000,
+        "model": "group/flash-models",
+        "endpoint": "http://127.0.0.1:3425/v1",
+        "response_format": "json_object",
+        "schema_enforcement": "unverified; strict local validation always applied"
+      },
+      "seconds": 178.29,
+      "windows": 19,
+      "cache_hits": 0,
+      "http_attempts_this_run": 19,
+      "failed_windows": [],
+      "resolved_models": [
+        "gemini-3.8-flash-n"
+      ],
+      "usage_including_cached_requests": {
+        "prompt_tokens": 80078,
+        "completion_tokens": 76414,
+        "total_tokens": 156492
+      },
+      "mapping_counts": {
+        "1:1": 691,
+        "M:N": 7,
+        "1:N": 2,
+        "zh_only": 11,
+        "N:1": 1
+      },
+      "rejected_rows": 0,
+      "conflicting_owner_groups": 0,
+      "restored": {
+        "en": 0,
+        "zh": 0
+      },
+      "context_duplicates": 59
+    },
+    "request_seconds_sum": 474.068,
+    "request_seconds_min": 5.61,
+    "request_seconds_median": 24.968,
+    "request_seconds_max": 67.19,
+    "successful_windows": 19,
+    "schema_shape_valid_windows": 19,
+    "raw_missing_occurrences": {
+      "en": 0,
+      "zh": 0
+    },
+    "raw_duplicate_id_occurrences": {
+      "en": 0,
+      "zh": 0
+    },
+    "raw_out_of_window_occurrences": {
+      "en": 0,
+      "zh": 0
+    },
+    "reasoning_tokens": 60700,
+    "windows": [
+      {
+        "window": 0,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 36,
+          "M:N": 1,
+          "1:N": 1
+        },
+        "attempts": [
+          {
+            "seconds": 26.717,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 4051,
+              "completion_tokens_details": {
+                "reasoning_tokens": 3366
+              },
+              "prompt_tokens": 3886,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 7937
+            }
+          }
+        ]
+      },
+      {
+        "window": 1,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 26,
+          "M:N": 1,
+          "zh_only": 1
+        },
+        "attempts": [
+          {
+            "seconds": 20.685,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 3199,
+              "completion_tokens_details": {
+                "reasoning_tokens": 2681
+              },
+              "prompt_tokens": 2886,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 6085
+            }
+          }
+        ]
+      },
+      {
+        "window": 2,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 37
+        },
+        "attempts": [
+          {
+            "seconds": 15.756,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 2317,
+              "completion_tokens_details": {
+                "reasoning_tokens": 1641
+              },
+              "prompt_tokens": 3579,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 5896
+            }
+          }
+        ]
+      },
+      {
+        "window": 3,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "zh_only": 1,
+          "1:1": 60
+        },
+        "attempts": [
+          {
+            "seconds": 27.151,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 4512,
+              "completion_tokens_details": {
+                "reasoning_tokens": 3291
+              },
+              "prompt_tokens": 5981,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 10493
+            }
+          }
+        ]
+      },
+      {
+        "window": 4,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 67
+        },
+        "attempts": [
+          {
+            "seconds": 30.513,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 4957,
+              "completion_tokens_details": {
+                "reasoning_tokens": 3607
+              },
+              "prompt_tokens": 6794,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 11751
+            }
+          }
+        ]
+      },
+      {
+        "window": 5,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 39
+        },
+        "attempts": [
+          {
+            "seconds": 16.473,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 2580,
+              "completion_tokens_details": {
+                "reasoning_tokens": 1790
+              },
+              "prompt_tokens": 4112,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 6692
+            }
+          }
+        ]
+      },
+      {
+        "window": 6,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 49
+        },
+        "attempts": [
+          {
+            "seconds": 23.113,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 3745,
+              "completion_tokens_details": {
+                "reasoning_tokens": 2755
+              },
+              "prompt_tokens": 4980,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 8725
+            }
+          }
+        ]
+      },
+      {
+        "window": 7,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 40
+        },
+        "attempts": [
+          {
+            "seconds": 24.968,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 4058,
+              "completion_tokens_details": {
+                "reasoning_tokens": 3248
+              },
+              "prompt_tokens": 4230,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 8288
+            }
+          }
+        ]
+      },
+      {
+        "window": 8,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 46,
+          "N:1": 1
+        },
+        "attempts": [
+          {
+            "seconds": 30.156,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 4900,
+              "completion_tokens_details": {
+                "reasoning_tokens": 3946
+              },
+              "prompt_tokens": 4951,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 9851
+            }
+          }
+        ]
+      },
+      {
+        "window": 9,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 45,
+          "1:N": 1
+        },
+        "attempts": [
+          {
+            "seconds": 31.33,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 5309,
+              "completion_tokens_details": {
+                "reasoning_tokens": 4375
+              },
+              "prompt_tokens": 4693,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 10002
+            }
+          }
+        ]
+      },
+      {
+        "window": 10,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 48
+        },
+        "attempts": [
+          {
+            "seconds": 19.965,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 2916,
+              "completion_tokens_details": {
+                "reasoning_tokens": 1946
+              },
+              "prompt_tokens": 4970,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 7886
+            }
+          }
+        ]
+      },
+      {
+        "window": 11,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 51
+        },
+        "attempts": [
+          {
+            "seconds": 29.71,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 4775,
+              "completion_tokens_details": {
+                "reasoning_tokens": 3745
+              },
+              "prompt_tokens": 5258,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 10033
+            }
+          }
+        ]
+      },
+      {
+        "window": 12,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 50
+        },
+        "attempts": [
+          {
+            "seconds": 31.112,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 6741,
+              "completion_tokens_details": {
+                "reasoning_tokens": 5436
+              },
+              "prompt_tokens": 5223,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 11964
+            }
+          }
+        ]
+      },
+      {
+        "window": 13,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 31,
+          "zh_only": 3
+        },
+        "attempts": [
+          {
+            "seconds": 23.961,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 3691,
+              "completion_tokens_details": {
+                "reasoning_tokens": 3010
+              },
+              "prompt_tokens": 3471,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 7162
+            }
+          }
+        ]
+      },
+      {
+        "window": 14,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 31,
+          "M:N": 5,
+          "zh_only": 3
+        },
+        "attempts": [
+          {
+            "seconds": 67.19,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 10544,
+              "completion_tokens_details": {
+                "reasoning_tokens": 9715
+              },
+              "prompt_tokens": 4645,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 15189
+            }
+          }
+        ]
+      },
+      {
+        "window": 15,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 44,
+          "zh_only": 2
+        },
+        "attempts": [
+          {
+            "seconds": 28.554,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 4928,
+              "completion_tokens_details": {
+                "reasoning_tokens": 4004
+              },
+              "prompt_tokens": 4839,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 9767
+            }
+          }
+        ]
+      },
+      {
+        "window": 16,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 45
+        },
+        "attempts": [
+          {
+            "seconds": 15.138,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 2296,
+              "completion_tokens_details": {
+                "reasoning_tokens": 1386
+              },
+              "prompt_tokens": 4544,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 6840
+            }
+          }
+        ]
+      },
+      {
+        "window": 17,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 5
+        },
+        "attempts": [
+          {
+            "seconds": 5.966,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 609,
+              "completion_tokens_details": {
+                "reasoning_tokens": 499
+              },
+              "prompt_tokens": 716,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 1325
+            }
+          }
+        ]
+      },
+      {
+        "window": 18,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "zh_only": 1
+        },
+        "attempts": [
+          {
+            "seconds": 5.61,
+            "model": "gemini-3.8-flash-n",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 286,
+              "completion_tokens_details": {
+                "reasoning_tokens": 259
+              },
+              "prompt_tokens": 320,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 606
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "candidate": {
+    "run": {
+      "parameters": {
+        "window_ms": 210000,
+        "overlap_ms": 15000,
+        "max_distance_ms": 8000,
+        "model": "group/auto-gfmodel",
+        "endpoint": "http://127.0.0.1:3425/v1",
+        "response_format": "json_object",
+        "schema_enforcement": "unverified; strict local validation always applied"
+      },
+      "seconds": 250.196,
+      "windows": 19,
+      "cache_hits": 0,
+      "http_attempts_this_run": 19,
+      "failed_windows": [],
+      "resolved_models": [
+        "gfmodel"
+      ],
+      "usage_including_cached_requests": {
+        "prompt_tokens": 71660,
+        "completion_tokens": 72134,
+        "total_tokens": 143794
+      },
+      "mapping_counts": {
+        "1:1": 693,
+        "M:N": 6,
+        "1:N": 2,
+        "zh_only": 9,
+        "N:1": 1
+      },
+      "rejected_rows": 0,
+      "conflicting_owner_groups": 0,
+      "restored": {
+        "en": 0,
+        "zh": 0
+      },
+      "context_duplicates": 59
+    },
+    "request_seconds_sum": 742.034,
+    "request_seconds_min": 5.759,
+    "request_seconds_median": 33.07,
+    "request_seconds_max": 106.897,
+    "successful_windows": 19,
+    "schema_shape_valid_windows": 19,
+    "raw_missing_occurrences": {
+      "en": 0,
+      "zh": 0
+    },
+    "raw_duplicate_id_occurrences": {
+      "en": 0,
+      "zh": 0
+    },
+    "raw_out_of_window_occurrences": {
+      "en": 0,
+      "zh": 0
+    },
+    "reasoning_tokens": 59554,
+    "windows": [
+      {
+        "window": 0,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 36,
+          "M:N": 1,
+          "1:N": 1
+        },
+        "attempts": [
+          {
+            "seconds": 25.996,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 2742,
+              "completion_tokens_details": {
+                "reasoning_tokens": 2190
+              },
+              "prompt_tokens": 3483,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 6225
+            }
+          }
+        ]
+      },
+      {
+        "window": 1,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 26,
+          "M:N": 1,
+          "zh_only": 1
+        },
+        "attempts": [
+          {
+            "seconds": 22.185,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 1904,
+              "completion_tokens_details": {
+                "reasoning_tokens": 1502
+              },
+              "prompt_tokens": 2597,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 4501
+            }
+          }
+        ]
+      },
+      {
+        "window": 2,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 37
+        },
+        "attempts": [
+          {
+            "seconds": 18.343,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 2008,
+              "completion_tokens_details": {
+                "reasoning_tokens": 1480
+              },
+              "prompt_tokens": 3252,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 5260
+            }
+          }
+        ]
+      },
+      {
+        "window": 3,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "zh_only": 1,
+          "1:1": 60
+        },
+        "attempts": [
+          {
+            "seconds": 44.398,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 4292,
+              "completion_tokens_details": {
+                "reasoning_tokens": 3428
+              },
+              "prompt_tokens": 5326,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 9618
+            }
+          }
+        ]
+      },
+      {
+        "window": 4,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 67
+        },
+        "attempts": [
+          {
+            "seconds": 53.025,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 5321,
+              "completion_tokens_details": {
+                "reasoning_tokens": 4350
+              },
+              "prompt_tokens": 6022,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 11343
+            }
+          }
+        ]
+      },
+      {
+        "window": 5,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 39
+        },
+        "attempts": [
+          {
+            "seconds": 25.117,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 2778,
+              "completion_tokens_details": {
+                "reasoning_tokens": 2174
+              },
+              "prompt_tokens": 3584,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 6362
+            }
+          }
+        ]
+      },
+      {
+        "window": 6,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 49
+        },
+        "attempts": [
+          {
+            "seconds": 28.834,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 2807,
+              "completion_tokens_details": {
+                "reasoning_tokens": 2020
+              },
+              "prompt_tokens": 4334,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 192
+              },
+              "total_tokens": 7141
+            }
+          }
+        ]
+      },
+      {
+        "window": 7,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 36,
+          "M:N": 2
+        },
+        "attempts": [
+          {
+            "seconds": 56.879,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 5060,
+              "completion_tokens_details": {
+                "reasoning_tokens": 4403
+              },
+              "prompt_tokens": 3690,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 192
+              },
+              "total_tokens": 8750
+            }
+          }
+        ]
+      },
+      {
+        "window": 8,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 46,
+          "N:1": 1
+        },
+        "attempts": [
+          {
+            "seconds": 36.531,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 3877,
+              "completion_tokens_details": {
+                "reasoning_tokens": 2834
+              },
+              "prompt_tokens": 4329,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 192
+              },
+              "total_tokens": 8206
+            }
+          }
+        ]
+      },
+      {
+        "window": 9,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 45,
+          "1:N": 1
+        },
+        "attempts": [
+          {
+            "seconds": 35.732,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 4266,
+              "completion_tokens_details": {
+                "reasoning_tokens": 3519
+              },
+              "prompt_tokens": 4138,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 192
+              },
+              "total_tokens": 8404
+            }
+          }
+        ]
+      },
+      {
+        "window": 10,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 48
+        },
+        "attempts": [
+          {
+            "seconds": 23.28,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 2500,
+              "completion_tokens_details": {
+                "reasoning_tokens": 1729
+              },
+              "prompt_tokens": 4430,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 192
+              },
+              "total_tokens": 6930
+            }
+          }
+        ]
+      },
+      {
+        "window": 11,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 51
+        },
+        "attempts": [
+          {
+            "seconds": 33.07,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 3642,
+              "completion_tokens_details": {
+                "reasoning_tokens": 2821
+              },
+              "prompt_tokens": 4768,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 192
+              },
+              "total_tokens": 8410
+            }
+          }
+        ]
+      },
+      {
+        "window": 12,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 48,
+          "M:N": 1
+        },
+        "attempts": [
+          {
+            "seconds": 106.897,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 9819,
+              "completion_tokens_details": {
+                "reasoning_tokens": 8948
+              },
+              "prompt_tokens": 4741,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 192
+              },
+              "total_tokens": 14560
+            }
+          }
+        ]
+      },
+      {
+        "window": 13,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 31,
+          "zh_only": 3
+        },
+        "attempts": [
+          {
+            "seconds": 29.787,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 3204,
+              "completion_tokens_details": {
+                "reasoning_tokens": 2655
+              },
+              "prompt_tokens": 3168,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 192
+              },
+              "total_tokens": 6372
+            }
+          }
+        ]
+      },
+      {
+        "window": 14,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 39,
+          "zh_only": 1,
+          "M:N": 1
+        },
+        "attempts": [
+          {
+            "seconds": 101.418,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 7841,
+              "completion_tokens_details": {
+                "reasoning_tokens": 7060
+              },
+              "prompt_tokens": 4216,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 192
+              },
+              "total_tokens": 12057
+            }
+          }
+        ]
+      },
+      {
+        "window": 15,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 44,
+          "zh_only": 2
+        },
+        "attempts": [
+          {
+            "seconds": 41.675,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 4488,
+              "completion_tokens_details": {
+                "reasoning_tokens": 3739
+              },
+              "prompt_tokens": 4428,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 8916
+            }
+          }
+        ]
+      },
+      {
+        "window": 16,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 45
+        },
+        "attempts": [
+          {
+            "seconds": 43.097,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 4528,
+              "completion_tokens_details": {
+                "reasoning_tokens": 3752
+              },
+              "prompt_tokens": 4160,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 192
+              },
+              "total_tokens": 8688
+            }
+          }
+        ]
+      },
+      {
+        "window": 17,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "1:1": 5
+        },
+        "attempts": [
+          {
+            "seconds": 5.759,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 439,
+              "completion_tokens_details": {
+                "reasoning_tokens": 353
+              },
+              "prompt_tokens": 674,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 1113
+            }
+          }
+        ]
+      },
+      {
+        "window": 18,
+        "json_schema_shape_valid": true,
+        "raw_missing": {
+          "en": [],
+          "zh": []
+        },
+        "raw_out_of_window": {
+          "en": [],
+          "zh": []
+        },
+        "raw_duplicate_ids": {
+          "en": [],
+          "zh": []
+        },
+        "rejected": [],
+        "accepted_mapping_counts": {
+          "zh_only": 1
+        },
+        "attempts": [
+          {
+            "seconds": 10.011,
+            "model": "gfmodel",
+            "finish_reason": "stop",
+            "error": null,
+            "usage": {
+              "completion_tokens": 618,
+              "completion_tokens_details": {
+                "reasoning_tokens": 597
+              },
+              "prompt_tokens": 320,
+              "prompt_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 192
+              },
+              "total_tokens": 938
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "decisions": {
+    "identical_groups_including_layer": 697,
+    "baseline_groups": 712,
+    "candidate_groups": 711,
+    "baseline_only_groups": 15,
+    "candidate_only_groups": 14,
+    "changed_membership_cues": {
+      "en": [
+        302,
+        303,
+        319,
+        320,
+        551,
+        552,
+        591,
+        592,
+        594,
+        595,
+        607,
+        608,
+        619,
+        620
+      ],
+      "zh": [
+        305,
+        306,
+        322,
+        323,
+        554,
+        555,
+        597,
+        598,
+        600,
+        601,
+        605,
+        606,
+        607,
+        616,
+        617,
+        628,
+        629
+      ]
+    },
+    "changed_layer_cues": {
+      "en": [],
+      "zh": [
+        98,
+        639
+      ]
+    },
+    "focus": [
+      {
+        "scene": "01:14–01:18",
+        "baseline_groups": [
+          {
+            "en_ids": [
+              10,
+              11
+            ],
+            "zh_ids": [
+              10,
+              11
+            ],
+            "layer": "bottom",
+            "owner_window": 0,
+            "origin": "model"
+          }
+        ],
+        "candidate_groups": [
+          {
+            "en_ids": [
+              10,
+              11
+            ],
+            "zh_ids": [
+              10,
+              11
+            ],
+            "layer": "bottom",
+            "owner_window": 0,
+            "origin": "model"
+          }
+        ],
+        "identical_decision": true
+      },
+      {
+        "scene": "04:12–04:22",
+        "baseline_groups": [
+          {
+            "en_ids": [
+              45,
+              46
+            ],
+            "zh_ids": [
+              46,
+              47
+            ],
+            "layer": "bottom",
+            "owner_window": 1,
+            "origin": "model"
+          }
+        ],
+        "candidate_groups": [
+          {
+            "en_ids": [
+              45,
+              46
+            ],
+            "zh_ids": [
+              46,
+              47
+            ],
+            "layer": "bottom",
+            "owner_window": 1,
+            "origin": "model"
+          }
+        ],
+        "identical_decision": true
+      },
+      {
+        "scene": "49:40–49:47",
+        "baseline_groups": [
+          {
+            "en_ids": [
+              594,
+              595
+            ],
+            "zh_ids": [
+              600,
+              601
+            ],
+            "layer": "bottom",
+            "owner_window": 14,
+            "origin": "model"
+          }
+        ],
+        "candidate_groups": [
+          {
+            "en_ids": [
+              594
+            ],
+            "zh_ids": [
+              601
+            ],
+            "layer": "bottom",
+            "owner_window": 14,
+            "origin": "model"
+          },
+          {
+            "en_ids": [
+              595
+            ],
+            "zh_ids": [
+              600
+            ],
+            "layer": "bottom",
+            "owner_window": 14,
+            "origin": "model"
+          }
+        ],
+        "identical_decision": false
+      }
+    ],
+    "differences": [
+      {
+        "start_ms": 645312,
+        "candidate": {
+          "en_ids": [],
+          "zh_ids": [
+            98
+          ],
+          "layer": "top",
+          "owner_window": 3,
+          "origin": "model"
+        },
+        "baseline": [
+          {
+            "en_ids": [],
+            "zh_ids": [
+              98
+            ],
+            "layer": "bottom",
+            "owner_window": 3,
+            "origin": "model"
+          }
+        ],
+        "text": {
+          "en": [],
+          "zh": [
+            {
+              "id": 98,
+              "text": "（欢迎你 旅者）"
+            }
+          ]
+        }
+      },
+      {
+        "start_ms": 1487821,
+        "candidate": {
+          "en_ids": [
+            302,
+            303
+          ],
+          "zh_ids": [
+            305,
+            306
+          ],
+          "layer": "bottom",
+          "owner_window": 7,
+          "origin": "model"
+        },
+        "baseline": [
+          {
+            "en_ids": [
+              303
+            ],
+            "zh_ids": [
+              306
+            ],
+            "layer": "bottom",
+            "owner_window": 7,
+            "origin": "model"
+          },
+          {
+            "en_ids": [
+              302
+            ],
+            "zh_ids": [
+              305
+            ],
+            "layer": "bottom",
+            "owner_window": 7,
+            "origin": "model"
+          }
+        ],
+        "text": {
+          "en": [
+            {
+              "id": 302,
+              "text": "You've…"
+            },
+            {
+              "id": 303,
+              "text": "You've met my dad?"
+            }
+          ],
+          "zh": [
+            {
+              "id": 305,
+              "text": "你见过…"
+            },
+            {
+              "id": 306,
+              "text": "我爸爸？"
+            }
+          ]
+        }
+      },
+      {
+        "start_ms": 1585711,
+        "candidate": {
+          "en_ids": [
+            319,
+            320
+          ],
+          "zh_ids": [
+            322,
+            323
+          ],
+          "layer": "bottom",
+          "owner_window": 7,
+          "origin": "model"
+        },
+        "baseline": [
+          {
+            "en_ids": [
+              320
+            ],
+            "zh_ids": [
+              323
+            ],
+            "layer": "bottom",
+            "owner_window": 7,
+            "origin": "model"
+          },
+          {
+            "en_ids": [
+              319
+            ],
+            "zh_ids": [
+              322
+            ],
+            "layer": "bottom",
+            "owner_window": 7,
+            "origin": "model"
+          }
+        ],
+        "text": {
+          "en": [
+            {
+              "id": 319,
+              "text": "I just called Charlie, and Eduardo said he's been gone"
+            },
+            {
+              "id": 320,
+              "text": "since yesterday, that he went to see Max."
+            }
+          ],
+          "zh": [
+            {
+              "id": 322,
+              "text": "我刚给查理打了电话 爱德华多说他打从昨天"
+            },
+            {
+              "id": 323,
+              "text": "就离开了 他去见马克斯了"
+            }
+          ]
+        }
+      },
+      {
+        "start_ms": 2699992,
+        "candidate": {
+          "en_ids": [
+            551,
+            552
+          ],
+          "zh_ids": [
+            554,
+            555
+          ],
+          "layer": "bottom",
+          "owner_window": 12,
+          "origin": "model"
+        },
+        "baseline": [
+          {
+            "en_ids": [
+              551
+            ],
+            "zh_ids": [
+              554
+            ],
+            "layer": "bottom",
+            "owner_window": 12,
+            "origin": "model"
+          },
+          {
+            "en_ids": [
+              552
+            ],
+            "zh_ids": [
+              555
+            ],
+            "layer": "bottom",
+            "owner_window": 12,
+            "origin": "model"
+          }
+        ],
+        "text": {
+          "en": [
+            {
+              "id": 551,
+              "text": "but I can't even begin to put the pieces of this puzzle together"
+            },
+            {
+              "id": 552,
+              "text": "in a way that makes any sense."
+            }
+          ],
+          "zh": [
+            {
+              "id": 554,
+              "text": "可我连个头绪都没有"
+            },
+            {
+              "id": 555,
+              "text": "怎么也拼凑不出一个合理的解释"
+            }
+          ]
+        }
+      },
+      {
+        "start_ms": 2969261,
+        "candidate": {
+          "en_ids": [
+            591
+          ],
+          "zh_ids": [
+            597
+          ],
+          "layer": "bottom",
+          "owner_window": 14,
+          "origin": "model"
+        },
+        "baseline": [
+          {
+            "en_ids": [
+              591,
+              592
+            ],
+            "zh_ids": [
+              597,
+              598
+            ],
+            "layer": "bottom",
+            "owner_window": 14,
+            "origin": "model"
+          }
+        ],
+        "text": {
+          "en": [
+            {
+              "id": 591,
+              "text": "My favorite is this one of my dad."
+            }
+          ],
+          "zh": [
+            {
+              "id": 597,
+              "text": "我最爱看的一段"
+            }
+          ]
+        }
+      },
+      {
+        "start_ms": 2974641,
+        "candidate": {
+          "en_ids": [
+            592
+          ],
+          "zh_ids": [
+            598
+          ],
+          "layer": "bottom",
+          "owner_window": 14,
+          "origin": "model"
+        },
+        "baseline": [
+          {
+            "en_ids": [
+              591,
+              592
+            ],
+            "zh_ids": [
+              597,
+              598
+            ],
+            "layer": "bottom",
+            "owner_window": 14,
+            "origin": "model"
+          }
+        ],
+        "text": {
+          "en": [
+            {
+              "id": 592,
+              "text": "He's raking this huge pile of leaves"
+            }
+          ],
+          "zh": [
+            {
+              "id": 598,
+              "text": "是我爸在扫一整大堆的落叶"
+            }
+          ]
+        }
+      },
+      {
+        "start_ms": 2980480,
+        "candidate": {
+          "en_ids": [
+            594
+          ],
+          "zh_ids": [
+            601
+          ],
+          "layer": "bottom",
+          "owner_window": 14,
+          "origin": "model"
+        },
+        "baseline": [
+          {
+            "en_ids": [
+              594,
+              595
+            ],
+            "zh_ids": [
+              600,
+              601
+            ],
+            "layer": "bottom",
+            "owner_window": 14,
+            "origin": "model"
+          }
+        ],
+        "text": {
+          "en": [
+            {
+              "id": 594,
+              "text": "And the two of us are just laughing and laughing"
+            }
+          ],
+          "zh": [
+            {
+              "id": 601,
+              "text": "我们俩就一直笑个不停"
+            }
+          ]
+        }
+      },
+      {
+        "start_ms": 2980480,
+        "candidate": {
+          "en_ids": [
+            595
+          ],
+          "zh_ids": [
+            600
+          ],
+          "layer": "bottom",
+          "owner_window": 14,
+          "origin": "model"
+        },
+        "baseline": [
+          {
+            "en_ids": [
+              594,
+              595
+            ],
+            "zh_ids": [
+              600,
+              601
+            ],
+            "layer": "bottom",
+            "owner_window": 14,
+            "origin": "model"
+          }
+        ],
+        "text": {
+          "en": [
+            {
+              "id": 595,
+              "text": "as the pile gets bigger and bigger."
+            }
+          ],
+          "zh": [
+            {
+              "id": 600,
+              "text": "看着那堆叶子越堆越高、越堆越大"
+            }
+          ]
+        }
+      },
+      {
+        "start_ms": 3037663,
+        "candidate": {
+          "en_ids": [],
+          "zh_ids": [
+            605,
+            606,
+            607
+          ],
+          "layer": "top",
+          "owner_window": 14,
+          "origin": "model"
+        },
+        "baseline": [
+          {
+            "en_ids": [],
+            "zh_ids": [
+              606
+            ],
+            "layer": "top",
+            "owner_window": 14,
+            "origin": "model"
+          },
+          {
+            "en_ids": [],
+            "zh_ids": [
+              607
+            ],
+            "layer": "top",
+            "owner_window": 14,
+            "origin": "model"
+          },
+          {
+            "en_ids": [],
+            "zh_ids": [
+              605
+            ],
+            "layer": "top",
+            "owner_window": 14,
+            "origin": "model"
+          }
+        ],
+        "text": {
+          "en": [],
+          "zh": [
+            {
+              "id": 605,
+              "text": "（杰森 我不知道你在哪里）"
+            },
+            {
+              "id": 606,
+              "text": "（我想查理应该是 进去盒子里找马克斯了）"
+            },
+            {
+              "id": 607,
+              "text": "（我去找他 我爱你 亲 丹妮拉）"
+            }
+          ]
+        }
+      },
+      {
+        "start_ms": 3092342,
+        "candidate": {
+          "en_ids": [
+            607
+          ],
+          "zh_ids": [
+            616
+          ],
+          "layer": "bottom",
+          "owner_window": 14,
+          "origin": "model"
+        },
+        "baseline": [
+          {
+            "en_ids": [
+              607,
+              608
+            ],
+            "zh_ids": [
+              616,
+              617
+            ],
+            "layer": "bottom",
+            "owner_window": 14,
+            "origin": "model"
+          }
+        ],
+        "text": {
+          "en": [
+            {
+              "id": 607,
+              "text": "because of my company's involvement"
+            }
+          ],
+          "zh": [
+            {
+              "id": 616,
+              "text": "因为我公司有份参与调查"
+            }
+          ]
+        }
+      },
+      {
+        "start_ms": 3094011,
+        "candidate": {
+          "en_ids": [
+            608
+          ],
+          "zh_ids": [
+            617
+          ],
+          "layer": "bottom",
+          "owner_window": 14,
+          "origin": "model"
+        },
+        "baseline": [
+          {
+            "en_ids": [
+              607,
+              608
+            ],
+            "zh_ids": [
+              616,
+              617
+            ],
+            "layer": "bottom",
+            "owner_window": 14,
+            "origin": "model"
+          }
+        ],
+        "text": {
+          "en": [
+            {
+              "id": 608,
+              "text": "with investigating the Shikaakwa Park cube."
+            }
+          ],
+          "zh": [
+            {
+              "id": 617,
+              "text": "希卡阿夸公园的立方体"
+            }
+          ]
+        }
+      },
+      {
+        "start_ms": 3126668,
+        "candidate": {
+          "en_ids": [
+            619
+          ],
+          "zh_ids": [
+            628
+          ],
+          "layer": "bottom",
+          "owner_window": 14,
+          "origin": "model"
+        },
+        "baseline": [
+          {
+            "en_ids": [
+              619,
+              620
+            ],
+            "zh_ids": [
+              628,
+              629
+            ],
+            "layer": "bottom",
+            "owner_window": 14,
+            "origin": "model"
+          }
+        ],
+        "text": {
+          "en": [
+            {
+              "id": 619,
+              "text": "and the United Great Lakes has agreed to cooperate"
+            }
+          ],
+          "zh": [
+            {
+              "id": 628,
+              "text": "北美五大湖已经同意"
+            }
+          ]
+        }
+      },
+      {
+        "start_ms": 3128670,
+        "candidate": {
+          "en_ids": [
+            620
+          ],
+          "zh_ids": [
+            629
+          ],
+          "layer": "bottom",
+          "owner_window": 14,
+          "origin": "model"
+        },
+        "baseline": [
+          {
+            "en_ids": [
+              619,
+              620
+            ],
+            "zh_ids": [
+              628,
+              629
+            ],
+            "layer": "bottom",
+            "owner_window": 14,
+            "origin": "model"
+          }
+        ],
+        "text": {
+          "en": [
+            {
+              "id": 620,
+              "text": "with the international requests to share all critical data."
+            }
+          ],
+          "zh": [
+            {
+              "id": 629,
+              "text": "配合国际要求 共享所有关键数据"
+            }
+          ]
+        }
+      },
+      {
+        "start_ms": 3190566,
+        "candidate": {
+          "en_ids": [],
+          "zh_ids": [
+            639
+          ],
+          "layer": "top",
+          "owner_window": 15,
+          "origin": "model"
+        },
+        "baseline": [
+          {
+            "en_ids": [],
+            "zh_ids": [
+              639
+            ],
+            "layer": "bottom",
+            "owner_window": 15,
+            "origin": "model"
+          }
+        ],
+        "text": {
+          "en": [],
+          "zh": [
+            {
+              "id": 639,
+              "text": "（十分钟内穿好“全部装备”）"
+            }
+          ]
+        }
+      }
+    ],
+    "limitations": "One run per model; group agreement is not semantic accuracy. Inspect raw responses separately from locally restored groups."
+  }
+}

@@ -1,0 +1,106 @@
+{
+  "rejected": [],
+  "conflicts": [],
+  "context_duplicates": 59,
+  "window_missing": [
+    {
+      "window": 0,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 1,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 2,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 3,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 4,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 5,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 6,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 7,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 8,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 9,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 10,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 11,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 12,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 13,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 14,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 15,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 16,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 17,
+      "en": [],
+      "zh": []
+    },
+    {
+      "window": 18,
+      "en": [],
+      "zh": []
+    }
+  ],
+  "restored": {
+    "en": [],
+    "zh": []
+  }
+}
