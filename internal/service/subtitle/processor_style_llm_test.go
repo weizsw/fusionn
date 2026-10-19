@@ -66,7 +66,7 @@ func TestStyleProcessorLeavesNativeLLMRenderUnchanged(t *testing.T) {
 	content := string(rendered)
 	for _, want := range []string{
 		"Style: Default,", "Style: Eng,", "Style: Default_1,", "Style: TopDefault,", "Style: TopEng,",
-		headerMarkerLLMStyled, `\an2\pos(960,`, `Style: TopDefault,`,
+		headerMarkerLLMStyled,
 	} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("render output missing %q:\n%s", want, content)

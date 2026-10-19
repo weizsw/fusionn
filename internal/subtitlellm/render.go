@@ -95,8 +95,8 @@ func Render(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style confi
 	}
 	var out assWriter
 	out.writeHeader(effective)
-	if _, err := layoutBlocks(blocks, en, zh, geometry, func(b block, start, end int, text string, styleName string, align int, x, y float64, wrap string) error {
-		return out.writeDialogue(start, end, styleName, text, align, x, y, wrap)
+	if _, err := layoutBlocks(blocks, en, zh, geometry, func(b block, start, end int, text string, styleName string, align int, x, y float64, wrap string, hasPos bool) error {
+		return out.writeDialogue(start, end, styleName, text, align, x, y, wrap, hasPos)
 	}); err != nil {
 		return nil, err
 	}
@@ -658,7 +658,7 @@ func absInt(v int) int {
 // layoutBlocks builds text, wrapping and collision-free vertical bands, then
 // invokes emit for each event. The returned audits mirror the prototype
 // bands/positions for tests.
-func layoutBlocks(blocks []block, en, zh map[int]Cue, geometry renderGeometry, emit func(block, int, int, string, string, int, float64, float64, string) error) ([]renderedEvent, error) {
+func layoutBlocks(blocks []block, en, zh map[int]Cue, geometry renderGeometry, emit func(block, int, int, string, string, int, float64, float64, string, bool) error) ([]renderedEvent, error) {
 	type layout struct {
 		zhText string
 		enText string
@@ -782,9 +782,11 @@ func layoutBlocks(blocks []block, en, zh map[int]Cue, geometry renderGeometry, e
 				text = enText
 			}
 		}
-		if hold {
-			// Python's (align - 1) % 3 is non-negative for 1..9; keep the same
-			// horizontal channel and anchor the block from its top.
+		hasPos := b.position != nil
+		if hasPos && hold {
+			// Explicit top-anchoring is only applied when an absolute position tag
+			// is emitted. Without \pos, \an8 would move standard bottom dialogue
+			// to the top of the screen; standard bottom dialogue inherits Alignment: 2.
 			horizontal := (align - 1) % 3
 			align = horizontal + 7
 			y = lo
@@ -795,7 +797,7 @@ func layoutBlocks(blocks []block, en, zh map[int]Cue, geometry renderGeometry, e
 			// prevents the player from rebalancing it.
 			wrap = `\q2`
 		}
-		if err := emit(b, start, end, text, styleName, align, x, y, wrap); err != nil {
+		if err := emit(b, start, end, text, styleName, align, x, y, wrap, hasPos); err != nil {
 			return nil, err
 		}
 		events = append(events, renderedEvent{
@@ -975,12 +977,28 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 	w.sb.WriteString("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
 }
 
-func (w *assWriter) writeDialogue(start, end int, styleName, text string, align int, x, y float64, wrap string) error {
+func (w *assWriter) writeDialogue(start, end int, styleName, text string, align int, x, y float64, wrap string, hasPos bool) error {
 	if text == "" {
 		return errors.New("refusing to write an empty dialogue event")
 	}
-	fmt.Fprintf(&w.sb, "Dialogue: 0,%s,%s,%s,,0,0,0,,{%s\\an%d\\pos(%s,%s)}%s\n",
-		assTime(start), assTime(end), styleName, wrap, align, formatNumber(x), formatNumber(y), text)
+	var tagParts []string
+	if wrap != "" {
+		tagParts = append(tagParts, wrap)
+	}
+	if hasPos {
+		tagParts = append(tagParts, fmt.Sprintf(`\an%d\pos(%s,%s)`, align, formatNumber(x), formatNumber(y)))
+	} else {
+		isTopStyle := strings.HasPrefix(styleName, "Top")
+		if (isTopStyle && align != 8) || (!isTopStyle && align != 2) {
+			tagParts = append(tagParts, fmt.Sprintf(`\an%d`, align))
+		}
+	}
+	var tags string
+	if len(tagParts) > 0 {
+		tags = "{" + strings.Join(tagParts, "") + "}"
+	}
+	fmt.Fprintf(&w.sb, "Dialogue: 0,%s,%s,%s,,0,0,0,,%s%s\n",
+		assTime(start), assTime(end), styleName, tags, text)
 	return nil
 }
 
