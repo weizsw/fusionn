@@ -1,0 +1,114 @@
+{
+  "video": "/Volumes/External/media/tv/Dark Matter (2024)/Season 02/Dark Matter (2024) - S02E07 - The Pyramid [ATVP][WEBDL-2160p][EAC3 Atmos 5.1][DV HDR10Plus][h265]-FLUX.mkv",
+  "size": 11904560819,
+  "mtime_ns": 1791515013259449925,
+  "duration": "3799.588000",
+  "selected": {
+    "en": {
+      "stream": {
+        "index": 2,
+        "codec_name": "subrip",
+        "codec_long_name": "SubRip subtitle",
+        "codec_type": "subtitle",
+        "codec_tag_string": "[0][0][0][0]",
+        "codec_tag": "0x0000",
+        "r_frame_rate": "0/0",
+        "avg_frame_rate": "0/0",
+        "time_base": "1/1000",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "duration_ts": 3799588,
+        "duration": "3799.588000",
+        "disposition": {
+          "default": 0,
+          "dub": 0,
+          "original": 1,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "non_diegetic": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0,
+          "multilayer": 0
+        },
+        "tags": {
+          "language": "eng",
+          "BPS": "47",
+          "DURATION": "01:01:53.339000000",
+          "NUMBER_OF_FRAMES": "710",
+          "NUMBER_OF_BYTES": "22041",
+          "_STATISTICS_WRITING_APP": "mkvmerge v100.0 ('Do Hot Girls Like Chords') 64-bit",
+          "_STATISTICS_TAGS": "BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES"
+        }
+      },
+      "file": "en.source.srt",
+      "sha256": "d6ba52abb1f6c9840e90935800f2175727cfdea1f634b998d3101d537ae05558"
+    },
+    "zh": {
+      "stream": {
+        "index": 6,
+        "codec_name": "subrip",
+        "codec_long_name": "SubRip subtitle",
+        "codec_type": "subtitle",
+        "codec_tag_string": "[0][0][0][0]",
+        "codec_tag": "0x0000",
+        "r_frame_rate": "0/0",
+        "avg_frame_rate": "0/0",
+        "time_base": "1/1000",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "duration_ts": 3799588,
+        "duration": "3799.588000",
+        "disposition": {
+          "default": 0,
+          "dub": 1,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "non_diegetic": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0,
+          "multilayer": 0
+        },
+        "tags": {
+          "language": "chi",
+          "title": "Simplified",
+          "BPS": "45",
+          "DURATION": "01:02:48.936000000",
+          "NUMBER_OF_FRAMES": "722",
+          "NUMBER_OF_BYTES": "21368",
+          "_STATISTICS_WRITING_APP": "mkvmerge v100.0 ('Do Hot Girls Like Chords') 64-bit",
+          "_STATISTICS_TAGS": "BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES"
+        }
+      },
+      "file": "zh.source.srt",
+      "sha256": "502ecff4cc5cbdff1aa2b3b4f9a72d93b990f58d1a58ba064430e94f84b5729a"
+    }
+  },
+  "prealignment": "none",
+  "alass_available": false,
+  "seconds": 4.578,
+  "tools": {
+    "ffmpeg": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+    "ffprobe": "ffprobe version 9.0.2 Copyright (c) 2007-2026 the FFmpeg developers"
+  }
+}
