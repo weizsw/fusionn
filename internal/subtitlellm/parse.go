@@ -351,7 +351,7 @@ var (
 	assHTMLBlock     = regexp.MustCompile(`(?i)</?(?:i|b|u|s|font)(?:\s[^>]*)?>`)
 	assOverrideBlock = regexp.MustCompile(`\{[^}]*\}`)
 	assNativeAlign   = regexp.MustCompile(`\\an([1-9])`)
-	assLegacyAlign   = regexp.MustCompile(`\\a(1[01]|[1-9])(?:[^0-9]|$)`)
+	assLegacyAlign   = regexp.MustCompile(`\\a(1[01]|[1-9])(?:\D|$)`)
 	assPosition      = regexp.MustCompile(`\\pos\(\s*([\d.]+)\s*,\s*([\d.]+)\s*\)`)
 
 	// Python's \s matches Unicode whitespace (including U+3000), unlike Go's.

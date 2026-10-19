@@ -322,9 +322,9 @@ func TestAnalyzerLLMExtractionFailureLeavesNoTempFiles(t *testing.T) {
 }
 
 func TestLLMMergerCreatesAndUsesPrivateConversionCopy(t *testing.T) {
-	videoPath, enPath, zhPath := mergerFixture(t)
+	videoPath, enPath, _ := mergerFixture(t)
 	// Write Traditional Chinese text so the conversion is observable.
-	zhPath = writeSubtitleFixture(t, filepath.Dir(videoPath), "Episode.chs.srt", srtFixture(
+	zhPath := writeSubtitleFixture(t, filepath.Dir(videoPath), "Episode.chs.srt", srtFixture(
 		[2]string{"00:00:01,000 --> 00:00:03,000", "你好"},
 		[2]string{"00:00:04,000 --> 00:00:06,000", "三天後"},
 	))

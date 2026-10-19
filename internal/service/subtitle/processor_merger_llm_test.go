@@ -499,7 +499,7 @@ func TestLLMMergerCanceledBeforeStartMakesNoRequest(t *testing.T) {
 }
 
 func TestLLMMergerUsesImportMappingWithoutHTTP(t *testing.T) {
-	videoPath, enPath, zhPath := mergerFixture(t)
+	videoPath, _, _ := mergerFixture(t)
 	var calls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
@@ -523,8 +523,8 @@ func TestLLMMergerUsesImportMappingWithoutHTTP(t *testing.T) {
 		t.Fatalf("read prototype Chinese source: %v", err)
 	}
 	dir := filepath.Dir(videoPath)
-	enPath = writeSubtitleFixture(t, dir, "Episode.eng.srt", string(en))
-	zhPath = writeSubtitleFixture(t, dir, "Episode.chs.srt", string(zh))
+	enPath := writeSubtitleFixture(t, dir, "Episode.eng.srt", string(en))
+	zhPath := writeSubtitleFixture(t, dir, "Episode.chs.srt", string(zh))
 
 	llm := llmMergerTestConfig(t, pairingHandler(t))
 	llm.BaseURL = server.URL + "/v1"

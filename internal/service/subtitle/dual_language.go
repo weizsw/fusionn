@@ -372,11 +372,11 @@ func convertDualLanguageSRTToASS(content string) (string, error) {
 
 		if len(chineseLines) > 0 {
 			text := strings.Join(chineseLines, "\\N")
-			sb.WriteString(fmt.Sprintf("Dialogue: 0,%s,%s,Default,,0,0,0,,%s\n", startASS, endASS, text))
+			fmt.Fprintf(&sb, "Dialogue: 0,%s,%s,Default,,0,0,0,,%s\n", startASS, endASS, text)
 		}
 		if len(englishLines) > 0 {
 			text := strings.Join(englishLines, "\\N")
-			sb.WriteString(fmt.Sprintf("Dialogue: 0,%s,%s,Default_1,,0,0,0,,%s\n", startASS, endASS, text))
+			fmt.Fprintf(&sb, "Dialogue: 0,%s,%s,Default_1,,0,0,0,,%s\n", startASS, endASS, text)
 		}
 	}
 
@@ -450,14 +450,14 @@ func remapDualLanguageASS(content string) (string, error) {
 				}
 			}
 			if len(chParts) > 0 {
-				sb.WriteString(fmt.Sprintf("Dialogue: %s,%s,%s,Default,%s,%s,%s,%s,%s,%s\n",
+				fmt.Fprintf(&sb, "Dialogue: %s,%s,%s,Default,%s,%s,%s,%s,%s,%s\n",
 					d.layer, d.start, d.end, d.name, d.marginL, d.marginR, d.marginV, d.effect,
-					strings.Join(chParts, "\\N")))
+					strings.Join(chParts, "\\N"))
 			}
 			if len(enParts) > 0 {
-				sb.WriteString(fmt.Sprintf("Dialogue: %s,%s,%s,Default_1,%s,%s,%s,%s,%s,%s\n",
+				fmt.Fprintf(&sb, "Dialogue: %s,%s,%s,Default_1,%s,%s,%s,%s,%s,%s\n",
 					d.layer, d.start, d.end, d.name, d.marginL, d.marginR, d.marginV, d.effect,
-					strings.Join(enParts, "\\N")))
+					strings.Join(enParts, "\\N"))
 			}
 			continue
 		}
@@ -472,8 +472,8 @@ func remapDualLanguageASS(content string) (string, error) {
 			}
 		}
 
-		sb.WriteString(fmt.Sprintf("Dialogue: %s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
-			d.layer, d.start, d.end, newStyle, d.name, d.marginL, d.marginR, d.marginV, d.effect, d.text))
+		fmt.Fprintf(&sb, "Dialogue: %s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
+			d.layer, d.start, d.end, newStyle, d.name, d.marginL, d.marginR, d.marginV, d.effect, d.text)
 	}
 
 	return sb.String(), nil
