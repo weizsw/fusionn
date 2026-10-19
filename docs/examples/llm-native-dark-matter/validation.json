@@ -1,0 +1,15 @@
+{
+  "events": 720,
+  "text_and_time_equal_python": true,
+  "source_coverage": {
+    "en": 710,
+    "zh": 722
+  },
+  "video_dimensions": [
+    3840,
+    1920
+  ],
+  "new_model_requests": 0,
+  "ass_sha256": "1fd5add7ef1d03cbaf3e505d12ac5e2cf8ae2fc2b158a42a791164263a0552a2",
+  "note": "TV-adapted style and positions intentionally differ from the unadapted Python experiment"
+}

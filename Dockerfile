@@ -14,6 +14,8 @@ ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w -X github.com/fusionn/internal/version.Version=${VERSION}" \
     -o fusionn ./cmd/fusionn
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" \
+    -o subtitle-merge ./cmd/subtitle-merge
 
 # ════════════════════════════════════════════════════════════════════════════
 # STAGE 2: Final image
@@ -52,6 +54,8 @@ RUN case ${TARGETARCH} in \
 
 # Copy Go binary
 COPY --from=go-builder /app/fusionn .
+COPY --from=go-builder /app/subtitle-merge /usr/local/bin/subtitle-merge
+# LLM merging is native Go; Python/cleanit above is only used by the legacy path.
 
 # Create data directories
 RUN mkdir -p /data

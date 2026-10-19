@@ -31,7 +31,8 @@ func (p *CleanupProcessor) Process(ctx context.Context, pctx *ProcessingContext)
 	log := logger.Indent()
 	log.Info("Cleaning up temporary files")
 
-	// Clean up extracted subtitles
+	// Clean up extracted subtitles. LLM-mode extraction hands out unique hidden
+	// temp paths; removing exactly those paths never touches existing sidecars.
 	if pctx.EnglishSubPath != "" {
 		if err := os.Remove(pctx.EnglishSubPath); err != nil && !os.IsNotExist(err) {
 			log.Warnf("Failed to remove %s: %v", pctx.EnglishSubPath, err)

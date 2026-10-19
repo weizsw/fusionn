@@ -68,7 +68,7 @@ docker compose down
 
 Configuration is loaded from `config/config.yaml` by default. You can override this with the `CONFIG_PATH` environment variable.
 
-The application supports hot-reload - changes to the config file are automatically detected and applied without restart.
+The configuration manager detects file changes. Subtitle services and queued merge workers capture their engine, connection, and style settings at startup: restart fusionn after changing these settings.
 
 ### Subtitle Processing
 
@@ -79,6 +79,49 @@ subtitle:
   enabled: true
   # ... other subtitle settings
 ```
+
+### Native LLM merge or DuoSubs
+
+New configurations default to the native Go ID-mapping engine. No Python merger,
+DuoSubs service, or embedding model is needed for LLM mode. Select explicitly:
+
+```yaml
+subtitle:
+  enabled: true
+  engine: "llm" # use "duosubs" to keep the existing local/HTTP engine
+  llm:
+    base_url: "http://host.docker.internal:3425/v1" # Docker Desktop -> host
+    model: "group/auto-gfmodel"
+    api_key_env: "" # optional environment variable NAME, never a key value
+    cache_enabled: true
+    cache_dir: "/data/llm-subtitle-cache"
+```
+
+Use `http://127.0.0.1:3425/v1` when running on the host itself. Linux containers
+need a reachable host address/network configuration. Mount the cache directory
+persistently; style changes reuse ID mappings. Old configs with a `duosubs` block
+and no `engine` continue to select DuoSubs. Keep the original DuoSubs deployment
+for that mode; the fusionn image does not install a local duosubs executable.
+
+The shared style now uses a 1920×1080 script canvas and the experimental
+Chinese-above-English defaults. Legacy 384×288 style values are migrated at load
+when `play_res_y` is absent; set both play resolutions explicitly when copying new
+1080p values. Fonts must be installed or embedded (e.g. Noto Sans CJK SC / DejaVu
+Sans on Linux). A script canvas is not the physical resolution of a television.
+
+See the [中文集成与迁移说明](docs/llm-subtitle-integration.zh-CN.md) for cache import,
+TV letterbox geometry, supported formats, cancellation and reproducible checks.
+For an isolated run without starting the server:
+
+```bash
+go run ./cmd/subtitle-merge --config config/config.yaml \
+  --en /tmp/english.srt --zh /tmp/chinese.srt --out /tmp/new-bilingual-output
+```
+
+The output directory must be new. `--video` plus absolute `--en-stream` and
+`--zh-stream` can extract directly into that directory; `--mapping` imports a
+validated existing mapping without model requests. The Docker image includes
+`subtitle-merge` as a standalone binary as well.
 
 ### Redis Integration
 

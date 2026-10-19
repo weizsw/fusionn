@@ -58,7 +58,15 @@ type Analyzer struct {
 	chineseVariants     []string
 	simplifiedKeywords  []string
 	traditionalKeywords []string
+	preserveNativeASS   bool
 }
+
+// Extraction hooks are variables so tests can observe mode selection without
+// requiring ffmpeg.
+var (
+	extractSubtitleFunc       = executor.ExtractSubtitle
+	extractSubtitleNativeFunc = executor.ExtractSubtitleNative
+)
 
 // NewAnalyzer creates a new subtitle analyzer.
 func NewAnalyzer(englishVariants, chineseVariants, simplifiedKeywords, traditionalKeywords []string) *Analyzer {
@@ -68,6 +76,13 @@ func NewAnalyzer(englishVariants, chineseVariants, simplifiedKeywords, tradition
 		simplifiedKeywords:  simplifiedKeywords,
 		traditionalKeywords: traditionalKeywords,
 	}
+}
+
+// SetPreserveNativeASS makes extraction copy ASS/SSA subtitle streams without
+// transcoding, preserving native alignment tags, explicit positions and style
+// tables for the LLM renderer. SRT extraction behavior is unchanged.
+func (a *Analyzer) SetPreserveNativeASS(enabled bool) {
+	a.preserveNativeASS = enabled
 }
 
 // AnalyzeVideo detects subtitle tracks in a video file.
@@ -437,16 +452,16 @@ func (a *Analyzer) matchChineseTrack(stream executor.StreamInfo) *Track {
 	}
 }
 
-// ExtractSubtitles extracts the detected subtitle tracks to SRT files in the media directory.
+// ExtractSubtitles extracts the detected subtitle tracks to files in the media
+// directory. SRT is the default; see extractTrack for the LLM native ASS mode.
 func (a *Analyzer) ExtractSubtitles(ctx context.Context, result *AnalysisResult) error {
 	log := logger.Indent()
-	videoDir := filepath.Dir(result.VideoPath)
 	videoBase := filepath.Base(result.VideoPath)
 	videoName := strings.TrimSuffix(videoBase, filepath.Ext(videoBase))
 
 	if result.EnglishTrack != nil {
-		outputPath := filepath.Join(videoDir, fmt.Sprintf("%s.eng.srt", videoName))
-		if err := executor.ExtractSubtitle(ctx, result.VideoPath, result.EnglishTrack.Index, outputPath); err != nil {
+		outputPath, err := a.extractTrack(ctx, result.VideoPath, videoName, "eng", result.EnglishTrack)
+		if err != nil {
 			return fmt.Errorf("failed to extract English subtitle: %w", err)
 		}
 		result.EnglishTrack.ExtractedPath = outputPath
@@ -454,8 +469,14 @@ func (a *Analyzer) ExtractSubtitles(ctx context.Context, result *AnalysisResult)
 	}
 
 	if result.ChineseTrack != nil {
-		outputPath := filepath.Join(videoDir, fmt.Sprintf("%s.chs.srt", videoName))
-		if err := executor.ExtractSubtitle(ctx, result.VideoPath, result.ChineseTrack.Index, outputPath); err != nil {
+		outputPath, err := a.extractTrack(ctx, result.VideoPath, videoName, "chs", result.ChineseTrack)
+		if err != nil {
+			// Do not leave the already-extracted English temp file behind when
+			// a later track fails.
+			if a.preserveNativeASS && result.EnglishTrack != nil && result.EnglishTrack.ExtractedPath != "" {
+				os.Remove(result.EnglishTrack.ExtractedPath)
+				result.EnglishTrack.ExtractedPath = ""
+			}
 			return fmt.Errorf("failed to extract Chinese subtitle: %w", err)
 		}
 		result.ChineseTrack.ExtractedPath = outputPath
@@ -463,6 +484,69 @@ func (a *Analyzer) ExtractSubtitles(ctx context.Context, result *AnalysisResult)
 	}
 
 	return nil
+}
+
+// extractTrack extracts one track. LLM mode copies native ASS/SSA streams
+// without transcoding. DuoSubs keeps its deterministic sidecar names; LLM mode
+// reserves a unique hidden temp path in the media directory so an existing
+// sidecar is never touched and concurrent jobs cannot collide. The path still
+// ends in .eng.srt/.chs.srt or .eng.ass/.chs.ass for downstream format
+// detection. The extractor owns and overwrites the reserved file.
+func (a *Analyzer) extractTrack(ctx context.Context, videoPath, videoName, suffix string, track *Track) (string, error) {
+	videoDir := filepath.Dir(videoPath)
+	ext := "srt"
+	extract := extractSubtitleFunc
+	if a.preserveNativeASS && isASSSubtitleCodec(track.CodecName) {
+		ext = "ass"
+		extract = extractSubtitleNativeFunc
+	}
+
+	var outputPath string
+	if a.preserveNativeASS {
+		reserved, err := reserveExtractionPath(videoDir, videoName, suffix, ext)
+		if err != nil {
+			return "", err
+		}
+		outputPath = reserved
+	} else {
+		outputPath = filepath.Join(videoDir, fmt.Sprintf("%s.%s.%s", videoName, suffix, ext))
+	}
+
+	if err := extract(ctx, videoPath, track.Index, outputPath); err != nil {
+		if a.preserveNativeASS {
+			os.Remove(outputPath)
+		}
+		return "", err
+	}
+	return outputPath, nil
+}
+
+// reserveExtractionPath creates a unique hidden temp file in the media
+// directory and closes it; the extractor then overwrites it with -y. The
+// pattern keeps the conventional .<suffix>.<ext> ending while the random
+// component is inserted before it, so the result never matches an existing
+// sidecar.
+func reserveExtractionPath(videoDir, videoName, suffix, ext string) (string, error) {
+	pattern := fmt.Sprintf(".fusionn-extract-%s-*.%s.%s", videoName, suffix, ext)
+	file, err := os.CreateTemp(videoDir, pattern)
+	if err != nil {
+		return "", fmt.Errorf("reserve temp extraction path: %w", err)
+	}
+	name := file.Name()
+	if err := file.Close(); err != nil {
+		os.Remove(name)
+		return "", fmt.Errorf("close reserved extraction path: %w", err)
+	}
+	return name, nil
+}
+
+func isASSSubtitleCodec(codecName string) bool {
+	switch strings.ToLower(codecName) {
+	case "ass", "ssa":
+		return true
+	default:
+		return false
+	}
 }
 
 // Cleanup removes temporary extracted subtitle files.

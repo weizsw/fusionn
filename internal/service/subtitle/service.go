@@ -2,6 +2,7 @@ package subtitle
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -31,6 +32,10 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 		cfg.Subtitle.SimplifiedKeywords,
 		cfg.Subtitle.TraditionalKeywords,
 	)
+	engine := effectiveSubtitleEngine(cfg.Subtitle.Engine)
+	// The LLM renderer needs native ASS alignment/position metadata, and all
+	// uncertain one-sided lines must reach it unmodified.
+	analyzer.SetPreserveNativeASS(engine == config.EngineLLM)
 
 	// Create Apprise client
 	var appriseClient *notification.AppriseClient
@@ -46,13 +51,19 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 	analyzePipeline := NewPipeline()
 	analyzePipeline.AddProcessor(NewAnalyzerProcessor(analyzer))
 	analyzePipeline.AddProcessor(NewExtractorProcessor(analyzer))
-	analyzePipeline.AddProcessor(NewSDHFilterProcessor())
+	// SDH filtering discards lines, which would hide uncertain one-sided
+	// dialogue from the LLM. Only the DuoSubs engine filters here.
+	if engine != config.EngineLLM {
+		analyzePipeline.AddProcessor(NewSDHFilterProcessor())
+	}
 	if bazarrClient != nil {
 		analyzePipeline.AddProcessor(NewBazarrSearchProcessor(
 			bazarrClient, cfg.Bazarr.LanguageCode,
 			cfg.Bazarr.PollIntervalSeconds, cfg.Bazarr.PollTimeoutSeconds,
 		))
-		analyzePipeline.AddProcessor(NewBazarrSDHFilterProcessor())
+		if engine != config.EngineLLM {
+			analyzePipeline.AddProcessor(NewBazarrSDHFilterProcessor())
+		}
 	}
 	if redisClient != nil {
 		analyzePipeline.AddProcessor(NewTranslationQueueProcessor(redisClient, ""))
@@ -60,16 +71,19 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 
 	// Build merge pipeline (slow, runs asynchronously in queue)
 	mergePipeline := NewPipeline()
-	mergePipeline.AddProcessor(NewDualLanguageProcessor(cfg.Subtitle.OpenCC))
-	mergePipeline.AddProcessor(NewConversionProcessor(cfg.Subtitle.OpenCC))
-
-	// Create merger processor (may fail if HTTP service is unreachable)
-	mergerProc, err := NewMergerProcessor(cfg.Subtitle.DuoSubs)
+	// Create the merger selected by subtitle.engine; only that engine's
+	// dependency is initialized.
+	mergerProc, err := NewConfiguredMergerProcessor(cfg.Subtitle)
 	if err != nil {
 		return nil, err
 	}
+	mergePipeline.AddProcessor(NewDualLanguageProcessor(cfg.Subtitle.OpenCC))
+	if engine != config.EngineLLM {
+		// The LLM merger applies OpenCC to a private parsed copy so native ASS
+		// text survives until after parsing; DuoSubs keeps the original order.
+		mergePipeline.AddProcessor(NewConversionProcessor(cfg.Subtitle.OpenCC))
+	}
 	mergePipeline.AddProcessor(mergerProc)
-
 	mergePipeline.AddProcessor(NewStyleProcessor(cfg.Subtitle.ASSStyle))
 	mergePipeline.AddProcessor(NewFontEmbeddingProcessor(cfg.Subtitle.FontEmbedding))
 	mergePipeline.AddProcessor(NewOutputProcessor(cfg.Subtitle.OutputSameDir))
@@ -210,4 +224,15 @@ func (s *Service) GetAnalyzePipeline() *Pipeline {
 // GetMergePipeline returns the merge pipeline (for testing).
 func (s *Service) GetMergePipeline() *Pipeline {
 	return s.mergePipeline
+}
+
+// effectiveSubtitleEngine resolves the engine for directly constructed configs.
+// config.Load always resolves a value; an unresolved config with no explicit
+// engine keeps the legacy DuoSubs behavior.
+func effectiveSubtitleEngine(engine string) string {
+	engine = strings.ToLower(strings.TrimSpace(engine))
+	if engine == "" {
+		return config.EngineDuoSubs
+	}
+	return engine
 }

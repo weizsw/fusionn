@@ -12,18 +12,68 @@ server:
 subtitle:
   enabled: false # Set to true to enable subtitle merging
 
+  # Merge engine:
+  # - "llm": native Go ID-mapping merge (Chinese line above English; model only
+  #          returns subtitle ID links, text is always copied from the sources)
+  # - "duosubs": legacy DuoSubs semantic aligner
+  # Omit this key in an existing config to keep "duosubs" when a duosubs section
+  # is present; brand-new configs default to "llm".
+  engine: "llm"
+
+  # LLM engine settings (used when engine: "llm")
+  llm:
+    # OpenAI-compatible base URL, e.g. http://127.0.0.1:3425/v1
+    # Inside Docker, localhost is the container: use a reachable host name/IP.
+    base_url: "http://127.0.0.1:3425/v1"
+    model: "group/flash-models"
+
+    # Authentication: prefer api_key_env so the secret stays out of this file.
+    # api_key_env names an environment variable and takes precedence over api_key.
+    api_key: ""
+    api_key_env: "" # e.g. "FUSIONN_SUBTITLE_LLM_API_KEY"
+    # Optional; empty means the parameter is not sent. Support depends on the
+    # model/route and is not verified by fusionn.
+    reasoning_effort: "" # e.g. "low", "medium", "high"
+    response_format: "json_object" # "json_object", "json_schema", or "none"
+    timeout_seconds: 180
+
+    # Concurrent window requests and per-request retries (0 = no retry).
+    workers: 3
+    retries: 1
+
+    # Sliding alignment windows (seconds) with adjacent-window context overlap.
+    window_seconds: 210
+    overlap_seconds: 15
+
+    # Request cache. Cache keys include source subtitles, model, prompt, and
+    # alignment settings; changing only styles reuses the cached ID mapping.
+    # Must be a persistent path outside temp merge directories.
+    cache_enabled: true
+    cache_dir: "/data/llm-subtitle-cache"
+    # Optional: reuse a precomputed ID-mapping JSON instead of requesting a model.
+    mapping_path: ""
+
+    # Layout thresholds used by the deterministic renderer.
+    en_chars: 65    # max joined English characters before splitting time slices
+    zh_chars: 25    # max joined Chinese characters before splitting time slices
+    en_gap_ms: 400  # max English gap to join sentences
+    zh_gap_ms: 500  # max Chinese gap to join sentences
+    span_ms: 5500   # max joined speech span
+    fill_gap_ms: 500 # fill positive gaps up to this value between slices
+
   # DuoSubs settings for semantic subtitle alignment
+  # Only validated and used when engine: "duosubs".
   duosubs:
     mode: "local"  # "local" or "http"
                    # - "local": Execute duosubs binary in container (CPU-only on macOS Docker)
                    # - "http": Call duosubs-service on host (enables Metal GPU on macOS)
-    
+
     model: "sentence-transformers/LaBSE" # Multilingual embedding model (~2GB)
                                           # Leave empty ("") to use DuoSubs default (LaBSE)
                                           # First run downloads model to HuggingFace cache
     device: "auto" # "auto", "cuda", "cpu" (only applies to local mode)
     timeout_minutes: 10
-    
+
     # HTTP mode settings (required if mode: "http")
     http_url: "http://host.docker.internal:8765"  # URL to duosubs-service on host
     http_container_prefix: "/data"                # Container path prefix (where media is mounted in container)
@@ -47,24 +97,43 @@ subtitle:
     enabled: true
     config: "t2s.json"
 
-  # ASS styling: Custom visual appearance for merged subtitles
+  # ASS styling: shared by both engines.
+  # Values use play_res_x x play_res_y script coordinates. Defaults target a
+  # 1920x1080 canvas; the processor keeps the same relative size and bottom
+  # distance on a centered 16:9 playback canvas, including player letterbox bars.
+  #
+  # MIGRATION: configs written before play_res_x/play_res_y existed used a
+  # 384x288 canvas. If play_res_y is omitted, explicit primary_size,
+  # secondary_size, margin_v, outline, and shadow values are scaled by
+  # play_res_y/288 (3.75 for 1080p); margin_left and margin_right scale by
+  # play_res_x/384 (5 for 1920). Explicit zeros and booleans are preserved.
+  # Set play_res_y explicitly to opt out.
   ass_style:
-    enabled: true
-    primary_font: "WenQuanYi Micro Hei" # Font for Chinese (primary line)
-    primary_size: 20 # Reference font size for Chinese on 16:9 video; adjusted for wider media
-    primary_color: "&H00c8c8c8" # Color for Chinese (ASS format: &HAABBGGRR)
-    secondary_font: "WenQuanYi Micro Hei" # Font for English (secondary line)
-    secondary_size: 13 # Reference font size for English on 16:9 video; adjusted for wider media
-    secondary_color: "&H0010b8ff" # Color for English (orange)
-    bold: true # Bold text
-    outline: 0.5 # Reference outline width for 16:9 video; adjusted for wider media
-    shadow: 0.5 # Reference shadow depth for 16:9 video; adjusted for wider media
-    margin_v: 5 # Reference bottom margin for 16:9 video; adjusted for wider media
-    margin_left: 10 # Left margin (pixels from left edge)
-    margin_right: 10 # Right margin (pixels from right edge)
+    enabled: true # Defaults to true; explicit false disables style injection
+    play_res_x: 1920 # ASS script canvas width
+    play_res_y: 1080 # ASS script canvas height
+    primary_font: "PingFang SC" # Font for Chinese (primary line)
+    primary_size: 52 # Chinese font size in script coordinates
+    primary_color: "&H08EFECEA" # Soft mist white (ASS: &HAABBGGRR)
+    secondary_font: "Helvetica Neue" # Font for English (secondary line)
+    secondary_size: 36 # English font size in script coordinates
+    secondary_color: "&H087BC0E5" # Warm apricot gold (ASS: &HAABBGGRR)
+    bold: false # Bold text
+    outline: 1.4 # Outline width in script coordinates
+    outline_color: "&H30141414" # Dark charcoal, ~81% opaque
+    shadow: 1.5 # Shadow depth in script coordinates
+    back_color: "&H80000000" # 50% transparent black
+    margin_v: 32 # Bottom margin in script coordinates
+    margin_left: 80 # Left margin in script coordinates
+    margin_right: 80 # Right margin in script coordinates
     alignment: 2 # Subtitle position (1-9 numpad layout: 1=bottom-left, 2=bottom-center, 3=bottom-right, 4=middle-left, 5=center, 6=middle-right, 7=top-left, 8=top-center, 9=top-right)
     border_style: 1 # Border rendering: 1=outline+shadow (default), 3=opaque box
     wrap_style: "0" # Line wrapping: 0=smart wrap (top wider), 1=end-of-line, 2=no wrap, 3=smart wrap (bottom wider)
+    scale_x: 100 # Horizontal glyph scale (percent)
+    spacing: 0 # Extra letter spacing in script coordinates
+    line_height_ratio: 1.23 # Line height as a multiple of font size
+    block_padding: 16 # Vertical padding inside a bilingual subtitle block
+    collision_gap: 12 # Minimum vertical gap between independently positioned blocks
 
   # Font embedding: Automatically embed fonts into ASS subtitle files
   font_embedding:

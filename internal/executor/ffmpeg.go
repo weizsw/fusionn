@@ -57,12 +57,22 @@ func FFProbe(ctx context.Context, videoPath string) (*FFProbeOutput, error) {
 
 // ExtractSubtitle extracts a subtitle track to an SRT file.
 func ExtractSubtitle(ctx context.Context, videoPath string, streamIndex int, outputPath string) error {
+	return extractSubtitle(ctx, videoPath, streamIndex, outputPath, "srt")
+}
+
+// ExtractSubtitleNative copies a text subtitle stream without transcoding, so
+// native ASS/SSA alignment tags, explicit positions and style tables survive.
+func ExtractSubtitleNative(ctx context.Context, videoPath string, streamIndex int, outputPath string) error {
+	return extractSubtitle(ctx, videoPath, streamIndex, outputPath, "copy")
+}
+
+func extractSubtitle(ctx context.Context, videoPath string, streamIndex int, outputPath, codec string) error {
 	cmd := exec.CommandContext(ctx,
 		"ffmpeg",
 		"-v", "quiet",
 		"-i", videoPath,
 		"-map", fmt.Sprintf("0:%d", streamIndex),
-		"-c:s", "srt",
+		"-c:s", codec,
 		"-y", // Overwrite output file
 		outputPath,
 	)
