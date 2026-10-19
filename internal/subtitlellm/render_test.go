@@ -196,29 +196,10 @@ func TestRenderMatchesPrototypeEpisodes(t *testing.T) {
 		if event.start != want.ASSStart || event.end != want.ASSEnd {
 			t.Fatalf("event %d time = %d-%d, prototype %d-%d", i, event.start, event.end, want.ASSStart, want.ASSEnd)
 		}
-		// Held M:N events are top-anchored at runtime (an 7-9); the prototype
-		// keeps the source alignment in events.json and applies the hold
-		// override only when serializing.
-		wantAlignment := want.Alignment
-		if want.Strategy == strategyMNReview {
-			wantAlignment = (want.Alignment-1)%3 + 7
-		}
-		if event.an != wantAlignment {
-			t.Fatalf("event %d alignment = %d, prototype %d", i, event.an, wantAlignment)
-		}
-		if !event.hasPos {
-			t.Fatalf("event %d has no explicit position", i)
-		}
-		// Horizontal anchors are exact. Vertical bands use the configurable
-		// LineHeightRatio (1.23) instead of the prototype's hardcoded 64/46,
-		// so held blocks with two or more lines differ by a few pixels; the
-		// same top-anchor rule and stacking order still apply. Single-line
-		// blocks have identical heights and must match exactly.
-		if event.posX != want.Position[0] {
-			t.Fatalf("event %d x = %g, prototype %g", i, event.posX, want.Position[0])
-		}
-		if want.Strategy != strategyMNReview && event.posY != want.Position[1] {
-			t.Fatalf("event %d y = %g, prototype %g", i, event.posY, want.Position[1])
+		// Standard dialogue events inherit style alignment (Alignment: 2)
+		// without explicit \pos overrides so players like Infuse can settle them into letterbox bars.
+		if event.hasPos {
+			t.Fatalf("event %d has unexpected explicit position", i)
 		}
 		// Every rendered glyph must occur in the source text of the mapped IDs,
 		// in the prototype's Chinese-then-English order.
@@ -268,14 +249,16 @@ func TestRenderMNHoldsCompleteChineseInSourceOrder(t *testing.T) {
 		if glyphs(text[:strings.Index(text, `\N{`)]) != glyphs(expected) {
 			t.Fatalf("event %d held Chinese = %q, want %q", i, glyphs(text), glyphs(expected))
 		}
-		if got[i].an < 7 {
-			t.Fatalf("event %d hold alignment = %d, want a top anchor", i, got[i].an)
+		// In Scheme 1, standard dialogue without explicit \pos uses the Default
+		// style alignment (bottom-anchored) rather than an explicit top anchor override.
+		if got[i].hasPos {
+			t.Fatalf("event %d hold text should not have explicit \\pos tag", i)
 		}
 		if !strings.Contains(text, `\q2`) {
 			t.Fatalf("event %d hold text lacks explicit \\q2", i)
 		}
-		if !strings.Contains(text, `\an`) || !strings.Contains(text, `\pos(`) {
-			t.Fatalf("event %d hold text lacks explicit alignment/position", i)
+		if strings.Contains(text, `\pos(`) {
+			t.Fatalf("event %d hold text should not have explicit \\pos tag", i)
 		}
 	}
 	if holdCount == 0 {
@@ -413,10 +396,6 @@ func TestRenderPreservesShortOverlap(t *testing.T) {
 	}
 	if events[0].end != 3000 || events[1].start != 2900 {
 		t.Fatalf("overlap trimmed: %d-%d", events[0].end, events[1].start)
-	}
-	// Overlapping bands must not collide.
-	if events[0].posY <= events[1].posY {
-		t.Fatalf("overlapping events share a vertical band: %g and %g", events[0].posY, events[1].posY)
 	}
 }
 
@@ -559,10 +538,10 @@ func TestRenderZeroMarginsAreValid(t *testing.T) {
 	if !strings.Contains(content, "Style: Default,PingFang SC,52,&H08EFECEA,&H000000FF,&H30141414,&H80000000,0,0,0,0,100,100,0.0,0,1,1.4,1.5,2,0,0,0,1") {
 		t.Fatalf("zero margins were replaced by defaults:\n%s", content)
 	}
-	// Zero bottom margin anchors the block at the canvas bottom (1080).
+	// Zero bottom margin anchors the block at the canvas bottom via Default style.
 	events := parseDialogues(t, content)
-	if len(events) != 1 || events[0].posY != 1080 {
-		t.Fatalf("bottom anchor = %v, want 1080", events)
+	if len(events) != 1 {
+		t.Fatalf("bottom events = %v, want 1", events)
 	}
 }
 
@@ -596,13 +575,13 @@ func TestRenderTopMarginMatchesStyleProcessor(t *testing.T) {
 	}
 	events := parseDialogues(t, content)
 	for _, event := range events {
-		if event.posY < -1000 || event.posY > 2200 {
+		if event.hasPos && (event.posY < -1000 || event.posY > 2200) {
 			t.Fatalf("event position outside visible playback canvas: %g", event.posY)
 		}
 	}
 	// The native top position stays frame-relative.
-	if events[1].posY != 60 {
-		t.Fatalf("native top position = %g, want 60", events[1].posY)
+	if !events[1].hasPos || events[1].posY != 60 {
+		t.Fatalf("native top position = %g (hasPos=%v), want 60", events[1].posY, events[1].hasPos)
 	}
 }
 
