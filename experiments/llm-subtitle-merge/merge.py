@@ -463,7 +463,7 @@ def build_blocks(row: dict, en: dict[int, Cue], zh: dict[int, Cue], group: int, 
         return [block(es[0].start, es[0].end, es, zs, "1:1_english_anchor")]
     ej = joinable(es, args.en_chars, args.en_gap_ms, args.span_ms)
     zj = joinable(zs, args.zh_chars, args.zh_gap_ms)
-    if ej and zj:
+    if (len(es) == 1 or len(zs) == 1) and ej and zj:
         return [block(es[0].start, max(c.end for c in es), es, zs, "short_join")]
     if len(es) == 1:
         # Native Chinese starts supply internal boundaries, never outer bounds.
@@ -472,36 +472,39 @@ def build_blocks(row: dict, en: dict[int, Cue], zh: dict[int, Cue], group: int, 
             return [block(a, b, es, [c], "1:N_chinese_internal_cuts") for a, b, c in zip(bounds, bounds[1:], zs)]
         # Invalid internal cuts are not clamped into zero-length subtitles.
         return [block(es[0].start, es[0].end, es, zs, "1:N_invalid_cuts_full_text_review")]
-    if len(zs) == 1 or zj:
-        result = []
-        for i, c in enumerate(es):
-            end = c.end
-            if i + 1 < len(es) and 0 < es[i + 1].start - end <= args.fill_gap_ms:
-                end = es[i + 1].start
-            result.append(block(c.start, end, [c], zs, "N:1_english_slices" if len(zs) == 1 else "M:N_chinese_hold_review"))
-        return result
-    # Long M:N has no known phrase-level correspondence. Keep English timing,
-    # distribute Chinese by normalized original start, and flag every such group.
-    first, last = es[0].start, max(c.end for c in es)
-    zfirst, zlast = min(c.start for c in zs), max(c.end for c in zs)
-    buckets: list[list[Cue]] = [[] for _ in es]
-    for c in zs:
-        target = first + (c.start - zfirst) / max(1, zlast - zfirst) * (last - first)
-        i = min(range(len(es)), key=lambda i: abs(es[i].start - target))
-        buckets[i].append(c)
+    # M:N keeps the complete Chinese group in source order on every English
+    # slice. Timing alone cannot recover phrase correspondence across inversion.
     result = []
     for i, c in enumerate(es):
         end = c.end
         if i + 1 < len(es) and 0 < es[i + 1].start - end <= args.fill_gap_ms:
             end = es[i + 1].start
-        result.append(block(c.start, end, [c], buckets[i], "M:N_proportional_review"))
+        result.append(block(c.start, end, [c], zs, "N:1_english_slices" if len(zs) == 1 else "M:N_chinese_hold_review"))
     return result
 
 
-def wrap_display(text: str, lang: str, limit: int) -> str:
+def wrap_display(text: str, lang: str, limit: int, balanced: bool = False) -> str:
     """Deterministic presentation only. No inserted words or removed characters."""
     result = []
     for line in text.split("\n"):
+        if balanced and lang == "zh" and len(line) > limit:
+            # Avoid a full-width first line followed by a tiny orphan tail.
+            remaining = math.ceil(len(line) / limit)
+            while remaining > 1:
+                width = math.ceil(len(line) / remaining)
+                low = max(1, len(line) - (remaining - 1) * limit)
+                closing = "，。！？；：、…）】》”’"
+                candidates = [i for i in range(low, min(limit, len(line) - 1) + 1)
+                              if abs(i - width) <= 8 and line[i] not in closing
+                              and (line[i - 1].isspace() or line[i - 1] in closing)]
+                cut = min(candidates, key=lambda i: abs(i - width)) if candidates else width
+                while cut < limit and line[cut] in closing:
+                    cut += 1
+                result.append(line[:cut])
+                line = line[cut:]
+                remaining -= 1
+            result.append(line)
+            continue
         while len(line) > limit:
             if lang == "en":
                 spots = [m.start() for m in re.finditer(r"\s", line) if limit // 2 <= m.start() <= limit]
@@ -567,19 +570,31 @@ def render(args: argparse.Namespace) -> None:
         ass.styles[name] = pysubs2.SSAStyle(fontname=font, fontsize=size, primarycolor=pysubs2.Color(*rgb, 8),
                                          outlinecolor=pysubs2.Color(20, 20, 20, 48), backcolor=pysubs2.Color(0, 0, 0, 128),
                                          outline=1.4, shadow=1.5, alignment=pysubs2.Alignment(alignment), marginl=80, marginr=80, marginv=32)
+    layouts = []
+    hold_heights: dict[int, int] = {}
+    for b in blocks:
+        ztext = "　".join(zh[i].display for i in b.zh_ids)
+        etext = " ".join(en[i].display for i in b.en_ids)
+        hold = b.strategy == "M:N_chinese_hold_review"
+        ztext = wrap_display(ztext, "zh", args.zh_chars, balanced=hold) if ztext else ""
+        etext = wrap_display(etext, "en", args.en_chars) if etext else ""
+        zlines, elines = (ztext.count("\n") + 1 if ztext else 0), (etext.count("\n") + 1 if etext else 0)
+        height = zlines * 64 + elines * 46 + 16
+        layouts.append((ztext, etext, height))
+        if hold:
+            hold_heights[b.group] = max(hold_heights.get(b.group, 0), height)
     lanes: dict[bool, list[dict]] = {True: [], False: []}
     event_audit, overlap_audit = [], []
-    for b in blocks:
+    for b, (ztext, etext, height) in zip(blocks, layouts):
         # ASS rounds to centiseconds. Use that same clock in lane collision checks.
         start, end = round(b.start / 10) * 10, round(b.end / 10) * 10
         if start >= end:
             raise ValueError("Event duration vanishes at ASS centisecond precision")
-        ztext = "　".join(zh[i].display for i in b.zh_ids)
-        etext = " ".join(en[i].display for i in b.en_ids)
-        ztext = wrap_display(ztext, "zh", args.zh_chars) if ztext else ""
-        etext = wrap_display(etext, "en", args.en_chars) if etext else ""
-        zlines, elines = (ztext.count("\n") + 1 if ztext else 0), (etext.count("\n") + 1 if etext else 0)
-        height = zlines * 64 + elines * 46 + 16
+        hold = b.strategy == "M:N_chinese_hold_review"
+        if hold:
+            # Reserve the tallest slice and anchor from its top so changing
+            # English line count cannot move the frozen Chinese text.
+            height = hold_heights[b.group]
         # Reserve physical pixel bands for the full interval. Short overlap is
         # still real overlap; never trim speech based only on its duration.
         active = [x for group in lanes.values() for x in group if x["end"] > start]
@@ -610,7 +625,11 @@ def render(args: argparse.Namespace) -> None:
         text = safe_ass(ztext) if ztext else safe_ass(etext)
         if ztext and etext:
             text += r"\N{\r" + estyle + "}" + safe_ass(etext)
-        text = f"{{\\an{align}\\pos({x:g},{y:g})}}" + text
+        if hold:
+            align = horizontal + 7
+            y = lo
+        wrap = r"\q2" if hold else ""
+        text = f"{{{wrap}\\an{align}\\pos({x:g},{y:g})}}" + text
         ass.events.append(pysubs2.SSAEvent(start=start, end=end, style=style, text=text))
         event_audit.append({**asdict(b), "ass_start": start, "ass_end": end, "en_display": etext,
                             "zh_display": ztext, "band": [lo, lo + height], "position_used": [x, y]})

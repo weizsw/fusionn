@@ -3,9 +3,8 @@
   "events": 720,
   "strategies": {
     "1:1_english_anchor": 691,
-    "M:N_chinese_hold_review": 6,
+    "M:N_chinese_hold_review": 15,
     "short_join": 3,
-    "M:N_proportional_review": 9,
     "one_sided": 11
   },
   "top_events": 12,

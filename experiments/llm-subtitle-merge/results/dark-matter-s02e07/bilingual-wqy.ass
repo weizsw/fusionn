@@ -28,8 +28,8 @@ Dialogue: 0,0:00:54.89,0:00:55.93,Default,,0,0,0,,{\an2\pos(960,1048)}不好意�
 Dialogue: 0,0:01:03.77,0:01:06.57,Default,,0,0,0,,{\an2\pos(960,1048)}我是五大湖国民警卫队的杰斯特林格上校\N{\rEng}I'm Colonel Jay Stringer, Great Lakes National Guard.
 Dialogue: 0,0:01:06.57,0:01:09.61,Default,,0,0,0,,{\an2\pos(960,1048)}这位是疾控中心的 珍妮特夏普医生 请坐下？\N{\rEng}This is Dr. Janet Sharp from the CDC. Can you have a seat?
 Dialogue: 0,0:01:12.24,0:01:13.24,Default,,0,0,0,,{\an2\pos(960,1048)}好的\N{\rEng}Okay.
-Dialogue: 0,0:01:14.03,0:01:17.08,Default,,0,0,0,,{\an2\pos(960,1048)}三周前 芝加哥确诊了　第一起海玛艾托26病例\N{\rEng}Three weeks ago, the first case of Hema Aetho 26
-Dialogue: 0,0:01:17.08,0:01:18.66,Default,,0,0,0,,{\an2\pos(960,1048)}三周前 芝加哥确诊了　第一起海玛艾托26病例\N{\rEng}was confirmed in Chicago.
+Dialogue: 0,0:01:14.03,0:01:17.08,Default,,0,0,0,,{\q2\an8\pos(960,922)}三周前 芝加哥确诊了　第一起海玛艾托26病例\N{\rEng}Three weeks ago, the first case of Hema Aetho 26
+Dialogue: 0,0:01:17.08,0:01:18.66,Default,,0,0,0,,{\q2\an8\pos(960,922)}三周前 芝加哥确诊了　第一起海玛艾托26病例\N{\rEng}was confirmed in Chicago.
 Dialogue: 0,0:01:18.66,0:01:22.50,Default,,0,0,0,,{\an2\pos(960,1048)}扩散速度惊人 是史上死亡率最高的病例之一\N{\rEng}It spread quickly, one of the highest fatality rates ever\Nrecorded.
 Dialogue: 0,0:01:22.50,0:01:26.46,Default,,0,0,0,,{\an2\pos(960,1048)}四天前 我们以为找到了那位零号病人\N{\rEng}Four days ago, we thought we identified our patient zero.
 Dialogue: 0,0:01:27.71,0:01:29.55,Default,,0,0,0,,{\an2\pos(960,1048)}她生前叫卡米拉霍德\N{\rEng}Her name was Camilla Holder.
@@ -63,8 +63,8 @@ Dialogue: 0,0:03:48.19,0:03:53.02,Default,,0,0,0,,{\an2\pos(960,1048)}接下来�
 Dialogue: 0,0:04:01.66,0:04:06.00,Default,,0,0,0,,{\an2\pos(960,1048)}杰森二号说 我那个世界的杰森在走廊里做了选择\N{\rEng}Jason 2 said that my Jason made decisions in the Corridor
 Dialogue: 0,0:04:06.66,0:04:09.21,Default,,0,0,0,,{\an2\pos(960,1048)}创造了其他不同版本的自己\N{\rEng}that created other versions of themselves.
 Dialogue: 0,0:04:10.50,0:04:11.63,Default,,0,0,0,,{\an2\pos(960,1048)}对\N{\rEng}Yeah.
-Dialogue: 0,0:04:12.67,0:04:19.26,Default,,0,0,0,,{\an2\pos(960,1048)}就在我们抵达之前 其他版本的我们…\N{\rEng}Our other versions picked up this virus and brought it back…
-Dialogue: 0,0:04:21.30,0:04:22.64,Default,,0,0,0,,{\an2\pos(960,1048)}感染了这个病毒 并带回了这里\N{\rEng}before we got here.
+Dialogue: 0,0:04:12.67,0:04:19.26,Default,,0,0,0,,{\q2\an8\pos(960,858)}就在我们抵达之前 其他版本的我们…\N　感染了这个病毒 并带回了这里\N{\rEng}Our other versions picked up this virus and brought it back…
+Dialogue: 0,0:04:21.30,0:04:22.64,Default,,0,0,0,,{\q2\an8\pos(960,858)}就在我们抵达之前 其他版本的我们…\N　感染了这个病毒 并带回了这里\N{\rEng}before we got here.
 Dialogue: 0,0:04:29.56,0:04:32.77,Default,,0,0,0,,{\an2\pos(960,1048)}是我害死了成千上万的人\N{\rEng}I'm responsible for the deaths of tens of thousands of humans.
 Dialogue: 0,0:04:37.61,0:04:39.11,Default,,0,0,0,,{\an2\pos(960,1048)}还有我\N{\rEng}We both are.
 Dialogue: 0,0:05:38.71,0:05:40.67,TopDefault,,0,0,0,,{\an8\pos(960,32)}（改编自布莱克克劳奇的同名小说）
@@ -613,11 +613,11 @@ Dialogue: 0,0:48:56.06,0:48:59.86,Default,,0,0,0,,{\an2\pos(960,1048)}马克斯�
 Dialogue: 0,0:49:01.48,0:49:03.36,Default,,0,0,0,,{\an2\pos(960,1048)}你对他可还有任何记忆？\N{\rEng}Do you have any memories of him?
 Dialogue: 0,0:49:10.70,0:49:14.96,Default,,0,0,0,,{\an2\pos(960,1048)}我记得他躺在医院的病床上 浑身插满管子\N{\rEng}I remember him in a hospital bed, hooked up to a bunch of tubes.
 Dialogue: 0,0:49:22.09,0:49:26.42,Default,,0,0,0,,{\an2\pos(960,1048)}我妈有一些我们小时候的录像\N{\rEng}My mom has these videos of us when we were younger…
-Dialogue: 0,0:49:29.26,0:49:33.47,Default,,0,0,0,,{\an2\pos(960,1048)}我最爱看的一段\N{\rEng}My favorite is this one of my dad.
-Dialogue: 0,0:49:34.64,0:49:36.85,Default,,0,0,0,,{\an2\pos(960,1048)}是我爸在扫一整大堆的落叶\N{\rEng}He's raking this huge pile of leaves
+Dialogue: 0,0:49:29.26,0:49:33.47,Default,,0,0,0,,{\q2\an8\pos(960,922)}我最爱看的一段　是我爸在扫一整大堆的落叶\N{\rEng}My favorite is this one of my dad.
+Dialogue: 0,0:49:34.64,0:49:36.85,Default,,0,0,0,,{\q2\an8\pos(960,922)}我最爱看的一段　是我爸在扫一整大堆的落叶\N{\rEng}He's raking this huge pile of leaves
 Dialogue: 0,0:49:36.85,0:49:40.48,Default,,0,0,0,,{\an2\pos(960,1048)}他不停地把叶子往我们俩身边推\N{\rEng}and he just keeps pushing them all around us.
-Dialogue: 0,0:49:40.48,0:49:45.03,Default,,0,0,0,,{\an2\pos(960,1048)}看着那堆叶子越堆越高、越堆越大\N{\rEng}And the two of us are just laughing and laughing
-Dialogue: 0,0:49:45.03,0:49:47.32,Default,,0,0,0,,{\an2\pos(960,1048)}我们俩就一直笑个不停\N{\rEng}as the pile gets bigger and bigger.
+Dialogue: 0,0:49:40.48,0:49:45.03,Default,,0,0,0,,{\q2\an8\pos(960,858)}看着那堆叶子越堆越高、\N越堆越大　我们俩就一直笑个不停\N{\rEng}And the two of us are just laughing and laughing
+Dialogue: 0,0:49:45.03,0:49:47.32,Default,,0,0,0,,{\q2\an8\pos(960,858)}看着那堆叶子越堆越高、\N越堆越大　我们俩就一直笑个不停\N{\rEng}as the pile gets bigger and bigger.
 Dialogue: 0,0:49:49.41,0:49:55.62,Default,,0,0,0,,{\an2\pos(960,1048)}我觉得这段回忆 或许能带你去你想去的地方\N{\rEng}I suspect that might just take you where you wanna go.
 Dialogue: 0,0:50:14.14,0:50:15.52,Default,,0,0,0,,{\an2\pos(960,1048)}没事的\N{\rEng}It's okay.
 Dialogue: 0,0:50:22.81,0:50:24.23,Default,,0,0,0,,{\an2\pos(960,1048)}不管了\N{\rEng}Fuck this.
@@ -632,20 +632,20 @@ Dialogue: 0,0:51:22.92,0:51:24.42,Default,,0,0,0,,{\an2\pos(960,1048)}谢谢\N{\
 Dialogue: 0,0:51:24.42,0:51:25.75,Default,,0,0,0,,{\an2\pos(960,1048)}嘿…\N{\rEng}Hey…
 Dialogue: 0,0:51:25.75,0:51:27.25,Default,,0,0,0,,{\an2\pos(960,1048)}谢天谢地\N{\rEng}Thank God.
 Dialogue: 0,0:51:27.25,0:51:31.63,Default,,0,0,0,,{\an2\pos(960,1048)}我是莱顿万斯医生 他们今天派我来与二位谈话\N{\rEng}I'm Dr. Leighton Vance, and I've been asked to speak with the\Nboth of you today
-Dialogue: 0,0:51:32.34,0:51:34.01,Default,,0,0,0,,{\an2\pos(960,1048)}因为我公司有份参与调查　希卡阿夸公园的立方体\N{\rEng}because of my company's involvement
-Dialogue: 0,0:51:34.01,0:51:36.01,Default,,0,0,0,,{\an2\pos(960,1048)}因为我公司有份参与调查　希卡阿夸公园的立方体\N{\rEng}with investigating the Shikaakwa Park cube.
+Dialogue: 0,0:51:32.34,0:51:34.01,Default,,0,0,0,,{\q2\an8\pos(960,922)}因为我公司有份参与调查　希卡阿夸公园的立方体\N{\rEng}because of my company's involvement
+Dialogue: 0,0:51:34.01,0:51:36.01,Default,,0,0,0,,{\q2\an8\pos(960,922)}因为我公司有份参与调查　希卡阿夸公园的立方体\N{\rEng}with investigating the Shikaakwa Park cube.
 Dialogue: 0,0:51:36.60,0:51:38.60,Default,,0,0,0,,{\an2\pos(960,1048)}如你们所知 之前大家一直抱有希望\N{\rEng}Now, as you know, there was hope
-Dialogue: 0,0:51:38.60,0:51:42.44,Default,,0,0,0,,{\an2\pos(960,1048)}因为你们两人都从黑鸢尾瘟疫中 以某种方式恢复了青春\N活力\N{\rEng}that since you both were able to somehow rejuvenate
-Dialogue: 0,0:51:42.44,0:51:45.44,Default,,0,0,0,,{\an2\pos(960,1048)}或许你们体内藏着研发疫苗的\N{\rEng}from the Black Iris plague, your bodies may contain the road map
-Dialogue: 0,0:51:45.44,0:51:47.36,Default,,0,0,0,,{\an2\pos(960,1048)}- 关键线索   - 你知道他们…\N{\rEng}- to developing a vaccine.   - You know they--
+Dialogue: 0,0:51:38.60,0:51:42.44,Default,,0,0,0,,{\q2\an8\pos(960,794)}因为你们两人都从黑鸢尾瘟疫中 \N以某种方式恢复了青春活力　或许你们体内藏着研\N发疫苗的　- 关键线索   - 你知道他们…\N{\rEng}that since you both were able to somehow rejuvenate
+Dialogue: 0,0:51:42.44,0:51:45.44,Default,,0,0,0,,{\q2\an8\pos(960,794)}因为你们两人都从黑鸢尾瘟疫中 \N以某种方式恢复了青春活力　或许你们体内藏着研\N发疫苗的　- 关键线索   - 你知道他们…\N{\rEng}from the Black Iris plague, your bodies may contain the road map
+Dialogue: 0,0:51:45.44,0:51:47.36,Default,,0,0,0,,{\q2\an8\pos(960,794)}因为你们两人都从黑鸢尾瘟疫中 \N以某种方式恢复了青春活力　或许你们体内藏着研\N发疫苗的　- 关键线索   - 你知道他们…\N{\rEng}- to developing a vaccine.   - You know they--
 Dialogue: 0,0:51:47.36,0:51:49.82,Default,,0,0,0,,{\an2\pos(960,1048)}很可惜 检测结果一无所获\N{\rEng}Unfortunately, their testing came up empty,
 Dialogue: 0,0:51:51.20,0:51:53.32,Default,,0,0,0,,{\an2\pos(960,1048)}现在 所有注意力 都转移到了那个立方体上\N{\rEng}and all attention has been turned to the cube.
 Dialogue: 0,0:51:54.36,0:51:56.53,Default,,0,0,0,,{\an2\pos(960,1048)}希望是它治愈了你们\N{\rEng}They're hoping it's what somehow cured you.
 Dialogue: 0,0:51:57.41,0:52:00.50,Default,,0,0,0,,{\an2\pos(960,1048)}我们已经拆了移至千禧公园的那个盒子\N{\rEng}We already dismantled the one that was moved to Millennium Park.
 Dialogue: 0,0:52:01.87,0:52:03.33,Default,,0,0,0,,{\an2\pos(960,1048)}该死\N{\rEng}Shit.
 Dialogue: 0,0:52:03.33,0:52:06.67,Default,,0,0,0,,{\an2\pos(960,1048)}黑鸢尾瘟疫正在全球蔓延\N{\rEng}The Black Iris plague is spreading around the world,
-Dialogue: 0,0:52:06.67,0:52:08.67,Default,,0,0,0,,{\an2\pos(960,1048)}北美五大湖已经同意　配合国际要求 共享所有关键数据\N{\rEng}and the United Great Lakes has agreed to cooperate
-Dialogue: 0,0:52:08.67,0:52:11.42,Default,,0,0,0,,{\an2\pos(960,1048)}北美五大湖已经同意　配合国际要求 共享所有关键数据\N{\rEng}with the international requests to share all critical data.
+Dialogue: 0,0:52:06.67,0:52:08.67,Default,,0,0,0,,{\q2\an8\pos(960,922)}北美五大湖已经同意　配合国际要求 共享所有关键数据\N{\rEng}and the United Great Lakes has agreed to cooperate
+Dialogue: 0,0:52:08.67,0:52:11.42,Default,,0,0,0,,{\q2\an8\pos(960,922)}北美五大湖已经同意　配合国际要求 共享所有关键数据\N{\rEng}with the international requests to share all critical data.
 Dialogue: 0,0:52:11.92,0:52:14.80,Default,,0,0,0,,{\an2\pos(960,1048)}这包括立方体 和关于你们俩的所有已知信息\N{\rEng}Which includes the cube and all known information about the both\Nof you.
 Dialogue: 0,0:52:14.80,0:52:16.09,Default,,0,0,0,,{\an2\pos(960,1048)}- 什么信息？   - 搞什么？\N{\rEng}- What information?   - What the fuck?
 Dialogue: 0,0:52:16.09,0:52:20.01,Default,,0,0,0,,{\an2\pos(960,1048)}州联盟的代表半小时后会来接走你们\N{\rEng}Representatives from the state union will be here to collect you\Nboth in 30 minutes.

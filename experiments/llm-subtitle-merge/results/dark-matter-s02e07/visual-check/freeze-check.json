@@ -1,0 +1,55 @@
+{
+  "renderer": "libass 0.17.3",
+  "background": "synthetic gray, not video footage",
+  "missing_glyph_warnings": false,
+  "checks": [
+    {
+      "scene": "ordinary",
+      "sample_seconds": [
+        75,
+        78
+      ],
+      "chinese_crop": [
+        0,
+        915,
+        1920,
+        60
+      ],
+      "pixel_identical_before_after_english_turn": true,
+      "different_pixels": 0,
+      "crop_pixels": 115200
+    },
+    {
+      "scene": "reordered",
+      "sample_seconds": [
+        254,
+        262
+      ],
+      "chinese_crop": [
+        0,
+        850,
+        1920,
+        112
+      ],
+      "pixel_identical_before_after_english_turn": false,
+      "different_pixels": 1359,
+      "crop_pixels": 215040
+    },
+    {
+      "scene": "inversion",
+      "sample_seconds": [
+        2983,
+        2986
+      ],
+      "chinese_crop": [
+        0,
+        850,
+        1920,
+        112
+      ],
+      "pixel_identical_before_after_english_turn": true,
+      "different_pixels": 0,
+      "crop_pixels": 215040
+    }
+  ]
+}
