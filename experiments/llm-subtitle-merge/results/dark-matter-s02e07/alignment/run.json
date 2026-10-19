@@ -1,0 +1,38 @@
+{
+  "parameters": {
+    "window_ms": 210000,
+    "overlap_ms": 15000,
+    "max_distance_ms": 8000,
+    "model": "group/flash-models",
+    "endpoint": "http://127.0.0.1:3425/v1",
+    "response_format": "json_object",
+    "schema_enforcement": "unverified; strict local validation always applied"
+  },
+  "seconds": 0.018,
+  "windows": 19,
+  "cache_hits": 19,
+  "http_attempts_this_run": 0,
+  "failed_windows": [],
+  "resolved_models": [
+    "gemini-3.8-flash-n"
+  ],
+  "usage_including_cached_requests": {
+    "prompt_tokens": 80078,
+    "completion_tokens": 76414,
+    "total_tokens": 156492
+  },
+  "mapping_counts": {
+    "1:1": 691,
+    "M:N": 7,
+    "1:N": 2,
+    "zh_only": 11,
+    "N:1": 1
+  },
+  "rejected_rows": 0,
+  "conflicting_owner_groups": 0,
+  "restored": {
+    "en": 0,
+    "zh": 0
+  },
+  "context_duplicates": 59
+}

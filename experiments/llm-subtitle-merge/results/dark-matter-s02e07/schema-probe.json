@@ -1,0 +1,70 @@
+{
+  "request": {
+    "model": "group/flash-models",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Return JSON {\"ids\":[1]}. Use 1, never use 7."
+      }
+    ],
+    "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+        "name": "enforcement_probe",
+        "strict": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ids": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "enum": [
+                  7
+                ]
+              },
+              "minItems": 1,
+              "maxItems": 1
+            }
+          },
+          "required": [
+            "ids"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "max_tokens": 512
+  },
+  "response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"ids\":[1]}",
+          "role": "assistant"
+        }
+      }
+    ],
+    "created": 1792395403,
+    "id": "chatcmpl-h8jVatb8O-rUz7IP2cukmAs",
+    "model": "gemini-3.8-flash-n",
+    "object": "chat.completion",
+    "usage": {
+      "completion_tokens": 148,
+      "completion_tokens_details": {
+        "reasoning_tokens": 138
+      },
+      "prompt_tokens": 17,
+      "prompt_tokens_details": {
+        "cache_write_tokens": 0,
+        "cached_tokens": 0
+      },
+      "total_tokens": 165
+    }
+  },
+  "seconds": 4.636,
+  "conforms_to_schema": false,
+  "conclusion": "Schema not enforced on this request; use strict local validation"
+}
