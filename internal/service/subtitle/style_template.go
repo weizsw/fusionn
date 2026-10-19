@@ -29,16 +29,6 @@ const (
 	styleNameTopEng     = "TopEng"
 )
 
-// sharedStyleNames lists styles regenerated from configuration. Existing
-// styles with these names are replaced; all other styles are preserved.
-var sharedStyleNames = map[string]bool{
-	styleNameDefault:    true,
-	styleNameDefault1:   true,
-	styleNameEng:        true,
-	styleNameTopDefault: true,
-	styleNameTopEng:     true,
-}
-
 // GenerateStyles generates the complete V4+ Styles section from config.
 //
 // The base style names (Default, Eng, Default_1, TopDefault, TopEng) are always

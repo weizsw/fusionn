@@ -14,8 +14,8 @@ func TestBackgroundContext_NotCancelled(t *testing.T) {
 	// where c.Request.Context() was cancelled immediately after
 	// returning the HTTP response, causing "context canceled" errors.
 
-	// Track if background work completed
-	workCompleted := false
+	// Signal completion from the background goroutine.
+	workCompleted := make(chan struct{})
 
 	// Simulate background goroutine from webhook handler
 	go func() {
@@ -28,17 +28,16 @@ func TestBackgroundContext_NotCancelled(t *testing.T) {
 		// Simulate long-running work (e.g., ffprobe, subtitle processing)
 		select {
 		case <-time.After(100 * time.Millisecond):
-			workCompleted = true
+			close(workCompleted)
 		case <-ctx.Done():
 			t.Error("Background context was cancelled - bug still present!")
 		}
 	}()
 
 	// Wait for background work
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify work completed despite request cancellation
-	if !workCompleted {
+	select {
+	case <-workCompleted:
+	case <-time.After(200 * time.Millisecond):
 		t.Error("Background work did not complete - likely using request context")
 	}
 }

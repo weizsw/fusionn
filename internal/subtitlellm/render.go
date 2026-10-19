@@ -53,7 +53,7 @@ type block struct {
 // explicit positions are placed on that canvas using the reference playback
 // geometry.
 func Render(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style config.ASSStyleConfig, width, height int) ([]byte, error) {
-	if err := validateRenderInputs(bundle, mapping, llmcfg, style, width, height); err != nil {
+	if err := validateRenderInputs(bundle, mapping, llmcfg, style); err != nil {
 		return nil, err
 	}
 
@@ -257,7 +257,7 @@ func (g renderGeometry) adaptPositionY(y float64, alignment int) float64 {
 func (g renderGeometry) zhLineHeight() float64 { return g.zhFontSize * g.lineHeight }
 func (g renderGeometry) enLineHeight() float64 { return g.enFontSize * g.lineHeight }
 
-func validateRenderInputs(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style config.ASSStyleConfig, width, height int) error {
+func validateRenderInputs(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style config.ASSStyleConfig) error {
 	if bundle.Version != Version {
 		return fmt.Errorf("unsupported source bundle version %d", bundle.Version)
 	}
@@ -599,7 +599,7 @@ func wrapBalancedZH(line string, limit int) []string {
 	remaining := int(math.Ceil(float64(len(runes)) / float64(limit)))
 	closing := "，。！？；：、…）】》”’"
 	isClosing := func(r rune) bool { return strings.ContainsRune(closing, r) }
-	isBreakSpace := func(r rune) bool { return unicodeIsSpace(r) }
+	isBreakSpace := unicodeIsSpace
 	for remaining > 1 && len(runes) > 0 {
 		width := int(math.Ceil(float64(len(runes)) / float64(remaining)))
 		low := len(runes) - (remaining-1)*limit
