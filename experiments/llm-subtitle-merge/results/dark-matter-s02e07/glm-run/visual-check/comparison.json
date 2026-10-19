@@ -1,0 +1,42 @@
+{
+  "renderer": "libass 0.17.3",
+  "background": "synthetic gray, not video footage",
+  "checks": [
+    {
+      "scene": "ordinary",
+      "seconds": 75,
+      "same_png_as_gemini": true,
+      "missing_glyph_warnings": false
+    },
+    {
+      "scene": "ordinary-next",
+      "seconds": 78,
+      "same_png_as_gemini": true,
+      "missing_glyph_warnings": false
+    },
+    {
+      "scene": "reordered",
+      "seconds": 254,
+      "same_png_as_gemini": true,
+      "missing_glyph_warnings": false
+    },
+    {
+      "scene": "reordered-next",
+      "seconds": 262,
+      "same_png_as_gemini": true,
+      "missing_glyph_warnings": false
+    },
+    {
+      "scene": "inversion",
+      "seconds": 2983,
+      "same_png_as_gemini": false,
+      "missing_glyph_warnings": false
+    },
+    {
+      "scene": "inversion-next",
+      "seconds": 2986,
+      "same_png_as_gemini": false,
+      "missing_glyph_warnings": false
+    }
+  ]
+}

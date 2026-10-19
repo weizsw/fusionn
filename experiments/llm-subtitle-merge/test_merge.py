@@ -17,6 +17,9 @@ spec.loader.exec_module(m)
 compare_spec = importlib.util.spec_from_file_location("subtitle_compare_experiment", Path(__file__).with_name("compare.py"))
 comparison = importlib.util.module_from_spec(compare_spec)
 compare_spec.loader.exec_module(comparison)
+model_spec = importlib.util.spec_from_file_location("subtitle_model_comparison", Path(__file__).with_name("compare_models.py"))
+model_comparison = importlib.util.module_from_spec(model_spec)
+model_spec.loader.exec_module(model_comparison)
 
 
 def cue(i, start=1000, end=3000, text="local text", **kw):
@@ -240,6 +243,20 @@ class Timing(unittest.TestCase):
 
 
 class Comparison(unittest.TestCase):
+    def test_model_comparison_separates_raw_ids_from_safe_mapping(self):
+        b = bundle([cue(1), cue(2, 3100, 5000)], [cue(1), cue(2, 3100, 5000)])
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            m.save(d / "initial-run.json", {"parameters": {"window_ms": 210000, "overlap_ms": 15000, "max_distance_ms": 8000}})
+            m.save(d / "requests/000.json", {"index": 0, "response": {"alignments": [row([1], [1]), row([1, 99], [2])]},
+                                            "attempts": [{"seconds": 1, "model": "test", "finish_reason": "stop"}]})
+            r = model_comparison.inspect_run(d, b)
+            self.assertEqual(r["schema_shape_valid_windows"], 1)
+            self.assertEqual(r["raw_missing_occurrences"]["en"], 1)
+            self.assertEqual(r["raw_duplicate_id_occurrences"]["en"], 1)
+            self.assertEqual(r["raw_out_of_window_occurrences"]["en"], 1)
+            self.assertEqual(r["windows"][0]["rejected"][0]["reason"], "id_outside_window")
+
     def test_split_source_cue_and_one_sided_gap(self):
         b = bundle([cue(1, text="Hello world")],
                    [cue(1, text="你好"), cue(2, 3000, 4000, "标牌"), cue(3, 4000, 5000, "世界")])
