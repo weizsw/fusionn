@@ -47,6 +47,13 @@ func (p *OutputProcessor) Process(ctx context.Context, pctx *ProcessingContext) 
 
 	finalPath := filepath.Join(videoDir, videoName+".zh-CN.ass")
 
+	// Never overwrite the source media or either input subtitle.
+	for _, input := range []string{pctx.VideoPath, pctx.EnglishSubPath, pctx.ChineseSubPath} {
+		if input != "" && samePath(finalPath, input) {
+			return fmt.Errorf("refusing to overwrite input file with merged subtitle: %s", finalPath)
+		}
+	}
+
 	// If not outputting to same directory, use a configured output directory
 	// For now, we always output to the same directory
 	if !p.outputSameDir {
@@ -69,6 +76,9 @@ func (p *OutputProcessor) Process(ctx context.Context, pctx *ProcessingContext) 
 
 // copyFile is a helper function to copy files
 func copyFile(src, dst string) error {
+	if samePath(src, dst) {
+		return nil
+	}
 	data, err := os.ReadFile(src)
 	if err != nil {
 		return fmt.Errorf("failed to read source: %w", err)
@@ -79,4 +89,20 @@ func copyFile(src, dst string) error {
 	}
 
 	return nil
+}
+
+// samePath reports whether two paths refer to the same file, resolving
+// directory symlinks while tolerating not-yet-created destinations.
+func samePath(left, right string) bool {
+	if filepath.Clean(left) == filepath.Clean(right) {
+		return true
+	}
+	leftAbs, leftErr := filepath.Abs(left)
+	rightAbs, rightErr := filepath.Abs(right)
+	if leftErr == nil && rightErr == nil && leftAbs == rightAbs {
+		return true
+	}
+	leftReal, leftErr := filepath.EvalSymlinks(left)
+	rightReal, rightErr := filepath.EvalSymlinks(right)
+	return leftErr == nil && rightErr == nil && leftReal == rightReal
 }
