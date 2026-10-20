@@ -597,7 +597,7 @@ subtitle:
 	if llm.FillGapMS != 500 {
 		t.Errorf("fill_gap_ms = %d, want 500", llm.FillGapMS)
 	}
-	if llm.APIKey != "" || llm.APIKeyEnv != "" || llm.ReasoningEffort != "" || llm.MappingPath != "" {
+	if llm.APIKey != "" || llm.APIKeyEnv != "" || llm.ReasoningEffort != "" || llm.MappingPath != "" || llm.WordAlignURL != "" {
 		t.Errorf("optional LLM fields should default to empty")
 	}
 }
@@ -608,6 +608,7 @@ func TestLLMConfigEnvBindings(t *testing.T) {
 	t.Setenv("FUSIONN_SUBTITLE_LLM_MODEL", "env-model")
 	t.Setenv("FUSIONN_SUBTITLE_LLM_REASONING_EFFORT", "low")
 	t.Setenv("FUSIONN_SUBTITLE_LLM_WORKERS", "7")
+	t.Setenv("FUSIONN_SUBTITLE_LLM_WORD_ALIGN_URL", "http://word-align:8767")
 
 	cfg, err := Load(writeConfig(t, `
 server:
@@ -636,6 +637,9 @@ subtitle:
 	}
 	if llm.Workers != 7 {
 		t.Errorf("workers = %d, want 7", llm.Workers)
+	}
+	if llm.WordAlignURL != "http://word-align:8767" {
+		t.Errorf("word_align_url = %q", llm.WordAlignURL)
 	}
 }
 
@@ -1373,5 +1377,33 @@ subtitle:
 	}
 	if style.Outline != 1.5 {
 		t.Errorf("outline = %v, want 1.5 (0.4 * 3.75 vertical)", style.Outline)
+	}
+}
+
+func TestWordAlignmentURLValidation(t *testing.T) {
+	cfg, err := Load(writeConfig(t, `
+server:
+  port: 8080
+subtitle:
+  enabled: true
+  llm:
+    base_url: "http://unused.invalid/v1"
+    model: "test"
+    cache_enabled: false
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"", "http://word-align:8767", "https://inference.example/subtitles"} {
+		cfg.Subtitle.LLM.WordAlignURL = value
+		if err := cfg.Subtitle.LLM.validate(); err != nil {
+			t.Errorf("valid URL rejected: %v", err)
+		}
+	}
+	for _, value := range []string{"word-align:8767", "ftp://word-align", "http://user:secret@word-align", "http://word-align?key=secret", "http://word-align#fragment"} {
+		cfg.Subtitle.LLM.WordAlignURL = value
+		if err := cfg.Subtitle.LLM.validate(); err == nil {
+			t.Errorf("invalid URL accepted: %s", value)
+		}
 	}
 }

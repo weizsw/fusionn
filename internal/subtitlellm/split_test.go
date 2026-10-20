@@ -1,0 +1,306 @@
+package subtitlellm
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/fusionn/internal/config"
+)
+
+func TestLongCueSplitsAndHoldsShortChinese(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.EnChars = 22
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "We should leave now and return tomorrow.", Plain: "We should leave now\nand return tomorrow."}},
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "我们该走了，明天再来"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	words := WordTimings{1: {
+		{Text: "We", StartMS: 1000, EndMS: 1200},
+		{Text: "should", StartMS: 1250, EndMS: 1500},
+		{Text: "leave", StartMS: 1550, EndMS: 1900},
+		{Text: "now", StartMS: 2000, EndMS: 2400},
+		{Text: "and", StartMS: 2800, EndMS: 3000},
+		{Text: "return", StartMS: 3100, EndMS: 3500},
+		{Text: "tomorrow", StartMS: 3600, EndMS: 4300},
+	}}
+	output, err := RenderWithWordTimings(bundle, mapping, cfg, renderTestStyle(), 1920, 1080, words)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2", len(events))
+	}
+	if events[0].start != 1000 || events[0].end != 2600 || events[1].start != 2600 || events[1].end != 7000 {
+		t.Fatalf("unexpected word-aligned boundaries: %+v", events)
+	}
+	for i, event := range events {
+		if strings.Count(event.text, `\N`) != 1 {
+			t.Fatalf("event %d is not one Chinese plus one English line: %s", i, event.text)
+		}
+		if !strings.Contains(event.text, "我们该走了，明天再来") {
+			t.Fatalf("event %d did not hold the short Chinese", i)
+		}
+	}
+	assertGlyphs(t, events[0].text, "我们该走了，明天再来We should leave now")
+	assertGlyphs(t, events[1].text, "我们该走了，明天再来and return tomorrow.")
+}
+
+func TestBadWordTimingFallsBackToProportion(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.EnChars = 22
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "First part of this then the second part.", Plain: "First part of this\nthen the second part."}},
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "保留中文"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	baseline, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, words := range map[string]WordTimings{
+		"wrong words":          {1: {{Text: "invented", StartMS: 2000, EndMS: 3000}}},
+		"outside cue":          {1: {{Text: "First part of this", StartMS: 0, EndMS: 50}, {Text: "then the second part", StartMS: 50, EndMS: 80}}},
+		"zero duration at cut": {1: {{Text: "First part of this", StartMS: 2000, EndMS: 2000}, {Text: "then the second part", StartMS: 3000, EndMS: 4000}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			output, err := RenderWithWordTimings(bundle, mapping, cfg, renderTestStyle(), 1920, 1080, words)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(output) != string(baseline) {
+				t.Fatal("invalid word timing did not use the proportional result")
+			}
+		})
+	}
+	if len(parseDialogues(t, string(baseline))) != 2 {
+		t.Fatal("proportional baseline must actually split")
+	}
+}
+
+func TestMultilineSourceWithinConfiguredLimitStaysWhole(t *testing.T) {
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "First half and the second half.", Plain: "First half\nand the second half."}},
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "完整一句"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	output, err := Render(bundle, mapping, renderTestConfig(), renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if events := parseDialogues(t, string(output)); len(events) != 1 {
+		t.Fatalf("source line break triggered a split below the configured limit: %d", len(events))
+	}
+}
+
+func TestMNSplitsOverLimitChineseUsingSourceBoundary(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 8
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 4000, Display: "We keep laughing."}, {ID: 2, Start: 4000, End: 6500, Display: "The pile gets bigger."}},
+		[]Cue{{ID: 1, Start: 900, End: 3900, Display: "看着那堆叶子"}, {ID: 2, Start: 4000, End: 6700, Display: "我们一直笑"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1, 2}, Layer: LayerBottom, Origin: OriginModel}})
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2", len(events))
+	}
+	assertGlyphs(t, events[0].text, "看着那堆叶子We keep laughing.")
+	assertGlyphs(t, events[1].text, "我们一直笑The pile gets bigger.")
+	if events[0].start != 1000 || events[0].end != 4000 || events[1].start != 4000 || events[1].end != 6500 {
+		t.Fatalf("source cuts changed the English outer bounds: %+v", events)
+	}
+}
+
+func TestBothLongLanguagesSwitchTogether(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.EnChars, cfg.ZhChars = 22, 8
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "We should leave now and return tomorrow.", Plain: "We should leave now\nand return tomorrow."}},
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "我们现在应该离开 明天还可以再来", Plain: "我们现在应该离开\n明天还可以再来"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 2 {
+		t.Fatalf("both sides must share one boundary, got %d events", len(events))
+	}
+	for _, event := range events {
+		if strings.Count(event.text, `\N`) != 1 {
+			t.Fatalf("extra forced line: %s", event.text)
+		}
+	}
+	assertGlyphs(t, events[0].text, "我们现在应该离开We should leave now")
+	assertGlyphs(t, events[1].text, "明天还可以再来and return tomorrow.")
+}
+
+func TestLongChineseDoesNotRestartOnEveryEnglishSlice(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 8
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 4000, Display: "First English."}, {ID: 2, Start: 4000, End: 7000, Display: "Second English."}},
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "中文的第一部分 中文的第二部分", Plain: "中文的第一部分\n中文的第二部分"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 2 {
+		t.Fatalf("held Chinese must split once across the group, got %d events", len(events))
+	}
+	assertGlyphs(t, events[0].text, "中文的第一部分First English.")
+	assertGlyphs(t, events[1].text, "中文的第二部分Second English.")
+}
+
+func TestShortDurationAndMultipleSpeakersAreNotSplit(t *testing.T) {
+	for name, cue := range map[string]Cue{
+		"short duration":    {ID: 1, Start: 1000, End: 2200, Display: "A long subtitle that cannot be read in tiny fragments."},
+		"multiple speakers": {ID: 1, Start: 1000, End: 7000, Display: "- First speaker with a long line.\n- Another speaker answers.", MultiSpeaker: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bundle := makeBundle([]Cue{cue}, []Cue{{ID: 1, Start: cue.Start, End: cue.End, Display: "保留原句"}})
+			mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+			cfg := renderTestConfig()
+			cfg.EnChars = 22
+			output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if events := parseDialogues(t, string(output)); len(events) != 1 {
+				t.Fatalf("expected original event, got %d", len(events))
+			}
+		})
+	}
+}
+
+func TestWordAlignmentCandidatesUseConfiguredLimit(t *testing.T) {
+	bundle := Bundle{EN: []Cue{
+		{ID: 1, Start: 1000, End: 6000, Display: "A short sentence with a second part."},
+		{ID: 2, Start: 7000, End: 12000, Display: "A second speaker says something long.", MultiSpeaker: true},
+	}}
+	cfg := config.LLMConfig{EnChars: 60}
+	if cues := WordAlignmentCues(bundle, cfg); len(cues) != 0 {
+		t.Fatalf("below limit produced %d alignment candidates", len(cues))
+	}
+	cfg.EnChars = 20
+	if cues := WordAlignmentCues(bundle, cfg); len(cues) != 1 || cues[0].ID != 1 {
+		t.Fatalf("configured limit or speaker protection ignored: %+v", cues)
+	}
+}
+
+func TestOriginalSingleLineCanExceedConfiguredLimits(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.EnChars, cfg.ZhChars = 20, 8
+	english := "Keep this original single line together even above the limit."
+	chinese := "原字幕只有一行就允许保持完整"
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: english}},
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: chinese}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 1 || strings.Count(events[0].text, `\N`) != 1 {
+		t.Fatalf("original single lines were split or wrapped: %+v", events)
+	}
+	assertGlyphs(t, events[0].text, chinese+english)
+	if candidates := WordAlignmentCues(bundle, cfg); len(candidates) != 0 {
+		t.Fatalf("original single line requested audio alignment: %+v", candidates)
+	}
+}
+
+func TestSingleLineExceptionDoesNotPermitOverLimitJoins(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 8
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 4000, Display: "First English."}, {ID: 2, Start: 4000, End: 7000, Display: "Second English."}},
+		[]Cue{{ID: 1, Start: 1000, End: 4000, Display: "中文第一句话"}, {ID: 2, Start: 4000, End: 7000, Display: "中文第二句话"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1, 2}, Layer: LayerBottom, Origin: OriginModel}})
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2 source slices", len(events))
+	}
+	assertGlyphs(t, events[0].text, "中文第一句话First English.")
+	assertGlyphs(t, events[1].text, "中文第二句话Second English.")
+}
+
+func TestChineseSourceBreakSurvivesMinimumReadingTime(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 20
+	english := "Tell me if it starts to weaken or get thready."
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 380964, End: 384176, Display: english, Plain: "Tell me if it starts to weaken\nor get thready."}},
+		[]Cue{{ID: 1, Start: 380964, End: 384176, Display: "如果脉搏开始变弱 或者变得细弱难辨 马上告诉我", Plain: "如果脉搏开始变弱\n或者变得细弱难辨 马上告诉我"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2", len(events))
+	}
+	assertGlyphs(t, events[0].text, "如果脉搏开始变弱"+english)
+	assertGlyphs(t, events[1].text, "或者变得细弱难辨 马上告诉我"+english)
+	if events[0].end != events[1].start || events[0].end-events[0].start != minFragmentMS {
+		t.Fatalf("source cut did not receive the minimum reading time: %+v", events)
+	}
+}
+
+func TestChineseSourceBreakIsNotForcedBelowTotalReadingTime(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 20
+	chinese := "如果脉搏开始变弱 或者变得细弱难辨 马上告诉我"
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 3300, Display: "Watch the pulse."}},
+		[]Cue{{ID: 1, Start: 1000, End: 3300, Display: chinese, Plain: "如果脉搏开始变弱\n或者变得细弱难辨 马上告诉我"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 1 {
+		t.Fatalf("unreadably short source fragments were forced: %+v", events)
+	}
+	assertGlyphs(t, events[0].text, chinese+"Watch the pulse.")
+}
+
+func TestSpeakerWrappingKeepsOriginalLineBreaks(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 20
+	plain := "- 什么？\n- 一个亚历克斯、一个瑞安"
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "- What?   - An Alex, a Ryan.", Plain: "- What?\n- An Alex, a Ryan.", MultiSpeaker: true}},
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "- 什么？   - 一个亚历克斯、一个瑞安", Plain: plain, MultiSpeaker: true}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 1 || !strings.Contains(events[0].text, strings.ReplaceAll(plain, "\n", `\N`)) {
+		t.Fatalf("speaker line was mechanically cut instead of restoring the source break: %+v", events)
+	}
+}

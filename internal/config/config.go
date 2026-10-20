@@ -100,12 +100,13 @@ type LLMConfig struct {
 	MappingPath  string `mapstructure:"mapping_path"` // Optional precomputed ID mapping to reuse
 
 	// Layout thresholds
-	EnChars   int `mapstructure:"en_chars"`
-	ZhChars   int `mapstructure:"zh_chars"`
-	EnGapMS   int `mapstructure:"en_gap_ms"`
-	ZhGapMS   int `mapstructure:"zh_gap_ms"`
-	SpanMS    int `mapstructure:"span_ms"`
-	FillGapMS int `mapstructure:"fill_gap_ms"`
+	EnChars      int    `mapstructure:"en_chars"`
+	ZhChars      int    `mapstructure:"zh_chars"`
+	EnGapMS      int    `mapstructure:"en_gap_ms"`
+	ZhGapMS      int    `mapstructure:"zh_gap_ms"`
+	SpanMS       int    `mapstructure:"span_ms"`
+	FillGapMS    int    `mapstructure:"fill_gap_ms"`
+	WordAlignURL string `mapstructure:"word_align_url"` // Optional internal HTTP word-alignment service
 }
 
 // OpenCCConfig holds OpenCC settings.
@@ -402,6 +403,12 @@ func (c *LLMConfig) validate() error {
 	if c.CacheEnabled && strings.TrimSpace(c.CacheDir) == "" {
 		return fmt.Errorf("subtitle.llm.cache_dir must be set when cache_enabled is true")
 	}
+	if c.WordAlignURL != "" {
+		u, err := url.Parse(c.WordAlignURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			return fmt.Errorf("subtitle.llm.word_align_url must be an http(s) URL without credentials, query, or fragment")
+		}
+	}
 	if c.EnChars <= 0 {
 		return fmt.Errorf("subtitle.llm.en_chars must be positive")
 	}
@@ -581,6 +588,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("subtitle.llm.zh_gap_ms", 500)
 	v.SetDefault("subtitle.llm.span_ms", 5500)
 	v.SetDefault("subtitle.llm.fill_gap_ms", 500)
+	v.SetDefault("subtitle.llm.word_align_url", "")
 
 	v.SetDefault("subtitle.ass_style.enabled", true)
 	v.SetDefault("subtitle.ass_style.play_res_x", 1920)

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -171,98 +172,98 @@ func jsonUnmarshal(data []byte, v any) error {
 	return decodeJSON(data, v)
 }
 
-func TestRenderMatchesPrototypeEpisodes(t *testing.T) {
+func TestRenderEpisodePreservesSourceTextAndDisplayIntervals(t *testing.T) {
 	bundle, mapping := loadPrototypeInputs(t)
 	output, err := Render(bundle, mapping, renderTestConfig(), renderTestStyle(), 0, 0)
 	if err != nil {
-		t.Fatalf("Render() error = %v", err)
+		t.Fatal(err)
 	}
 	got := parseDialogues(t, string(output))
-	if len(got) != 720 {
-		t.Fatalf("rendered %d events, want 720", len(got))
-	}
-
 	prototype, err := readPrototypeEvents(filepath.Join(prototypeRenderRoot, "events.json"))
 	if err != nil {
-		t.Fatalf("read prototype events: %v", err)
+		t.Fatal(err)
 	}
-	if len(prototype) != len(got) {
-		t.Fatalf("prototype events = %d, rendered = %d", len(prototype), len(got))
+	var before, after [][2]int
+	for _, event := range prototype {
+		before = append(before, [2]int{event.ASSStart, event.ASSEnd})
 	}
-	en := indexCues(bundle.EN)
-	zh := indexCues(bundle.ZH)
-	for i, want := range prototype {
-		event := got[i]
-		if event.start != want.ASSStart || event.end != want.ASSEnd {
-			t.Fatalf("event %d time = %d-%d, prototype %d-%d", i, event.start, event.end, want.ASSStart, want.ASSEnd)
-		}
-		// Standard dialogue events inherit style alignment (Alignment: 2)
-		// without explicit \pos overrides so players like Infuse can settle them into letterbox bars.
+	var english, chinese strings.Builder
+	previousEN, previousZH := "", ""
+	for _, event := range got {
+		after = append(after, [2]int{event.start, event.end})
 		if event.hasPos {
-			t.Fatalf("event %d has unexpected explicit position", i)
+			t.Fatal("ordinary speech must retain the player-positioned style")
 		}
-		// Every rendered glyph must occur in the source text of the mapped IDs,
-		// in the prototype's Chinese-then-English order.
-		expected := ""
-		for _, id := range want.ZHIDs {
-			expected += zh[id].Display
+		primary, secondary, bilingual := strings.Cut(event.text, `\N{\rEng}`)
+		if !bilingual {
+			primary, secondary, bilingual = strings.Cut(event.text, `\N{\rTopEng}`)
 		}
-		for _, id := range want.ENIDs {
-			expected += en[id].Display
+		if !bilingual {
+			if event.style == "Default_1" || event.style == "Eng" || event.style == "TopEng" {
+				primary, secondary = "", event.text
+			} else {
+				primary = event.text
+			}
 		}
-		if glyphs(event.text) != glyphs(expected) {
-			t.Fatalf("event %d text provenance mismatch\n got %q\nwant %q", i, glyphs(event.text), glyphs(expected))
+		z, e := glyphs(primary), glyphs(secondary)
+		if z != previousZH {
+			chinese.WriteString(z)
+		}
+		if e != previousEN {
+			english.WriteString(e)
+		}
+		previousZH, previousEN = z, e
+	}
+	if fmt.Sprint(joinedIntervals(before)) != fmt.Sprint(joinedIntervals(after)) {
+		t.Fatal("splitting changed the episode's occupied display intervals")
+	}
+	for lang, track := range map[string]struct {
+		cues []Cue
+		text string
+	}{
+		"en": {bundle.EN, english.String()}, "zh": {bundle.ZH, chinese.String()},
+	} {
+		for _, cue := range track.cues {
+			if !strings.Contains(track.text, glyphs(cue.Display)) {
+				t.Fatalf("%s cue %d lost text or source order: %q", lang, cue.ID, cue.Display)
+			}
 		}
 	}
-	// Mapping coverage is exactly once per source cue, and every cue is
-	// represented in at least one rendered event.
 	assertMappingCoverage(t, mapping, bundle)
-	rendered := string(output)
-	if strings.Count(rendered, "\nDialogue:") != 720 {
-		t.Fatalf("expected 720 dialogue lines, got %d", strings.Count(rendered, "Dialogue:"))
-	}
 }
 
-func TestRenderMNHoldsCompleteChineseInSourceOrder(t *testing.T) {
-	bundle, mapping := loadPrototypeInputs(t)
+func joinedIntervals(intervals [][2]int) [][2]int {
+	sort.Slice(intervals, func(i, j int) bool { return intervals[i][0] < intervals[j][0] })
+	var result [][2]int
+	for _, interval := range intervals {
+		if len(result) == 0 || result[len(result)-1][1] < interval[0] {
+			result = append(result, interval)
+		} else {
+			result[len(result)-1][1] = max(result[len(result)-1][1], interval[1])
+		}
+	}
+	return result
+}
+
+func TestRenderMNRetainsShortChineseInSourceOrder(t *testing.T) {
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 4000, Display: "The first complete sentence."}, {ID: 2, Start: 4000, End: 7000, Display: "The second complete sentence."}},
+		[]Cue{{ID: 1, Start: 900, End: 3900, Display: "完整的第一句"}, {ID: 2, Start: 4000, End: 7100, Display: "第二句"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1, 2}, Layer: LayerBottom, Origin: OriginModel}})
 	output, err := Render(bundle, mapping, renderTestConfig(), renderTestStyle(), 0, 0)
 	if err != nil {
-		t.Fatalf("Render() error = %v", err)
+		t.Fatal(err)
 	}
-	got := parseDialogues(t, string(output))
-	zh := indexCues(bundle.ZH)
-	prototype, err := readPrototypeEvents(filepath.Join(prototypeRenderRoot, "events.json"))
-	if err != nil {
-		t.Fatalf("read prototype events: %v", err)
+	events := parseDialogues(t, string(output))
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2", len(events))
 	}
-	holdCount := 0
-	for i, want := range prototype {
-		if want.Strategy != strategyMNReview {
-			continue
+	for i, event := range events {
+		assertGlyphs(t, event.text, "完整的第一句第二句"+bundle.EN[i].Display)
+		if event.hasPos {
+			t.Fatal("held short text must keep the ordinary style anchor")
 		}
-		holdCount++
-		expected := ""
-		for _, id := range want.ZHIDs {
-			expected += zh[id].Display
-		}
-		text := got[i].text
-		if glyphs(text[:strings.Index(text, `\N{`)]) != glyphs(expected) {
-			t.Fatalf("event %d held Chinese = %q, want %q", i, glyphs(text), glyphs(expected))
-		}
-		// In Scheme 1, standard dialogue without explicit \pos uses the Default
-		// style alignment (bottom-anchored) rather than an explicit top anchor override.
-		if got[i].hasPos {
-			t.Fatalf("event %d hold text should not have explicit \\pos tag", i)
-		}
-		if !strings.Contains(text, `\q2`) {
-			t.Fatalf("event %d hold text lacks explicit \\q2", i)
-		}
-		if strings.Contains(text, `\pos(`) {
-			t.Fatalf("event %d hold text should not have explicit \\pos tag", i)
-		}
-	}
-	if holdCount == 0 {
-		t.Fatal("prototype has no M:N hold events to compare")
 	}
 }
 
@@ -480,8 +481,6 @@ func TestRenderWideGeometryKeepsTextAndTiming(t *testing.T) {
 	if len(baseEvents) != len(wideEvents) {
 		t.Fatalf("event counts differ: %d vs %d", len(baseEvents), len(wideEvents))
 	}
-	en := indexCues(bundle.EN)
-	zh := indexCues(bundle.ZH)
 	for i := range baseEvents {
 		if baseEvents[i].start != wideEvents[i].start || baseEvents[i].end != wideEvents[i].end {
 			t.Fatalf("event %d timing changed: %d-%d vs %d-%d", i, baseEvents[i].start, baseEvents[i].end, wideEvents[i].start, wideEvents[i].end)
@@ -493,8 +492,6 @@ func TestRenderWideGeometryKeepsTextAndTiming(t *testing.T) {
 			t.Fatalf("event %d lost all text", i)
 		}
 	}
-	_ = en
-	_ = zh
 }
 
 func TestWrapDisplayHandlesMultibyteEnglish(t *testing.T) {
@@ -742,14 +739,6 @@ func makeMapping(bundle Bundle, groups []Group) Mapping {
 	}
 	mapping.Fingerprint = fingerprint
 	return mapping
-}
-
-func indexCues(cues []Cue) map[int]Cue {
-	index := make(map[int]Cue, len(cues))
-	for _, cue := range cues {
-		index[cue.ID] = cue
-	}
-	return index
 }
 
 func assertMappingCoverage(t *testing.T, mapping Mapping, bundle Bundle) {

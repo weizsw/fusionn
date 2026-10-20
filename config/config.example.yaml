@@ -53,13 +53,17 @@ subtitle:
     # Optional: reuse a precomputed ID-mapping JSON instead of requesting a model.
     mapping_path: ""
 
-    # Layout thresholds used by the deterministic renderer.
-    en_chars: 65    # max joined English characters before splitting time slices
-    zh_chars: 25    # max joined Chinese characters before splitting time slices
+    # Display limits also constrain short joins. Long source cues use time slices.
+    en_chars: 65    # target English characters per displayed fragment
+    zh_chars: 20    # target Chinese characters; omitted values default to 25
     en_gap_ms: 400  # max English gap to join sentences
     zh_gap_ms: 500  # max Chinese gap to join sentences
     span_ms: 5500   # max joined speech span
     fill_gap_ms: 500 # fill positive gaps up to this value between slices
+
+    # Optional CPU word-alignment service. Empty uses proportional timing.
+    # Docker Compose supplies http://word-align:8767 through the environment.
+    word_align_url: ""
 
   # DuoSubs settings for semantic subtitle alignment
   # Only validated and used when engine: "duosubs".

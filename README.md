@@ -20,6 +20,7 @@ Intelligent Media Automation Platform
 ### Prerequisites
 
 - Go 1.23 or later
+- Python 3 (for the word-alignment HTTP tests)
 - Docker (optional)
 - Redis server (if using translation queue feature)
 
@@ -83,7 +84,8 @@ subtitle:
 ### Native LLM merge or DuoSubs
 
 New configurations default to the native Go ID-mapping engine. No Python merger,
-DuoSubs service, or embedding model is needed for LLM mode. Select explicitly:
+DuoSubs service, or embedding model is needed for LLM mode. An optional CPU
+word-alignment container supplies times for long subtitles. Select explicitly:
 
 ```yaml
 subtitle:
@@ -95,6 +97,8 @@ subtitle:
     api_key_env: "" # optional environment variable NAME, never a key value
     cache_enabled: true
     cache_dir: "/data/llm-subtitle-cache"
+    en_chars: 65
+    zh_chars: 20 # tested setting; the code default is 25
 ```
 
 Use `http://127.0.0.1:3425/v1` when running on the host itself. Linux containers
@@ -102,6 +106,37 @@ need a reachable host address/network configuration. Mount the cache directory
 persistently; style changes reuse ID mappings. Old configs with a `duosubs` block
 and no `engine` continue to select DuoSubs. Keep the original DuoSubs deployment
 for that mode; the fusionn image does not install a local duosubs executable.
+
+The Compose file starts `word-align` beside fusionn and sets the internal URL.
+It uses `Qwen/Qwen3-ForcedAligner-0.6B-hf` on CPU and keeps downloaded weights in
+the Hugging Face volume. It does not need a host MLX service or a media mount.
+Run `docker compose up -d --build` to build the service. The first request also
+downloads the model. For a standalone run, set `subtitle.llm.word_align_url` to a
+reachable service URL, or leave it empty to use proportional timing.
+The service starts its model worker on the first request. After 300 seconds
+without an alignment request, it stops the worker and releases model memory.
+Set `ALIGN_IDLE_SECONDS` on `word-align` to change this interval. The next
+request reloads the model from the cache. Active requests keep their worker.
+
+Long multiline source cues use the configured `en_chars` and `zh_chars` limits.
+Original single-line cues stay whole, even above these limits. They do not
+request word alignment. Joined source cues still obey the limits.
+The renderer keeps source text and order, holds a short language across slices,
+and splits only the long side. It reuses source boundaries before adding word
+boundaries. Invalid word times or a service failure use proportional timing.
+Chinese proportional slices reserve the minimum reading time when the total
+interval permits it. New fragments need 1.2 seconds of continuous display.
+If splitting would make reading too fast, the renderer keeps the original event
+and line wrapping. Speaker text uses its original breaks when wrapping is needed.
+
+The reading limits come from the configuration. The tested S02E08 values are
+`en_chars: 65` and `zh_chars: 20`. The code default for `zh_chars` remains 25.
+Restart fusionn after changing these values. English length examples and the
+current playback results are in the [integration guide](docs/llm-subtitle-integration.zh-CN.md#英文长度与配置调整参考).
+
+Word times do not have a persistent cache yet. With video and an alignment URL,
+each run requests word times again. The ID-mapping cache is separate.
+Follow-up work is recorded in [TODO.md](TODO.md).
 
 The shared style now uses a 1920×1080 script canvas and the experimental
 Chinese-above-English defaults. Legacy 384×288 style values are migrated at load
@@ -120,7 +155,7 @@ go run ./cmd/subtitle-merge --config config/config.yaml \
 
 The output directory must be new. `--video` plus absolute `--en-stream` and
 `--zh-stream` can extract directly into that directory; `--mapping` imports a
-validated existing mapping without model requests. The Docker image includes
+validated existing mapping without LLM requests. The Docker image includes
 `subtitle-merge` as a standalone binary as well.
 
 ### Redis Integration

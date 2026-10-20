@@ -31,6 +31,8 @@ const (
 	strategyNToOne       = "N:1_english_slices"
 	strategyMNReview     = "M:N_chinese_hold_review"
 	strategyOneSided     = "one_sided"
+	strategyMNSourceCuts = "M:N_source_cuts"
+	strategyTimedSplit   = "long_cue_time_slices"
 )
 
 // block is one rendered bilingual event before positioning.
@@ -44,15 +46,21 @@ type block struct {
 	top       bool
 	alignment int
 	position  *[2]float64
+	enText    *string
+	zhText    *string
 }
 
-// Render produces the bilingual ASS file from an immutable source bundle and
-// its ID-only mapping. Text and timestamps always come from the bundle; the
-// mapping only chooses which cues share an event. The output canvas is the
-// configured ASS play resolution and equals width x height for 16:9 sources;
-// explicit positions are placed on that canvas using the reference playback
-// geometry.
+// Render produces bilingual ASS from an immutable source bundle and ID mapping.
+// It keeps source text and uses proportional timing for long cues. The mapping
+// chooses which cues share an event. The configured ASS canvas controls placement;
+// video dimensions provide the reference playback geometry.
 func Render(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style config.ASSStyleConfig, width, height int) ([]byte, error) {
+	return RenderWithWordTimings(bundle, mapping, llmcfg, style, width, height, nil)
+}
+
+// RenderWithWordTimings uses optional audio-derived English word times for
+// long cues. Missing or invalid times use proportional slices of source text.
+func RenderWithWordTimings(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style config.ASSStyleConfig, width, height int, words WordTimings) ([]byte, error) {
 	if err := validateRenderInputs(bundle, mapping, llmcfg, style); err != nil {
 		return nil, err
 	}
@@ -61,7 +69,7 @@ func Render(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style confi
 	if err != nil {
 		return nil, err
 	}
-	blocks := buildBlocks(mapping, en, zh, llmcfg)
+	blocks := splitLongBlocks(buildBlocks(mapping, en, zh, llmcfg), en, zh, llmcfg, words)
 	sort.SliceStable(blocks, func(i, j int) bool {
 		a, b := blocks[i], blocks[j]
 		if a.start != b.start {
@@ -345,10 +353,8 @@ func verifySourceCoverage(blocks []block, en, zh map[int]Cue) error {
 	return nil
 }
 
-// buildBlocks turns mapping groups into timed events. It is a direct port of
-// the prototype build_blocks: English timing is the outer anchor, 1:N borrows
-// Chinese internal cuts, and M:N keeps the complete Chinese group on every
-// English slice.
+// buildBlocks anchors groups to English timing. Short text can stay joined;
+// longer Chinese groups reuse source internal cuts instead of a full hold.
 func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []block {
 	var result []block
 	for groupIndex, group := range mapping.Groups {
@@ -415,6 +421,10 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 			continue
 		}
 		if len(es) == 1 {
+			if zhJoinable && !es[0].MultiSpeaker && !top {
+				result = append(result, makeBlock(es[0].Start, es[0].End, es, zs, strategyOneToOne))
+				continue
+			}
 			// Native Chinese starts supply internal boundaries, never outer bounds.
 			bounds := []int{es[0].Start}
 			for _, cue := range zs[1:] {
@@ -438,7 +448,7 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 			continue
 		}
 
-		// M:N: the complete Chinese group stays in source order on every slice.
+		var slices []block
 		for i, cue := range es {
 			end := cue.End
 			if i+1 < len(es) && es[i+1].Start-end > 0 && es[i+1].Start-end <= cfg.FillGapMS {
@@ -448,8 +458,16 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 			if len(zs) == 1 {
 				strategy = strategyNToOne
 			}
-			result = append(result, makeBlock(cue.Start, end, []Cue{cue}, zs, strategy))
+			slices = append(slices, makeBlock(cue.Start, end, []Cue{cue}, zs, strategy))
 		}
+		multi := false
+		for _, cue := range append(append([]Cue{}, es...), zs...) {
+			multi = multi || cue.MultiSpeaker
+		}
+		if len(zs) > 1 && !zhJoinable && !multi && !top {
+			slices = splitChineseSources(slices, zs)
+		}
+		result = append(result, slices...)
 	}
 	return result
 }
@@ -531,6 +549,20 @@ func joinable(cues []Cue, limit, gap, span int) bool {
 func startsWithDash(text string) bool {
 	text = strings.TrimLeft(text, " \t\r\n")
 	return strings.HasPrefix(text, "-") || strings.HasPrefix(text, "–") || strings.HasPrefix(text, "—")
+}
+
+// wrapSourceDisplay retains original single lines and speaker boundaries.
+// Joined source cues still use the configured display limits.
+func wrapSourceDisplay(text, lang string, limit int, balanced bool, cues []Cue) string {
+	if len(cues) == 1 && compactText(cues[0].Plain, false) == compactText(text, false) {
+		if sourceSingleLine(cues[0].Plain) {
+			return text
+		}
+		if cues[0].MultiSpeaker && len([]rune(text)) > limit {
+			return cues[0].Plain
+		}
+	}
+	return wrapDisplay(text, lang, limit, balanced)
 }
 
 // wrapDisplay is a deterministic presentation transform. It only inserts line
@@ -669,12 +701,18 @@ func layoutBlocks(blocks []block, en, zh map[int]Cue, geometry renderGeometry, e
 	for i, b := range blocks {
 		ztext := joinCues(zh, b.zhIDs, "　")
 		etext := joinCues(en, b.enIDs, " ")
+		if b.zhText != nil {
+			ztext = *b.zhText
+		}
+		if b.enText != nil {
+			etext = *b.enText
+		}
 		hold := b.strategy == strategyMNReview
 		if ztext != "" {
-			ztext = wrapDisplay(ztext, "zh", geometry.zhChars, hold)
+			ztext = wrapSourceDisplay(ztext, "zh", geometry.zhChars, hold, cuesFor(zh, b.zhIDs))
 		}
 		if etext != "" {
-			etext = wrapDisplay(etext, "en", geometry.enChars, false)
+			etext = wrapSourceDisplay(etext, "en", geometry.enChars, false, cuesFor(en, b.enIDs))
 		}
 		height := float64(lineCount(ztext))*geometry.zhLineHeight() +
 			float64(lineCount(etext))*geometry.enLineHeight() + geometry.blockPadding
