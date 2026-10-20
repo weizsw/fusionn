@@ -15,13 +15,28 @@ services:
       timeout: 3s
       retries: 5
 
+  word-align:
+    image: fusionn-word-align:latest
+    build: ./services/word-align
+    restart: unless-stopped
+    cpus: 4
+    mem_limit: 6g
+    volumes:
+      - huggingface_cache:/root/.cache/huggingface
+    environment:
+      ALIGN_THREADS: "4"
+      ALIGN_IDLE_SECONDS: "300"
+
   fusionn:
     image: fusionn:latest
+    build: .
     container_name: fusionn
     restart: unless-stopped
     depends_on:
       redis:
         condition: service_healthy
+      word-align:
+        condition: service_started
     ports:
       - "8080:8080"
     volumes:
@@ -37,6 +52,7 @@ services:
     environment:
       ENV: production
       CONFIG_PATH: /app/config/config.yaml
+      FUSIONN_SUBTITLE_LLM_WORD_ALIGN_URL: ${FUSIONN_SUBTITLE_LLM_WORD_ALIGN_URL-http://word-align:8767}
       # Override specific config values if needed
       # FUSIONN_REDIS_HOST: redis
       # FUSIONN_REDIS_PORT: 6379

@@ -18,13 +18,14 @@ type FFProbeOutput struct {
 
 // StreamInfo represents a single stream from ffprobe.
 type StreamInfo struct {
-	Index       int               `json:"index"`
-	CodecType   string            `json:"codec_type"`
-	CodecName   string            `json:"codec_name"`
-	Width       int               `json:"width"`
-	Height      int               `json:"height"`
-	Tags        map[string]string `json:"tags"`
-	Disposition map[string]int    `json:"disposition"`
+	Index         int               `json:"index"`
+	CodecType     string            `json:"codec_type"`
+	CodecName     string            `json:"codec_name"`
+	Width         int               `json:"width"`
+	Height        int               `json:"height"`
+	ChannelLayout string            `json:"channel_layout"`
+	Tags          map[string]string `json:"tags"`
+	Disposition   map[string]int    `json:"disposition"`
 }
 
 // FFProbe executes ffprobe to list all streams in a video file.

@@ -1,0 +1,9 @@
+.git
+.pi
+.env
+.env.*
+config/config.yaml
+config/config.yml
+**/.venv
+**/__pycache__
+**/*.log

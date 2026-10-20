@@ -213,7 +213,17 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 		return err
 	}
 
-	rendered, err := subtitlellm.Render(bundle, mapping, p.llmConfig, p.styleConfig, width, height)
+	words, wordErr := subtitlellm.AlignWords(ctx, pctx.VideoPath, bundle, p.llmConfig)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if wordErr != nil {
+		log.Warnf("Word alignment stopped; remaining cues use proportional timing: %v", wordErr)
+	}
+	if len(words) > 0 {
+		log.Infof("Received word timestamps for %d long English cues", len(words))
+	}
+	rendered, err := subtitlellm.RenderWithWordTimings(bundle, mapping, p.llmConfig, p.styleConfig, width, height, words)
 	if err != nil {
 		return fmt.Errorf("render bilingual subtitles: %w", err)
 	}

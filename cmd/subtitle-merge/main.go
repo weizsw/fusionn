@@ -122,7 +122,14 @@ func execute(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	data, err := subtitlellm.Render(bundle, mapping, cfg.Subtitle.LLM, cfg.Subtitle.ASSStyle, width, height)
+	words, wordErr := subtitlellm.AlignWords(ctx, *video, bundle, cfg.Subtitle.LLM)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if wordErr != nil {
+		fmt.Fprintf(os.Stderr, "Word alignment stopped; remaining cues use proportional timing: %v\n", wordErr)
+	}
+	data, err := subtitlellm.RenderWithWordTimings(bundle, mapping, cfg.Subtitle.LLM, cfg.Subtitle.ASSStyle, width, height, words)
 	if err != nil {
 		return err
 	}
@@ -132,7 +139,7 @@ func execute(ctx context.Context) error {
 	if err := os.WriteFile(filepath.Join(*out, "bilingual.ass"), data, 0644); err != nil {
 		return err
 	}
-	for name, value := range map[string]any{"sources.json": bundle, "alignment/mapping.json": mapping, "alignment/audit.json": audit, "run.json": map[string]any{"seconds": time.Since(started).Seconds(), "width": width, "height": height, "source_fingerprint": bundle.Fingerprint, "http_attempts": audit.HTTPAttempts, "mapping_groups": len(mapping.Groups)}} {
+	for name, value := range map[string]any{"sources.json": bundle, "alignment/mapping.json": mapping, "alignment/audit.json": audit, "word-timings.json": words, "run.json": map[string]any{"seconds": time.Since(started).Seconds(), "width": width, "height": height, "source_fingerprint": bundle.Fingerprint, "http_attempts": audit.HTTPAttempts, "mapping_groups": len(mapping.Groups), "word_timing_cues": len(words)}} {
 		target := filepath.Join(*out, name)
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return err
@@ -145,6 +152,6 @@ func execute(ctx context.Context) error {
 			return err
 		}
 	}
-	fmt.Printf("ASS: %s (HTTP requests: %d, cache hits: %d)\n", filepath.Join(*out, "bilingual.ass"), audit.HTTPAttempts, audit.CacheHits)
+	fmt.Printf("ASS: %s (LLM HTTP requests: %d, cache hits: %d, word timing results: %d)\n", filepath.Join(*out, "bilingual.ass"), audit.HTTPAttempts, audit.CacheHits, len(words))
 	return nil
 }
