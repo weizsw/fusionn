@@ -213,9 +213,11 @@ func TestScenario09_FallbackBelowPointEightSecondsStaysWholeMultiline(t *testing
 	assertGlyphs(t, events[0].text, "第一部分比较长第二部分比较长English stays.")
 }
 
-// Scenario 10: 四行双人对白，另一侧空闲 -> 第一位说话人的一中一英在上，第二位在下
+// Scenario 10: 四行对白无法合并，对侧空闲且说话人归属可靠 -> 第一位说话人的一中一英在上，第二位在下
 func TestScenario10_FourLineMultiSpeakerOppositeFreePartitionsTopBottom(t *testing.T) {
 	cfg := renderTestConfig()
+	cfg.ZhChars = 10 // Merged Chinese exceeds cap, cannot merge
+	cfg.EnChars = 20 // Merged English exceeds cap, cannot merge
 	plainZh := "- 第一位说话人台词\n- 第二位说话人台词"
 	plainEn := "- Speaker one line.\n- Speaker two line."
 	bundle := makeBundle(
@@ -244,10 +246,10 @@ func TestScenario10_FourLineMultiSpeakerOppositeFreePartitionsTopBottom(t *testi
 	assertGlyphs(t, events[1].text, "- 第二位说话人台词- Speaker two line.")
 }
 
-// Scenario 11: 三行双人对白，合并后可放一行 -> 双行语言合成一行，允许超过该语言配置的字符上限
-func TestScenario11_ThreeLineMultiSpeakerFitsWidthFlattensToOneLine(t *testing.T) {
+// Scenario 11: 对白字幕合并未超字符上限且宽度合格 -> 双行语言合成一行，保留说话人标记
+func TestScenario11_ThreeLineDialogueInCapFlattens(t *testing.T) {
 	cfg := renderTestConfig()
-	cfg.ZhChars = 10 // Merged Chinese will exceed 10 chars, but fits width
+	cfg.ZhChars = 15 // Merged Chinese is 12 runes <= 15
 	plainZh := "- 什么？\n- 瑞安"
 	plainEn := "- What?   - Ryan."
 	bundle := makeBundle(
@@ -256,7 +258,6 @@ func TestScenario11_ThreeLineMultiSpeakerFitsWidthFlattensToOneLine(t *testing.T
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
 
-	// Override font measurer to confirm it fits width
 	oldHook := fontWidthMeasurerOverride
 	defer func() { fontWidthMeasurerOverride = oldHook }()
 	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
@@ -275,6 +276,68 @@ func TestScenario11_ThreeLineMultiSpeakerFitsWidthFlattensToOneLine(t *testing.T
 		t.Fatalf("expected flattened to 1 Chinese line + 1 English line (1 separator), got text: %s", events[0].text)
 	}
 	assertGlyphs(t, events[0].text, "- 什么？- 瑞安- What? - Ryan.")
+}
+
+// Scenario 11b: 对白字幕合并超字符上限，即使宽度放得下也不允许超限合并
+func TestScenario11_ThreeLineDialogueOverCapForbidden(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 10 // Merged Chinese is 12 runes > 10 (over-cap)
+	plainZh := "- 什么？\n- 瑞安"
+	plainEn := "- What?   - Ryan."
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: plainEn, Plain: plainEn, MultiSpeaker: true}},
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "- 什么？\n- 瑞安", Plain: plainZh, MultiSpeaker: true}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+
+	oldHook := fontWidthMeasurerOverride
+	defer func() { fontWidthMeasurerOverride = oldHook }()
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
+		return 300.0, true // width fits, but cap forbids merging
+	}
+
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if strings.Count(events[0].text, `\N`) < 2 {
+		t.Fatalf("dialogue over-cap must NOT merge even if width fits; expected 3 lines, got text: %s", events[0].text)
+	}
+}
+
+// Scenario 11c: 对称英文对白在字符上限内合并
+func TestScenario11_ThreeLineDialogueSymmetricEnglishInCapFlattens(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.EnChars = 20
+	plainZh := "- 答复"
+	plainEn := "- What?\n- Ryan."
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: plainEn, Plain: plainEn, MultiSpeaker: true}},
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: plainZh, Plain: plainZh, MultiSpeaker: true}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+
+	oldHook := fontWidthMeasurerOverride
+	defer func() { fontWidthMeasurerOverride = oldHook }()
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
+		return 300.0, true
+	}
+
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if strings.Count(events[0].text, `\N`) != 1 {
+		t.Fatalf("expected 1 Chinese line + 1 English line, got text: %s", events[0].text)
+	}
 }
 
 // Scenario 12: 三行合并后过宽 -> 保留原三行与原字号
@@ -310,8 +373,10 @@ func TestScenario12_ThreeLineMultiSpeakerTooWideKeepsThreeLines(t *testing.T) {
 // Scenario 13: 四行对白需要的另一侧已有字幕 -> 保留原布局
 func TestScenario13_FourLineMultiSpeakerOppositeOccupiedKeepsOriginal(t *testing.T) {
 	cfg := renderTestConfig()
+	cfg.ZhChars = 10 // Merged Chinese exceeds cap, cannot merge
+	cfg.EnChars = 20 // Merged English exceeds cap, cannot merge
 	plainZh := "- 第一位说话人\n- 第二位说话人"
-	plainEn := "- Speaker one\n- Speaker two"
+	plainEn := "- Speaker one line\n- Speaker two line"
 	bundle := makeBundle(
 		[]Cue{
 			{ID: 1, Start: 1000, End: 5000, Display: plainEn, Plain: plainEn, MultiSpeaker: true},
@@ -877,15 +942,21 @@ func TestOrdinaryFourLineLastResortPartitionWithoutMarkers(t *testing.T) {
 	cfg := renderTestConfig()
 	cfg.ZhChars = 6
 	cfg.EnChars = 20
-	// 1.2s total: no side can produce two >=0.8s fragments, and both merged
-	// strings exceed their caps, so the block stays at four lines.
+	// 1.2s total: no side can produce two >=0.8s fragments, and width measurement
+	// fails (too wide to merge into 1 line), so it stays at 4 lines and partitions.
 	bundle := makeBundle(
 		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "First english line. Second english line.",
-			Plain: "First english segment here.\nSecond english segment."}},
+			Plain: "First english line.\nSecond english line."}},
 		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "第一段中文 第二段中文",
 			Plain: "第一段中文\n第二段中文"}},
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+
+	oldHook := fontWidthMeasurerOverride
+	defer func() { fontWidthMeasurerOverride = oldHook }()
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
+		return 2000, true // too wide to merge into 1 line
+	}
 
 	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 	if err != nil {

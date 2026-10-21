@@ -857,11 +857,12 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 		}
 	}
 
-	// Pass 2: three-line merge.
+	// Pass 2: late width merge.
 	//
 	// Ordinary subtitles may merge past the configured cap here only because
 	// temporal splitting already ran (splitLongBlocks) and this is the late
-	// resort; the merge still needs reliable measured width. Dialogue subtitles
+	// resort; the merge still needs reliable measured width. Both 3-line and
+	// 4-line cases attempt to merge any 2-line language side. Dialogue subtitles
 	// (two speakers in one source event) never get the over-cap exemption.
 	usableWidth := geometry.canvasWidth - geometry.marginL - geometry.marginR
 	for i := range blocks {
@@ -869,17 +870,19 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 		ztext, etext := blockDisplayText(*b, en, zh, geometry)
 		zhLines := sourceLines(ztext)
 		enLines := sourceLines(etext)
-		if len(zhLines)+len(enLines) != 3 {
+		totalLines := len(zhLines) + len(enLines)
+		if totalLines != 3 && totalLines != 4 {
 			continue
 		}
 		multi := blockIsDialogue(*b, en, zh)
-		mergeSide := func(lines []string, font string, size float64, cap int) {
+		mergeSide := func(lines []string, font string, size float64, cap int, isZH bool) {
 			merged := lines[0] + mergeSeparator + lines[1]
-			if multi && utf8.RuneCountInString(compactText(merged, false)) > cap {
-				return // dialogue keeps the configured cap, no exemption
+			// Dialogue subtitles never exceed their configured cap, including whitespace.
+			if multi && utf8.RuneCountInString(merged) > cap {
+				return
 			}
 			if w, ok := MeasureTextWidth(merged, font, size, style.ScaleX, style.Spacing, style.Bold, ""); ok && w <= usableWidth {
-				if font == style.PrimaryFont {
+				if isZH {
 					b.zhText = &merged
 					b.zhFlattened = true
 				} else {
@@ -888,10 +891,11 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 				}
 			}
 		}
-		if len(zhLines) == 2 && len(enLines) == 1 {
-			mergeSide(zhLines, style.PrimaryFont, geometry.zhFontSize, geometry.zhChars)
-		} else if len(enLines) == 2 && len(zhLines) == 1 {
-			mergeSide(enLines, style.SecondaryFont, geometry.enFontSize, geometry.enChars)
+		if len(zhLines) == 2 {
+			mergeSide(zhLines, style.PrimaryFont, geometry.zhFontSize, geometry.zhChars, true)
+		}
+		if len(enLines) == 2 {
+			mergeSide(enLines, style.SecondaryFont, geometry.enFontSize, geometry.enChars, false)
 		}
 	}
 
