@@ -37,17 +37,19 @@ const (
 
 // block is one rendered bilingual event before positioning.
 type block struct {
-	start     int
-	end       int
-	enIDs     []int
-	zhIDs     []int
-	group     int
-	strategy  string
-	top       bool
-	alignment int
-	position  *[2]float64
-	enText    *string
-	zhText    *string
+	start       int
+	end         int
+	enIDs       []int
+	zhIDs       []int
+	group       int
+	strategy    string
+	top         bool
+	alignment   int
+	position    *[2]float64
+	enText      *string
+	zhText      *string
+	zhFlattened bool
+	enFlattened bool
 }
 
 // Render produces bilingual ASS from an immutable source bundle and ID mapping.
@@ -687,6 +689,28 @@ func absInt(v int) int {
 	return v
 }
 
+func isSpeakerLine(line string) bool {
+	line = strings.TrimSpace(line)
+	return strings.HasPrefix(line, "-") || strings.HasPrefix(line, "–") || strings.HasPrefix(line, "—")
+}
+
+func hasTwoSpeakers(lines []string) bool {
+	if len(lines) != 2 {
+		return false
+	}
+	return isSpeakerLine(lines[0]) && isSpeakerLine(lines[1])
+}
+
+func countSpeakerMarkers(line string) int {
+	count := 0
+	for _, word := range strings.Fields(line) {
+		if strings.HasPrefix(word, "-") || strings.HasPrefix(word, "–") || strings.HasPrefix(word, "—") {
+			count++
+		}
+	}
+	return count
+}
+
 // applySpatialPolicies executes multi-speaker spatial layout and on-screen text
 // collision avoidance across the full episode timeline.
 func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, geometry renderGeometry, style config.ASSStyleConfig) []block {
@@ -829,14 +853,20 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 		enLines := sourceLines(etext)
 		if len(zhLines)+len(enLines) == 3 {
 			if len(zhLines) == 2 && len(enLines) == 1 {
-				merged := zhLines[0] + "   " + zhLines[1]
-				if w, ok := MeasureTextWidth(merged, style.PrimaryFont, geometry.zhFontSize, style.ScaleX, style.Spacing, ""); ok && w <= usableWidth {
-					b.zhText = &merged
+				if hasTwoSpeakers(zhLines) && countSpeakerMarkers(enLines[0]) >= 2 {
+					merged := zhLines[0] + "   " + zhLines[1]
+					if w, ok := MeasureTextWidth(merged, style.PrimaryFont, geometry.zhFontSize, style.ScaleX, style.Spacing, ""); ok && w <= usableWidth {
+						b.zhText = &merged
+						b.zhFlattened = true
+					}
 				}
 			} else if len(enLines) == 2 && len(zhLines) == 1 {
-				merged := enLines[0] + "   " + enLines[1]
-				if w, ok := MeasureTextWidth(merged, style.SecondaryFont, geometry.enFontSize, style.ScaleX, style.Spacing, ""); ok && w <= usableWidth {
-					b.enText = &merged
+				if hasTwoSpeakers(enLines) && countSpeakerMarkers(zhLines[0]) >= 2 {
+					merged := enLines[0] + "   " + enLines[1]
+					if w, ok := MeasureTextWidth(merged, style.SecondaryFont, geometry.enFontSize, style.ScaleX, style.Spacing, ""); ok && w <= usableWidth {
+						b.enText = &merged
+						b.enFlattened = true
+					}
 				}
 			}
 		}
@@ -870,10 +900,15 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 		zhLines := sourceLines(ztext)
 		enLines := sourceLines(etext)
 		if len(zhLines) == 2 && len(enLines) == 2 {
+			if !hasTwoSpeakers(zhLines) || !hasTwoSpeakers(enLines) {
+				finalBlocks = append(finalBlocks, b)
+				continue
+			}
 			destSide := !b.top
 			destFree := true
 			bStart := roundCentiseconds(b.start)
 			bEnd := roundCentiseconds(b.end)
+			// Check against original blocks
 			for j, other := range blocks {
 				if j == i {
 					continue
@@ -887,6 +922,19 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 					}
 				}
 			}
+			// Check against newly created blocks already assigned in finalBlocks
+			if destFree {
+				for _, fb := range finalBlocks {
+					if fb.top == destSide {
+						fbStart := roundCentiseconds(fb.start)
+						fbEnd := roundCentiseconds(fb.end)
+						if max(bStart, fbStart) < min(bEnd, fbEnd) {
+							destFree = false
+							break
+						}
+					}
+				}
+			}
 			if destFree {
 				// Speaker 1 Chinese & English on top
 				b1 := b
@@ -897,6 +945,8 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 				t1En := enLines[0]
 				b1.zhText = &t1Zh
 				b1.enText = &t1En
+				b1.zhFlattened = true
+				b1.enFlattened = true
 
 				// Speaker 2 Chinese & English on bottom
 				b2 := b
@@ -907,6 +957,8 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 				t2En := enLines[1]
 				b2.zhText = &t2Zh
 				b2.enText = &t2En
+				b2.zhFlattened = true
+				b2.enFlattened = true
 
 				finalBlocks = append(finalBlocks, b1, b2)
 				continue
@@ -933,15 +985,25 @@ func layoutBlocks(blocks []block, en, zh map[int]Cue, geometry renderGeometry, e
 		hold := b.strategy == strategyMNReview
 		ztext := joinCues(zh, b.zhIDs, "　")
 		etext := joinCues(en, b.enIDs, " ")
-		if b.zhText != nil {
+		if b.zhFlattened && b.zhText != nil {
 			ztext = *b.zhText
-		} else if ztext != "" {
-			ztext = wrapSourceDisplay(ztext, "zh", geometry.zhChars, hold, cuesFor(zh, b.zhIDs))
+		} else {
+			if b.zhText != nil {
+				ztext = *b.zhText
+			}
+			if ztext != "" {
+				ztext = wrapSourceDisplay(ztext, "zh", geometry.zhChars, hold, cuesFor(zh, b.zhIDs))
+			}
 		}
-		if b.enText != nil {
+		if b.enFlattened && b.enText != nil {
 			etext = *b.enText
-		} else if etext != "" {
-			etext = wrapSourceDisplay(etext, "en", geometry.enChars, false, cuesFor(en, b.enIDs))
+		} else {
+			if b.enText != nil {
+				etext = *b.enText
+			}
+			if etext != "" {
+				etext = wrapSourceDisplay(etext, "en", geometry.enChars, false, cuesFor(en, b.enIDs))
+			}
 		}
 		height := float64(lineCount(ztext))*geometry.zhLineHeight() +
 			float64(lineCount(etext))*geometry.enLineHeight() + geometry.blockPadding

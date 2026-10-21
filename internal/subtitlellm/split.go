@@ -98,7 +98,7 @@ func sourceLines(plain string) []string {
 
 // trySyncSplit attempts synchronized temporal splitting at original line
 // boundaries when native Chinese and English both have two meaningful lines.
-// It requires >= 1.2s per fragment.
+// It requires >= 1.2s per fragment on the real candidate timestamps.
 func trySyncSplit(b block, enCue, zhCue Cue, words WordTimings) ([]block, bool) {
 	if enCue.MultiSpeaker || zhCue.MultiSpeaker || b.top {
 		return nil, false
@@ -126,14 +126,13 @@ func trySyncSplit(b block, enCue, zhCue Cue, words WordTimings) ([]block, bool) 
 			}
 		}
 	}
-	// Priority 2: Proportional cut
+	// Priority 2: Proportional cut based on natural text proportion
 	if !foundCut {
 		cuts := proportionalCuts(enLines, b.start, b.end)
 		if len(cuts) == 1 {
 			c := cuts[0]
-			earliest := b.start + minSyncFragmentMS
-			latest := b.end - minSyncFragmentMS
-			c = min(latest, max(earliest, c))
+			// Test the real natural proportional cut against the 1.2s floor.
+			// Do NOT artificially clamp an ineligible cut into [start+1200, end-1200].
 			if roundCentiseconds(c)-roundCentiseconds(b.start) >= minSyncFragmentMS &&
 				roundCentiseconds(b.end)-roundCentiseconds(c) >= minSyncFragmentMS {
 				cut = c
@@ -173,7 +172,9 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 	var remaining []block
 
 	for _, b := range blocks {
-		if len(b.enIDs) == 1 && len(b.zhIDs) == 1 {
+		// Only true 1:1 mapping groups can undergo 2+2 synchronized splitting.
+		// Slices of N:1, 1:N, or M:N groups must retain unified group planning.
+		if b.strategy == strategyOneToOne && len(b.enIDs) == 1 && len(b.zhIDs) == 1 {
 			enCue, zhCue := en[b.enIDs[0]], zh[b.zhIDs[0]]
 			if synced, ok := trySyncSplit(b, enCue, zhCue, words); ok {
 				syncSplitResult = append(syncSplitResult, synced...)
@@ -206,7 +207,7 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 			if p == nil {
 				text := joinCues(index, ids, separator)
 				isProtected := protected[b.group] || b.top
-				if len(b.enIDs) == 1 && len(b.zhIDs) == 1 {
+				if b.strategy == strategyOneToOne && len(b.enIDs) == 1 && len(b.zhIDs) == 1 {
 					enCue, zhCue := en[b.enIDs[0]], zh[b.zhIDs[0]]
 					if !enCue.MultiSpeaker && !zhCue.MultiSpeaker && !b.top {
 						enLines := sourceLines(enCue.Plain)
@@ -281,7 +282,7 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 		}
 		sort.Ints(bounds)
 		for i := 0; i+1 < len(bounds); i++ {
-			if bounds[i] == bounds[i+1] {
+			if roundCentiseconds(bounds[i]) >= roundCentiseconds(bounds[i+1]) {
 				continue
 			}
 			child := b

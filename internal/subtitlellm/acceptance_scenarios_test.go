@@ -525,3 +525,175 @@ func TestOldMappingWithoutKindPreservesPositionAndDigest(t *testing.T) {
 		}
 	}
 }
+
+// Regression for P1 Issue 1: Held source in N:1 mapping MUST NOT replay A -> B -> A -> B
+func TestRegression_NToOneHeldSourceDoesNotReplayTwice(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.EnChars = 65
+	cfg.ZhChars = 20
+	bundle := makeBundle(
+		[]Cue{
+			{ID: 1, Start: 1000, End: 3000, Display: "First English cue.", Plain: "First English cue\nfirst part."},
+			{ID: 2, Start: 3000, End: 5000, Display: "Second English cue.", Plain: "Second English cue\nsecond part."},
+		},
+		[]Cue{
+			{ID: 1, Start: 1000, End: 5000, Display: "第一段中文内容 第二段中文内容", Plain: "第一段中文内容\n第二段中文内容"},
+		},
+	)
+	// N:1 mapping group
+	mapping := makeMapping(bundle, []Group{
+		{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+	})
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+
+	// Collect Chinese lines in chronological order
+	var zhSeen []string
+	for _, e := range events {
+		clean := strings.Split(e.text, `\N`)[0]
+		zhSeen = append(zhSeen, clean)
+	}
+
+	// Verify Chinese does NOT repeat A -> B -> A -> B
+	for i := 0; i < len(zhSeen)-1; i++ {
+		if zhSeen[i] == "第二段中文内容" && i+1 < len(zhSeen) && zhSeen[i+1] == "第一段中文内容" {
+			t.Fatalf("Chinese replayed earlier line out of order (A-B-A-B defect): %v", zhSeen)
+		}
+	}
+	// Count total occurrences of part 1
+	part1Count := 0
+	for _, s := range zhSeen {
+		if strings.Contains(s, "第一段中文内容") {
+			part1Count++
+		}
+	}
+	// It should appear once, or as a continuous hold, never re-split and restarted in the second slice
+	if part1Count > 1 && strings.Contains(zhSeen[len(zhSeen)-1], "第一段中文内容") {
+		t.Fatalf("Chinese part 1 restarted at the end: %v", zhSeen)
+	}
+}
+
+// Regression for P1 Issue 2: Real duration gate for native 2+2 sync split (highly unbalanced lines)
+func TestRegression_UnbalancedTwoPlusTwoReachesLengthFallback(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.EnChars = 65
+	cfg.ZhChars = 20
+	// Total duration 3000ms (> 2400ms).
+	// But English line 1 has 2 runes, line 2 has 40 runes.
+	// Natural proportion: 2/42 * 3000ms = ~142ms << 1200ms.
+	// Sync split MUST fail because real candidate cut < 1.2s floor.
+	// Then it falls back: merged lengths (EN 43 <= 65, ZH 16 <= 20) -> both under limit, whole sentence (1 event)!
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 4000, Display: "Hi A very long second sentence that takes up most time.", Plain: "Hi\nA very long second sentence that takes up most time."}},
+		[]Cue{{ID: 1, Start: 1000, End: 4000, Display: "嗨 这里是第二句中文比较长", Plain: "嗨\n这里是第二句中文比较长"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 1 {
+		t.Fatalf("unbalanced 2+2 should NOT force sync split into tiny fragment, should fall back to 1 whole event, got %d events", len(events))
+	}
+	assertGlyphs(t, events[0].text, "嗨这里是第二句中文比较长Hi A very long second sentence that takes up most time.")
+}
+
+// Regression for P1 Issue 3: Overlapping 4-line multi-speaker groups do NOT double-allocate Top
+func TestRegression_OverlappingFourLineMultiSpeakerDoesNotDoubleAllocateTop(t *testing.T) {
+	cfg := renderTestConfig()
+	plainZh1 := "- 说话人一\n- 说话人二"
+	plainEn1 := "- Speaker one\n- Speaker two"
+	plainZh2 := "- 说话人三\n- 说话人四"
+	plainEn2 := "- Speaker three\n- Speaker four"
+
+	// Group 1: 1000-5000ms. Group 2: 3000-7000ms (overlaps 3000-5000ms).
+	bundle := makeBundle(
+		[]Cue{
+			{ID: 1, Start: 1000, End: 5000, Display: plainEn1, Plain: plainEn1, MultiSpeaker: true},
+			{ID: 2, Start: 3000, End: 7000, Display: plainEn2, Plain: plainEn2, MultiSpeaker: true},
+		},
+		[]Cue{
+			{ID: 1, Start: 1000, End: 5000, Display: plainZh1, Plain: plainZh1, MultiSpeaker: true},
+			{ID: 2, Start: 3000, End: 7000, Display: plainZh2, Plain: plainZh2, MultiSpeaker: true},
+		},
+	)
+	mapping := makeMapping(bundle, []Group{
+		{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+		{ENIDs: []int{2}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+	})
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+
+	// Group 1 partitions into Top (Speaker 1) and Bottom (Speaker 2)
+	// Group 2 MUST see Top occupied during 3000-5000ms, and MUST NOT allocate Top!
+	group2TopFound := false
+	for _, e := range events {
+		if (strings.Contains(e.text, "说话人三") || strings.Contains(e.text, "说话人四")) && strings.HasPrefix(e.style, "Top") {
+			group2TopFound = true
+		}
+	}
+	if group2TopFound {
+		t.Fatal("Group 2 double-allocated top while Group 1 already occupied top during overlap")
+	}
+}
+
+// Regression for P1 Issue 4: Asymmetric multi-speaker without two speakers on both sides keeps original layout
+func TestRegression_AsymmetricMultiSpeakerWithoutTwoSpeakersKeepsOriginal(t *testing.T) {
+	cfg := renderTestConfig()
+	// Chinese has 2 speaker lines.
+	// English is an ordinary long sentence that wraps to 2 lines without speaker markers.
+	plainZh := "- 说话人一\n- 说话人二"
+	plainEn := "This is an ordinary long English sentence\nthat wraps to two lines without speaker dashes."
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: plainEn, Plain: plainEn, MultiSpeaker: true}},
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: plainZh, Plain: plainZh, MultiSpeaker: true}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+
+	// Must NOT partition to top/bottom because English lacks two speaker lines
+	for _, e := range events {
+		if strings.HasPrefix(e.style, "Top") {
+			t.Fatalf("asymmetric multi-speaker should retain original bottom layout, got %q", e.style)
+		}
+	}
+}
+
+// Regression for P1 Issue 5: Held over-cap language still undergoes source-aware final wrapping
+func TestRegression_HeldOverCapLanguageStillUndergoesFinalWrapping(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.EnChars = 20
+	cfg.ZhChars = 10
+	// English cue splits in time (long).
+	// Chinese cue is held across English slices. It exceeds zh_chars (24 runes > 10).
+	// Even though b.zhText is set by timed split projection, it must still be wrapped by wrapSourceDisplay.
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "First English slice and second English slice.", Plain: "First English slice\nand second English slice."}},
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "这是一句非常长的中文句子它必须在最终排版中被正确折行", Plain: "这是一句非常长的中文句子它必须在最终排版中被正确折行"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	for i, e := range events {
+		// Chinese part must contain \N because 24 runes > 10 chars limit!
+		parts := strings.Split(e.text, `{\rEng}`)
+		zhText := parts[0]
+		if !strings.Contains(zhText, `\N`) {
+			t.Fatalf("event %d Chinese text was not wrapped despite exceeding zh_chars: %s", i, zhText)
+		}
+	}
+}
