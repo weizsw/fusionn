@@ -29,6 +29,13 @@ const (
 	OriginRestored = "restored"
 )
 
+// Mapping group kinds.
+const (
+	KindDialogue     = "dialogue"
+	KindOnScreenText = "on_screen_text"
+	KindUnknown      = "unknown"
+)
+
 // MaxDistanceMS is the maximum per-cue interval distance allowed between the
 // two languages in one mapping group. It matches the prototype default.
 const MaxDistanceMS = 8000
@@ -73,6 +80,7 @@ type Group struct {
 	ZHIDs       []int  `json:"zh_ids"`
 	Layer       string `json:"layer"`
 	Origin      string `json:"origin"`
+	Kind        string `json:"kind,omitempty"`
 	OwnerWindow int    `json:"-"`
 
 	ownerWindowSet bool
@@ -80,11 +88,12 @@ type Group struct {
 
 // groupJSON is the wire representation used to preserve owner_window presence.
 type groupJSON struct {
-	ENIDs       []int  `json:"en_ids"`
-	ZHIDs       []int  `json:"zh_ids"`
-	Layer       string `json:"layer"`
-	Origin      string `json:"origin"`
-	OwnerWindow *int   `json:"owner_window,omitempty"`
+	ENIDs       []int   `json:"en_ids"`
+	ZHIDs       []int   `json:"zh_ids"`
+	Layer       string  `json:"layer"`
+	Origin      string  `json:"origin"`
+	Kind        *string `json:"kind,omitempty"`
+	OwnerWindow *int    `json:"owner_window,omitempty"`
 }
 
 // MarshalJSON writes owner_window for model groups and for groups decoded with
@@ -95,6 +104,10 @@ func (g Group) MarshalJSON() ([]byte, error) {
 		ZHIDs:  intsOrEmpty(g.ZHIDs),
 		Layer:  g.Layer,
 		Origin: g.Origin,
+	}
+	if g.Kind != "" && g.Kind != KindUnknown {
+		k := g.Kind
+		out.Kind = &k
 	}
 	if g.Origin == OriginModel || g.ownerWindowSet {
 		owner := g.OwnerWindow
@@ -113,6 +126,11 @@ func (g *Group) UnmarshalJSON(data []byte) error {
 	g.ZHIDs = raw.ZHIDs
 	g.Layer = raw.Layer
 	g.Origin = raw.Origin
+	if raw.Kind != nil {
+		g.Kind = *raw.Kind
+	} else {
+		g.Kind = ""
+	}
 	if raw.OwnerWindow != nil {
 		g.OwnerWindow = *raw.OwnerWindow
 		g.ownerWindowSet = true
@@ -309,6 +327,9 @@ func groupValue(g Group) map[string]any {
 	}
 	if g.Origin == OriginModel || g.ownerWindowSet {
 		out["owner_window"] = g.OwnerWindow
+	}
+	if g.Kind != "" && g.Kind != KindUnknown {
+		out["kind"] = g.Kind
 	}
 	return out
 }
