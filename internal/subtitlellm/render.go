@@ -727,6 +727,18 @@ func layoutBlocks(blocks []block, en, zh map[int]Cue, geometry renderGeometry, e
 	lanes := map[bool][]band{}
 	events := make([]renderedEvent, 0, len(blocks))
 	for i, b := range blocks {
+		if layouts[i].zhText == "" && layouts[i].enText == "" {
+			emptySource := true
+			for _, cue := range append(cuesFor(en, b.enIDs), cuesFor(zh, b.zhIDs)...) {
+				if strings.TrimSpace(cue.Plain) != "" || strings.TrimSpace(cue.Display) != "" {
+					emptySource = false
+					break
+				}
+			}
+			if emptySource {
+				continue
+			}
+		}
 		// ASS rounds to centiseconds; use that same clock for collision checks.
 		start := roundCentiseconds(b.start)
 		end := roundCentiseconds(b.end)
