@@ -20,20 +20,47 @@ type WordTiming struct {
 // WordTimings indexes optional English word timestamps by source cue ID.
 type WordTimings map[int][]WordTiming
 
-// A new text fragment needs at least 1.2 seconds of continuous reading time.
+// minSyncFragmentMS is the minimum reading time per fragment for synchronized
+// temporal splitting of native 2+2 line boundaries.
+const minSyncFragmentMS = 1200
+
+// minFragmentMS is an alias for minSyncFragmentMS for backward compatibility.
+const minFragmentMS = minSyncFragmentMS
+
+// minFallbackFragmentMS is the anti-flash floor for per-language fallback fragments.
 // Existing short source events retain their original timing.
-const minFragmentMS = 1200
+const minFallbackFragmentMS = 800
 
 // WordAlignmentCues selects long English speech for optional audio alignment.
-// Original line breaks alone do not make a cue a candidate.
+// It includes cues exceeding the character cap as well as 2-line English dialogue
+// eligible for 2+2 synchronized splitting with a matching 2-line Chinese cue.
 func WordAlignmentCues(bundle Bundle, cfg config.LLMConfig) []Cue {
 	var result []Cue
+	zh2Lines := make(map[int]bool)
+	for _, z := range bundle.ZH {
+		if !z.MultiSpeaker && !z.Top && len(sourceLines(z.Plain)) == 2 {
+			zh2Lines[z.ID] = true
+		}
+	}
 	for _, cue := range bundle.EN {
-		if cue.MultiSpeaker || cue.Top || cue.End-cue.Start < 2*minFragmentMS || cue.End-cue.Start > 30000 {
+		if cue.MultiSpeaker || cue.Top || cue.End-cue.Start > 30000 {
 			continue
 		}
-		if len(textOptions(cue.Display, cue.Plain, cfg.EnChars, "en")) > 0 {
+		if cue.End-cue.Start >= 2*minFallbackFragmentMS && len(textOptions(cue.Display, cue.Plain, cfg.EnChars, "en")) > 0 {
 			result = append(result, cue)
+			continue
+		}
+		if cue.End-cue.Start >= 2*minSyncFragmentMS && len(sourceLines(cue.Plain)) == 2 {
+			hasMatchingZH := false
+			for _, z := range bundle.ZH {
+				if zh2Lines[z.ID] && (absInt(cue.Start-z.Start) <= 4000 || (cue.Start < z.End && z.Start < cue.End)) {
+					hasMatchingZH = true
+					break
+				}
+			}
+			if hasMatchingZH {
+				result = append(result, cue)
+			}
 		}
 	}
 	return result
@@ -59,12 +86,108 @@ func displayKey(group int, ids []int) string {
 	return fmt.Sprintf("%d:%v", group, ids)
 }
 
+// sourceLines splits source text into meaningful trimmed lines, ignoring
+// whitespace and empty lines.
+func sourceLines(plain string) []string {
+	var lines []string
+	for _, line := range strings.Split(plain, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			lines = append(lines, trimmed)
+		}
+	}
+	return lines
+}
+
+// trySyncSplit attempts synchronized temporal splitting at original line
+// boundaries when native Chinese and English both have two meaningful lines.
+// It requires >= 1.2s per fragment.
+func trySyncSplit(b block, enCue, zhCue Cue, cfg config.LLMConfig, words WordTimings) ([]block, bool) {
+	if enCue.MultiSpeaker || zhCue.MultiSpeaker || b.top {
+		return nil, false
+	}
+	enLines := sourceLines(enCue.Plain)
+	zhLines := sourceLines(zhCue.Plain)
+	if len(enLines) != 2 || len(zhLines) != 2 {
+		return nil, false
+	}
+	totalDuration := b.end - b.start
+	if totalDuration < 2*minSyncFragmentMS {
+		return nil, false
+	}
+	var cut int
+	foundCut := false
+	// Priority 1: Word alignment timestamps
+	if words != nil && len(words[enCue.ID]) >= 2 {
+		cuts := wordCuts(enCue.Display, enLines, words[enCue.ID])
+		if len(cuts) == 1 {
+			c := cuts[0]
+			if roundCentiseconds(c)-roundCentiseconds(b.start) >= minSyncFragmentMS &&
+				roundCentiseconds(b.end)-roundCentiseconds(c) >= minSyncFragmentMS {
+				cut = c
+				foundCut = true
+			}
+		}
+	}
+	// Priority 2: Proportional cut
+	if !foundCut {
+		cuts := proportionalCuts(enLines, b.start, b.end)
+		if len(cuts) == 1 {
+			c := cuts[0]
+			earliest := b.start + minSyncFragmentMS
+			latest := b.end - minSyncFragmentMS
+			c = min(latest, max(earliest, c))
+			if roundCentiseconds(c)-roundCentiseconds(b.start) >= minSyncFragmentMS &&
+				roundCentiseconds(b.end)-roundCentiseconds(c) >= minSyncFragmentMS {
+				cut = c
+				foundCut = true
+			}
+		}
+	}
+	if !foundCut {
+		return nil, false
+	}
+	t1En := enLines[0]
+	t1Zh := zhLines[0]
+	b1 := b
+	b1.start = b.start
+	b1.end = cut
+	b1.enText = &t1En
+	b1.zhText = &t1Zh
+	b1.strategy = strategyTimedSplit
+
+	t2En := enLines[1]
+	t2Zh := zhLines[1]
+	b2 := b
+	b2.start = cut
+	b2.end = b.end
+	b2.enText = &t2En
+	b2.zhText = &t2Zh
+	b2.strategy = strategyTimedSplit
+
+	return []block{b1, b2}, true
+}
+
 // splitLongBlocks plans held text once across all of its existing slices.
 // Projecting both language plans onto each slice preserves source gaps and
 // overlaps, and lets a short translation stay unchanged across new cuts.
 func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, words WordTimings) []block {
-	protected := map[int]bool{}
+	var syncSplitResult []block
+	var remaining []block
+
 	for _, b := range blocks {
+		if len(b.enIDs) == 1 && len(b.zhIDs) == 1 {
+			enCue, zhCue := en[b.enIDs[0]], zh[b.zhIDs[0]]
+			if synced, ok := trySyncSplit(b, enCue, zhCue, cfg, words); ok {
+				syncSplitResult = append(syncSplitResult, synced...)
+				continue
+			}
+		}
+		remaining = append(remaining, b)
+	}
+
+	protected := map[int]bool{}
+	for _, b := range remaining {
 		for _, cue := range append(cuesFor(en, b.enIDs), cuesFor(zh, b.zhIDs)...) {
 			if cue.MultiSpeaker {
 				protected[b.group] = true
@@ -73,7 +196,7 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 	}
 	plans := func(index map[int]Cue, english bool) map[string]*displayPlan {
 		result := map[string]*displayPlan{}
-		for _, b := range blocks {
+		for _, b := range remaining {
 			ids, separator := b.zhIDs, "　"
 			if english {
 				ids, separator = b.enIDs, " "
@@ -84,7 +207,29 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 			key := displayKey(b.group, ids)
 			p := result[key]
 			if p == nil {
-				p = &displayPlan{group: b.group, ids: ids, start: b.start, end: b.end, text: joinCues(index, ids, separator), protected: protected[b.group] || b.top}
+				text := joinCues(index, ids, separator)
+				isProtected := protected[b.group] || b.top
+				if len(b.enIDs) == 1 && len(b.zhIDs) == 1 {
+					enCue, zhCue := en[b.enIDs[0]], zh[b.zhIDs[0]]
+					if !enCue.MultiSpeaker && !zhCue.MultiSpeaker && !b.top {
+						enLines := sourceLines(enCue.Plain)
+						zhLines := sourceLines(zhCue.Plain)
+						if len(enLines) == 2 && len(zhLines) == 2 {
+							enMerged := strings.Join(enLines, " ")
+							zhMerged := strings.Join(zhLines, "　")
+							enOver := utf8.RuneCountInString(enMerged) > cfg.EnChars
+							zhOver := utf8.RuneCountInString(zhMerged) > cfg.ZhChars
+							if !enOver && !zhOver {
+								isProtected = true
+							} else if english && !enOver {
+								isProtected = true
+							} else if !english && !zhOver {
+								isProtected = true
+							}
+						}
+					}
+				}
+				p = &displayPlan{group: b.group, ids: ids, start: b.start, end: b.end, text: text, protected: isProtected}
 				if len(ids) == 1 {
 					p.plain = index[ids[0]].Plain
 				}
@@ -119,7 +264,8 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 	}
 
 	var result []block
-	for _, b := range blocks {
+	result = append(result, syncSplitResult...)
+	for _, b := range remaining {
 		ep, zp := enPlans[displayKey(b.group, b.enIDs)], zhPlans[displayKey(b.group, b.zhIDs)]
 		if (ep == nil || len(ep.pieces) == 1) && (zp == nil || len(zp.pieces) == 1) {
 			result = append(result, b)
@@ -179,13 +325,13 @@ func planFragments(p *displayPlan, limit int, lang string, words []WordTiming, e
 			candidates = append(candidates, cuts)
 		}
 		proportional := proportionalCuts(texts, p.start, p.end)
-		if lang == "zh" && p.end-p.start >= len(texts)*minFragmentMS {
+		if lang == "zh" && p.end-p.start >= len(texts)*minFallbackFragmentMS {
 			// Keep the chosen text boundaries when minimum reading times fit.
-			earliest := p.start + minFragmentMS
+			earliest := p.start + minFallbackFragmentMS
 			for i, cut := range proportional {
-				latest := p.end - (len(texts)-i-1)*minFragmentMS
+				latest := p.end - (len(texts)-i-1)*minFallbackFragmentMS
 				proportional[i] = min(latest, max(earliest, cut))
-				earliest = proportional[i] + minFragmentMS
+				earliest = proportional[i] + minFallbackFragmentMS
 			}
 		}
 		candidates = append(candidates, proportional)
@@ -218,10 +364,7 @@ func textOptions(text, plain string, limit int, lang string) [][]string {
 		return nil
 	}
 	var result [][]string
-	lines := strings.Split(plain, "\n")
-	for i := range lines {
-		lines[i] = strings.TrimSpace(lines[i])
-	}
+	lines := sourceLines(plain)
 	if len(lines) > 1 && compactText(strings.Join(lines, ""), false) == compactText(text, false) && partsFit(lines, limit) {
 		result = append(result, lines)
 	}
@@ -370,8 +513,12 @@ func sharedCuts(english []textPiece, count, start, end int) []int {
 }
 
 func readablePieces(parts []textPiece, windows [][2]int) bool {
+	return readablePiecesWithFloor(parts, windows, minFallbackFragmentMS)
+}
+
+func readablePiecesWithFloor(parts []textPiece, windows [][2]int, floorMS int) bool {
 	for _, part := range parts {
-		if roundCentiseconds(part.end)-roundCentiseconds(part.start) < minFragmentMS {
+		if roundCentiseconds(part.end)-roundCentiseconds(part.start) < floorMS {
 			return false
 		}
 		var visible [][2]int
@@ -391,7 +538,7 @@ func readablePieces(parts []textPiece, windows [][2]int) bool {
 			}
 			longest = max(longest, roundCentiseconds(end)-roundCentiseconds(start))
 		}
-		if longest < minFragmentMS {
+		if longest < floorMS {
 			return false
 		}
 	}

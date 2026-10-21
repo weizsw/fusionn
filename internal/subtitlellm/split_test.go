@@ -245,9 +245,8 @@ func TestSingleLineExceptionDoesNotPermitOverLimitJoins(t *testing.T) {
 func TestChineseSourceBreakSurvivesMinimumReadingTime(t *testing.T) {
 	cfg := renderTestConfig()
 	cfg.ZhChars = 20
-	english := "Tell me if it starts to weaken or get thready."
 	bundle := makeBundle(
-		[]Cue{{ID: 1, Start: 380964, End: 384176, Display: english, Plain: "Tell me if it starts to weaken\nor get thready."}},
+		[]Cue{{ID: 1, Start: 380964, End: 384176, Display: "Tell me if it starts to weaken or get thready.", Plain: "Tell me if it starts to weaken\nor get thready."}},
 		[]Cue{{ID: 1, Start: 380964, End: 384176, Display: "如果脉搏开始变弱 或者变得细弱难辨 马上告诉我", Plain: "如果脉搏开始变弱\n或者变得细弱难辨 马上告诉我"}},
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
@@ -259,9 +258,9 @@ func TestChineseSourceBreakSurvivesMinimumReadingTime(t *testing.T) {
 	if len(events) != 2 {
 		t.Fatalf("events = %d, want 2", len(events))
 	}
-	assertGlyphs(t, events[0].text, "如果脉搏开始变弱"+english)
-	assertGlyphs(t, events[1].text, "或者变得细弱难辨 马上告诉我"+english)
-	if events[0].end != events[1].start || events[0].end-events[0].start != minFragmentMS {
+	assertGlyphs(t, events[0].text, "如果脉搏开始变弱Tell me if it starts to weaken")
+	assertGlyphs(t, events[1].text, "或者变得细弱难辨 马上告诉我or get thready.")
+	if events[0].end != events[1].start || events[0].end-events[0].start < minSyncFragmentMS || events[1].end-events[1].start < minSyncFragmentMS {
 		t.Fatalf("source cut did not receive the minimum reading time: %+v", events)
 	}
 }
@@ -271,8 +270,8 @@ func TestChineseSourceBreakIsNotForcedBelowTotalReadingTime(t *testing.T) {
 	cfg.ZhChars = 20
 	chinese := "如果脉搏开始变弱 或者变得细弱难辨 马上告诉我"
 	bundle := makeBundle(
-		[]Cue{{ID: 1, Start: 1000, End: 3300, Display: "Watch the pulse."}},
-		[]Cue{{ID: 1, Start: 1000, End: 3300, Display: chinese, Plain: "如果脉搏开始变弱\n或者变得细弱难辨 马上告诉我"}},
+		[]Cue{{ID: 1, Start: 1000, End: 2500, Display: "Watch the pulse."}},
+		[]Cue{{ID: 1, Start: 1000, End: 2500, Display: chinese, Plain: "如果脉搏开始变弱\n或者变得细弱难辨 马上告诉我"}},
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
 	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
