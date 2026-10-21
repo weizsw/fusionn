@@ -668,6 +668,8 @@ func TestWholeEpisodeFixtureIsOptIn(t *testing.T) {
 			ZHText    string `json:"zh_text"`
 			BandTop   bool   `json:"band_top"`
 			Alignment int    `json:"alignment"`
+			ZHMerged  bool   `json:"zh_merged"`
+			ENMerged  bool   `json:"en_merged"`
 		}
 		var audits []eventAudit
 		for _, e := range events {
@@ -676,6 +678,7 @@ func TestWholeEpisodeFixtureIsOptIn(t *testing.T) {
 				StartMS: e.assStart, EndMS: e.assEnd, // Real milliseconds
 				Top: e.alignment >= 7, ENLines: len(sourceLines(e.enText)), ZHLines: len(sourceLines(e.zhText)),
 				ENText: e.enText, ZHText: e.zhText, BandTop: e.band[0] < 500, Alignment: e.alignment,
+				ZHMerged: e.zhMerged, ENMerged: e.enMerged,
 			})
 		}
 		wordCandidates := len(WordAlignmentCues(bundle, fixtureConfig()))
