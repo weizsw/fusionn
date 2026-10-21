@@ -525,4 +525,3 @@ func TestOldMappingWithoutKindPreservesPositionAndDigest(t *testing.T) {
 		}
 	}
 }
-
