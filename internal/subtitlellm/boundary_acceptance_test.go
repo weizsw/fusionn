@@ -334,13 +334,55 @@ func TestB06_RepeatedPhraseInsideOneSourceIsPreserved(t *testing.T) {
 
 // --- B08: shared reservations across policies -----------------------------
 
-// B08: on-screen migration and partitioning cannot both claim the same side.
-func TestB08_MigrationAndPartitionShareReservations(t *testing.T) {
+// B08: an on-screen sign really overlapping a block that must partition keeps
+// the reservation, so the partition does not steal the free side.
+func TestB08_MigrationAndPartitionRealOverlapReservation(t *testing.T) {
+	oldHook := fontWidthMeasurerOverride
+	// Too wide to merge: forces the partition path for the ordinary 2+2 block.
+	fontWidthMeasurerOverride = func(string, string, float64, int, float64, bool) (float64, bool) {
+		return 5000, true
+	}
+	defer func() { fontWidthMeasurerOverride = oldHook }()
+
+	cfg := fixtureConfig()
+	cfg.ZhChars, cfg.EnChars = 4, 6
+	bundle := fixtureBundle(
+		[]Cue{
+			{ID: 1, Start: 1000, End: 4000, Display: "Sign", Plain: "Sign"},
+			{ID: 2, Start: 3000, End: 4200, Display: "Alpha. Bravo.", Plain: "Alpha.\nBravo."},
+		},
+		[]Cue{
+			{ID: 1, Start: 1000, End: 4000, Display: "标牌", Plain: "标牌"},
+			{ID: 2, Start: 3000, End: 4200, Display: "甲乙丙 丁戊己", Plain: "甲乙丙\n丁戊己"},
+		},
+	)
+	mapping := fixtureMapping(bundle, []Group{
+		{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindOnScreenText},
+		{ENIDs: []int{2}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+	})
+	_, events, err := renderWithAudits(bundle, mapping, cfg, fixtureStyle(), 1920, 1080, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("migration must reserve the top against an overlapping partition: got %d events", len(events))
+	}
+	for _, e := range events {
+		if e.group == 1 && (len(sourceLines(e.zhText)) != 2 || len(sourceLines(e.enText)) != 2 || e.alignment >= 7) {
+			t.Fatalf("block whose destination was already reserved must stay whole at the bottom: %+v", e)
+		}
+		if e.group == 0 && e.alignment < 7 {
+			t.Fatalf("sign must actually have moved to the free side: %+v", e)
+		}
+	}
+}
+
+// B08b: no two emitted events may share a side at overlapping times, including
+// events created by different policies.
+func TestB08_NoSameSideDoubleBooking(t *testing.T) {
 	cfg := renderTestConfig()
 	cfg.ZhChars = 4
 	cfg.EnChars = 10
-	// Ordinary 2+2 that must partition, plus an on-screen text run that would
-	// also like to move to the same side.
 	bundle := makeBundle(
 		[]Cue{
 			{ID: 1, Start: 1000, End: 2000, Display: "Sign text"},
@@ -349,8 +391,7 @@ func TestB08_MigrationAndPartitionShareReservations(t *testing.T) {
 		},
 		[]Cue{
 			{ID: 1, Start: 1000, End: 2000, Display: "文字"},
-			{ID: 2, Start: 2000, End: 3200, Display: "第一段中文 第二段中文",
-				Plain: "第一段中文\n第二段中文"},
+			{ID: 2, Start: 2000, End: 3200, Display: "第一段中文 第二段中文", Plain: "第一段中文\n第二段中文"},
 		},
 	)
 	mapping := makeMapping(bundle, []Group{
@@ -359,16 +400,14 @@ func TestB08_MigrationAndPartitionShareReservations(t *testing.T) {
 	})
 	oldHook := fontWidthMeasurerOverride
 	defer func() { fontWidthMeasurerOverride = oldHook }()
-	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
-		return 2000, true // too wide to merge, forcing the partition path
-	}
+	fontWidthMeasurerOverride = func(string, string, float64, int, float64, bool) (float64, bool) { return 2000, true }
+
 	out, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// No two events may occupy the same side at overlapping times.
 	type occ struct {
-		side int // 1 top, 0 bottom
+		side int
 		s, e int
 	}
 	var occs []occ
@@ -565,15 +604,18 @@ func TestB13_RuneCountIncludesSpacesAndPunctuation(t *testing.T) {
 // B14: measurement failure keeps the complete text at original size.
 func TestB14_MeasurementFailureKeepsCompleteText(t *testing.T) {
 	cfg := renderTestConfig()
-	cfg.ZhChars = 4
+	// Cap fits each original source line, so the only way to reach one line is a
+	// width-driven merge, which must not happen without a reliable measurement.
+	cfg.ZhChars = 6
+	cfg.EnChars = 20
 	bundle := makeBundle(
-		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "Short english."}},
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "Short english.", Plain: "Short english."}},
 		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "第一段中文 第二段中文", Plain: "第一段中文\n第二段中文"}},
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
 	oldHook := fontWidthMeasurerOverride
 	defer func() { fontWidthMeasurerOverride = oldHook }()
-	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
+	fontWidthMeasurerOverride = func(string, string, float64, int, float64, bool) (float64, bool) {
 		return 0, false
 	}
 	out, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
@@ -584,8 +626,23 @@ func TestB14_MeasurementFailureKeepsCompleteText(t *testing.T) {
 	if !strings.Contains(joined, "第一段中文") || !strings.Contains(joined, "第二段中文") {
 		t.Fatal("measurement failure dropped source text")
 	}
-	if strings.Contains(joined, mergeSeparator) {
-		t.Fatal("merged without a reliable measurement")
+	// Evidence from the actual per-language lines: no width merge happened, so the
+	// Chinese side must still occupy two lines and carry no merge separator.
+	for _, d := range parseDialogues(t, string(out)) {
+		zh := d.text
+		if idx := strings.Index(zh, `{\rEng}`); idx >= 0 {
+			zh = zh[:idx]
+		}
+		// ASS writes intra-event breaks as the literal two-character `\N`.
+		lines := sourceLines(strings.ReplaceAll(zh, `\N`, "\n"))
+		if len(lines) != 2 {
+			t.Fatalf("expected the original two Chinese lines without width merge, got %q", zh)
+		}
+		for _, line := range lines {
+			if strings.Contains(line, mergeSeparator) {
+				t.Fatalf("merged without a reliable measurement: %q", line)
+			}
+		}
 	}
 }
 
@@ -601,6 +658,40 @@ func TestB14_WrapKeepsEnglishTokensIntact(t *testing.T) {
 				t.Fatalf("limit %d split or dropped token %q: %q", limit, token, wrapped)
 			}
 		}
+	}
+}
+
+// B14: generated cut points never split a grapheme cluster.
+func TestB14_UnsafeCutPointsAreRefused(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		cap  int
+	}{
+		{"zwj_family_emoji", "\U0001F468\u200d\U0001F469\u200d\U0001F467\u200d\U0001F466 X", 4},
+		{"combining_marks", "e\u0301e\u0301e\u0301 X", 3},
+		{"variation_selector", "\u2764\ufe0f\u2764\ufe0f X", 2},
+		{"flag_pair", "\U0001F1E8\U0001F1F3\U0001F1EF\U0001F1F5 X", 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for i := 1; i < len([]rune(tc.text)); i++ {
+				if !isSafeCutIndex([]rune(tc.text), i) {
+					continue
+				}
+				// A "safe" index must not separate a cluster in the fixture.
+				left, right := []rune(tc.text)[i-1], []rune(tc.text)[i]
+				if left == '\u200d' || right == '\u200d' || isGraphemeContinuation(right) {
+					t.Fatalf("index %d accepted though it splits a cluster", i)
+				}
+			}
+			// Wrapping must never emit a broken line.
+			for _, line := range wrapLine(tc.text, "zh", tc.cap) {
+				if strings.HasSuffix(line, "\u200d") || strings.HasPrefix(strings.TrimSpace(line), "\u200d") {
+					t.Fatalf("wrapLine broke a ZWJ sequence: %q", line)
+				}
+			}
+		})
 	}
 }
 

@@ -45,6 +45,7 @@ type block struct {
 	group       int
 	strategy    string
 	top         bool
+	sourceTop   bool
 	alignment   int
 	position    *[2]float64
 	enText      *string
@@ -373,9 +374,15 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 			continue
 		}
 		anchor := firstCue(es, zs)
+		// Two distinct positions: the raw source side (cue Top flags) and the
+		// effective pre-policy side (model layer, or a source Top flag). The raw
+		// side alone breaks contiguous on-screen runs; the effective side drives
+		// migration, per the approved bidirectional rule.
+		sourceTop := false
 		top := group.Layer == LayerTop
 		for _, cue := range append(append([]Cue{}, es...), zs...) {
 			if cue.Top {
+				sourceTop = true
 				top = true
 			}
 		}
@@ -395,8 +402,8 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 			return block{
 				start: start, end: end,
 				enIDs: cueIDs(ee), zhIDs: cueIDs(zz), group: groupIndex,
-				strategy: strategy, top: top, alignment: alignment,
-				position: native.Position,
+				strategy: strategy, top: top, sourceTop: sourceTop,
+				alignment: alignment, position: native.Position,
 			}
 		}
 		oneSided := func(cue Cue, isEN bool) block {
@@ -597,15 +604,25 @@ func wrapLine(line, lang string, limit int) []string {
 	for len(runes) > limit {
 		if lang == "en" {
 			cut := lastSpaceCut(runes, limit)
-			if cut <= 0 {
+			if cut <= 0 || !isSafeCutIndex(runes, cut) {
 				break
 			}
 			result = append(result, string(runes[:cut]))
 			runes = trimLeftSpace(runes[cut:])
 			continue
 		}
-		result = append(result, string(runes[:limit]))
-		runes = runes[limit:]
+		// Never split a grapheme cluster (ZWJ emoji, combining marks, variation
+		// selectors, flag pairs). If no safe cut exists at or before the limit,
+		// keep the whole remaining text rather than corrupting it.
+		cut := limit
+		for cut > 0 && !isSafeCutIndex(runes, cut) {
+			cut--
+		}
+		if cut <= 0 {
+			break
+		}
+		result = append(result, string(runes[:cut]))
+		runes = runes[cut:]
 	}
 	result = append(result, string(runes))
 	return result
@@ -779,7 +796,7 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 				maxEndSoFar = blocks[gIdx].end
 			}
 		}
-		if b.top == firstInGroup.top && b.start-maxEndSoFar <= 500 {
+		if b.sourceTop == firstInGroup.sourceTop && b.start-maxEndSoFar <= 500 {
 			ostGroups[len(ostGroups)-1] = append(ostGroups[len(ostGroups)-1], idx)
 		} else {
 			ostGroups = append(ostGroups, []int{idx})

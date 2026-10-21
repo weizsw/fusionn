@@ -47,7 +47,7 @@ func WordAlignmentCues(bundle Bundle, cfg config.LLMConfig) []Cue {
 			result = append(result, cue)
 			continue
 		}
-		if cue.End-cue.Start >= 2*minSyncFragmentMS && len(sourceLines(cue.Plain)) == 2 {
+		if roundCentiseconds(cue.End)-roundCentiseconds(cue.Start) >= 2*minSyncFragmentMS && len(sourceLines(cue.Plain)) == 2 {
 			hasMatchingZH := false
 			for _, z := range bundle.ZH {
 				if zh2Lines[z.ID] && (absInt(cue.Start-z.Start) <= 4000 || (cue.Start < z.End && z.Start < cue.End)) {
@@ -108,7 +108,7 @@ func trySyncSplit(b block, enCue, zhCue Cue, words WordTimings) ([]block, bool) 
 	if len(enLines) != 2 || len(zhLines) != 2 {
 		return nil, false
 	}
-	totalDuration := b.end - b.start
+	totalDuration := roundCentiseconds(b.end) - roundCentiseconds(b.start)
 	if totalDuration < 2*minSyncFragmentMS {
 		return nil, false
 	}
@@ -411,6 +411,9 @@ func balancedPartCount(text string, limit, count int, lang string) []string {
 		target := len(runes) / remaining
 		best, score := -1, int(^uint(0)>>1)
 		for i := low; i <= high; i++ {
+			if !isSafeCutIndex(runes, i) {
+				continue
+			}
 			if lang == "en" && !unicode.IsSpace(runes[i]) {
 				continue
 			}
@@ -435,6 +438,50 @@ func balancedPartCount(text string, limit, count int, lang string) []string {
 	}
 	return append(result, strings.TrimSpace(string(runes)))
 }
+
+// isSafeCutIndex reports whether cutting text between runes[i-1] and runes[i]
+// keeps grapheme clusters intact. It conservatively rejects any position that
+// could split a ZWJ sequence, a combining mark, a variation selector, an emoji
+// modifier, a keycap or a regional-indicator flag pair. When in doubt it refuses
+// the cut so callers keep the complete original text.
+func isSafeCutIndex(runes []rune, i int) bool {
+	if i <= 0 || i >= len(runes) {
+		return false
+	}
+	left, right := runes[i-1], runes[i]
+	if isGraphemeContinuation(right) || isGraphemeContinuation(left) {
+		return false
+	}
+	// ZWJ sequences: never break immediately before or after U+200D.
+	if left == '\u200d' || right == '\u200d' {
+		return false
+	}
+	// Regional indicator pairs form one flag: do not cut between them.
+	if isRegionalIndicator(left) && isRegionalIndicator(right) {
+		return false
+	}
+	return true
+}
+
+// isGraphemeContinuation reports runes that visually attach to the preceding
+// rune and therefore cannot start a new line on their own.
+func isGraphemeContinuation(r rune) bool {
+	switch {
+	case unicode.IsMark(r):
+		return true
+	case r == '\ufe0e', r == '\ufe0f': // text/emoji variation selectors
+		return true
+	case r >= 0x1F3FB && r <= 0x1F3FF: // skin tone modifiers
+		return true
+	case r >= 0xE0020 && r <= 0xE007F: // emoji tag sequence components
+		return true
+	case r == 0x20E3: // combining enclosing keycap
+		return true
+	}
+	return false
+}
+
+func isRegionalIndicator(r rune) bool { return r >= 0x1F1E6 && r <= 0x1F1FF }
 
 func proportionalCuts(parts []string, start, end int) []int {
 	total := 0
