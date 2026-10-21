@@ -796,7 +796,7 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 				maxEndSoFar = blocks[gIdx].end
 			}
 		}
-		if b.sourceTop == firstInGroup.sourceTop && b.start-maxEndSoFar <= 500 {
+		if b.sourceTop == firstInGroup.sourceTop && b.top == firstInGroup.top && b.start-maxEndSoFar <= 500 {
 			ostGroups[len(ostGroups)-1] = append(ostGroups[len(ostGroups)-1], idx)
 		} else {
 			ostGroups = append(ostGroups, []int{idx})
