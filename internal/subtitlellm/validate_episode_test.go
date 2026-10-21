@@ -20,6 +20,10 @@ const episodeFixtureDirEnv = "FUSIONN_EPISODE_FIXTURE_DIR"
 // delivered render. Passing the real style keeps the audit tied to that artifact.
 const episodeStyleEnv = "FUSIONN_EPISODE_STYLE_JSON"
 
+// episodeAssEnv points at the delivered ASS file explicitly. It avoids guessing a
+// file name or picking the first `.ass` in a directory.
+const episodeAssEnv = "FUSIONN_EPISODE_ASS"
+
 // EpisodeValidation is a real, computed audit of one rendered episode.
 type EpisodeValidation struct {
 	TotalEvents  int
@@ -29,6 +33,8 @@ type EpisodeValidation struct {
 	ZHCovered    int
 	MissingEN    []int
 	MissingZH    []int
+	FormatOnlyEN []int
+	FormatOnlyZH []int
 
 	IntervalMismatches []string
 	OrderMismatches    []string
@@ -134,8 +140,17 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 		}
 	}
 
-	// 1. Identity coverage: every source cue must be carried by some event.
+	// 1. Identity coverage for cues that have visible text. A format-only source
+	// cue is legitimately omitted by the renderer (released 23f6a56), so it is
+	// reported as an explicit exclusion instead of a missing-text claim.
+	formatOnlyEN := map[int]bool{}
+	formatOnlyZH := map[int]bool{}
 	for _, cue := range bundle.EN {
+		if normText(cue.Display) == "" {
+			formatOnlyEN[cue.ID] = true
+			v.FormatOnlyEN = append(v.FormatOnlyEN, cue.ID)
+			continue
+		}
 		if !sawEN[cue.ID] {
 			v.MissingEN = append(v.MissingEN, cue.ID)
 		} else {
@@ -143,6 +158,11 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 		}
 	}
 	for _, cue := range bundle.ZH {
+		if normText(cue.Display) == "" {
+			formatOnlyZH[cue.ID] = true
+			v.FormatOnlyZH = append(v.FormatOnlyZH, cue.ID)
+			continue
+		}
 		if !sawZH[cue.ID] {
 			v.MissingZH = append(v.MissingZH, cue.ID)
 		} else {
@@ -198,52 +218,74 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 	checkText(bundle.EN, "en", ownerGroupsEN, byGroupEN)
 	checkText(bundle.ZH, "zh", ownerGroupsZH, byGroupZH)
 
-	// 3. Per-language sequence and replay detection across ALL groups.
-	checkGroupSequence := func(gi int, lang string, byGroup map[int][]emitted) {
+	// 3. Per-language display order, checked against the source expected text.
+	//
+	// For one group and language the expected display is the concatenation of
+	// its source cues' text in source order. The emitted side must reproduce that
+	// exact sequence: consecutive identical emissions collapse to one (a hold
+	// across the counterpart's slices), and everything else must match in order.
+	// This accepts truthful repetition that already exists in the source
+	// (Alpha/Beta/Alpha, Yes/No/Yes) while rejecting reversal and any extra
+	// replay that the source never contained.
+	expectedText := func(ids []int, index map[int]Cue) string {
+		var parts []string
+		for _, id := range ids {
+			cue, ok := index[id]
+			if !ok {
+				continue
+			}
+			if t := normText(cue.Display); t != "" {
+				parts = append(parts, t)
+			}
+		}
+		return strings.Join(parts, "")
+	}
+	checkGroupSequence := func(gi int, ids []int, index map[int]Cue, lang string, byGroup map[int][]emitted) {
 		recs := byGroup[gi]
-		if len(recs) == 0 {
+		if len(recs) == 0 || len(ids) == 0 {
 			return
 		}
-		type item struct {
-			idsKey string
-			text   string
+		// Collapse only a genuine hold: the SAME source identity repeated with the
+		// same text. Two different source IDs that happen to say the same words
+		// are distinct source content and must both appear.
+		type emission struct {
+			ids  string
+			text string
 		}
-		var seq []item
+		var seq []emission
 		for _, rec := range recs {
-			t := ""
-			idsKey := ""
+			t, ids := "", ""
 			if lang == "en" {
 				t = normText(rec.enText)
-				idsKey = intsKey(rec.enIDs)
+				ids = intsKey(rec.enIDs)
 			} else {
 				t = normText(rec.zhText)
-				idsKey = intsKey(rec.zhIDs)
+				ids = intsKey(rec.zhIDs)
 			}
 			if t == "" {
 				continue
 			}
-			// Collapse consecutive identical hold ONLY if same source IDs
-			if len(seq) > 0 && seq[len(seq)-1].idsKey == idsKey && seq[len(seq)-1].text == t {
-				continue
+			if n := len(seq); n > 0 && seq[n-1].ids == ids && seq[n-1].text == t {
+				continue // held text repeated across the counterpart's slices
 			}
-			seq = append(seq, item{idsKey: idsKey, text: t})
+			seq = append(seq, emission{ids: ids, text: t})
 		}
-
-		// Replay check: fragment or cue text cannot reappear after intervening different text
-		seen := map[string]int{}
-		for idx, it := range seq {
-			if lastIdx, ok := seen[it.text]; ok && lastIdx != idx-1 {
-				v.OrderMismatches = append(v.OrderMismatches, fmt.Sprintf(
-					"group %d %s replayed text %q after intervening text", gi, lang, it.text))
-				break
-			}
-			seen[it.text] = idx
+		want := expectedText(ids, index)
+		if want == "" {
+			return
+		}
+		var displayed []string
+		for _, e := range seq {
+			displayed = append(displayed, e.text)
+		}
+		if got := strings.Join(displayed, ""); got != want {
+			v.OrderMismatches = append(v.OrderMismatches, fmt.Sprintf(
+				"group %d %s display %q does not follow source order %q", gi, lang, got, want))
 		}
 	}
-
-	for gi := range mapping.Groups {
-		checkGroupSequence(gi, "en", byGroupEN)
-		checkGroupSequence(gi, "zh", byGroupZH)
+	for gi, g := range mapping.Groups {
+		checkGroupSequence(gi, g.ENIDs, en, "en", byGroupEN)
+		checkGroupSequence(gi, g.ZHIDs, zh, "zh", byGroupZH)
 	}
 
 	// 4. Source / display identity interval comparison against baseline.
@@ -254,10 +296,10 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 	// compared against its own source envelope, not against a slice-local one.
 	baselineInts := map[string][][2]int{}
 	addBaseline := func(lang string, ids []int, start, end int) {
-		if len(ids) == 0 {
-			return
-		}
 		for _, id := range ids {
+			if (lang == "en" && formatOnlyEN[id]) || (lang == "zh" && formatOnlyZH[id]) {
+				continue // no visible text, legitimately not emitted
+			}
 			key := fmt.Sprintf("%s:%d", lang, id)
 			baselineInts[key] = append(baselineInts[key], [2]int{roundCentiseconds(start), roundCentiseconds(end)})
 		}
@@ -686,7 +728,10 @@ func TestWholeEpisodeFixtureIsOptIn(t *testing.T) {
 	// Cross-check the audit against the SERIALIZED artifact it claims to describe:
 	// same event count, same start/end times and same text, and a byte-identical
 	// re-render from the recorded inputs and delivered style.
-	assPath := filepath.Join(dir, "bilingual.ass")
+	assPath := os.Getenv(episodeAssEnv)
+	if assPath == "" {
+		assPath = filepath.Join(dir, "bilingual.ass")
+	}
 	if rawASS, err := os.ReadFile(assPath); err == nil {
 		checkSerializedASS(t, string(rawASS), events)
 		rerendered, _, rerr := renderWithAudits(bundle, mapping, fixtureConfig(), style, width, height, words)
