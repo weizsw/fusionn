@@ -245,42 +245,46 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 		if len(recs) == 0 || len(ids) == 0 {
 			return
 		}
-		// Collapse only a genuine hold: the SAME source identity repeated with the
-		// same text. Two different source IDs that happen to say the same words
-		// are distinct source content and must both appear.
-		type emission struct {
-			ids  string
-			text string
-		}
-		var seq []emission
-		for _, rec := range recs {
-			t, ids := "", ""
-			if lang == "en" {
-				t = normText(rec.enText)
-				ids = intsKey(rec.enIDs)
-			} else {
-				t = normText(rec.zhText)
-				ids = intsKey(rec.zhIDs)
-			}
-			if t == "" {
-				continue
-			}
-			if n := len(seq); n > 0 && seq[n-1].ids == ids && seq[n-1].text == t {
-				continue // held text repeated across the counterpart's slices
-			}
-			seq = append(seq, emission{ids: ids, text: t})
-		}
 		want := expectedText(ids, index)
 		if want == "" {
 			return
 		}
-		var displayed []string
-		for _, e := range seq {
-			displayed = append(displayed, e.text)
+
+		cursors := map[int]bool{0: true}
+		for _, rec := range recs {
+			t := ""
+			if lang == "en" {
+				t = normText(rec.enText)
+			} else {
+				t = normText(rec.zhText)
+			}
+			if t == "" {
+				continue
+			}
+			nextCursors := map[int]bool{}
+			for pos := range cursors {
+				// 1. Advance: matches next expected source segment
+				if strings.HasPrefix(want[pos:], t) {
+					nextCursors[pos+len(t)] = true
+				}
+				// 2. Hold: legitimate continuation of the previously consumed segment
+				if pos >= len(t) && want[pos-len(t):pos] == t {
+					nextCursors[pos] = true
+				}
+			}
+			if len(nextCursors) == 0 {
+				v.OrderMismatches = append(v.OrderMismatches, fmt.Sprintf(
+					"group %d %s emitted segment %q does not match expected source sequence (want %q, possible positions %v)",
+					gi, lang, t, want, cursors))
+				return
+			}
+			cursors = nextCursors
 		}
-		if got := strings.Join(displayed, ""); got != want {
+
+		if !cursors[len(want)] {
 			v.OrderMismatches = append(v.OrderMismatches, fmt.Sprintf(
-				"group %d %s display %q does not follow source order %q", gi, lang, got, want))
+				"group %d %s emitted segments did not consume complete source text %q (remaining positions %v)",
+				gi, lang, want, cursors))
 		}
 	}
 	for gi, g := range mapping.Groups {

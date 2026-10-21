@@ -43,7 +43,7 @@ func WordAlignmentCues(bundle Bundle, cfg config.LLMConfig) []Cue {
 		if cue.MultiSpeaker || cue.Top || cue.End-cue.Start > 30000 {
 			continue
 		}
-		if cue.End-cue.Start >= 2*minFallbackFragmentMS && len(textOptions(cue.Display, cue.Plain, cfg.EnChars, "en")) > 0 {
+		if roundCentiseconds(cue.End)-roundCentiseconds(cue.Start) >= 2*minFallbackFragmentMS && len(textOptions(cue.Display, cue.Plain, cfg.EnChars, "en")) > 0 {
 			result = append(result, cue)
 			continue
 		}
@@ -323,12 +323,12 @@ func planFragments(p *displayPlan, limit int, lang string, words []WordTiming, e
 			candidates = append(candidates, cuts)
 		}
 		proportional := proportionalCuts(texts, p.start, p.end)
-		if lang == "zh" && p.end-p.start >= len(texts)*minFallbackFragmentMS {
+		if lang == "zh" && roundCentiseconds(p.end)-roundCentiseconds(p.start) >= len(texts)*minFallbackFragmentMS {
 			// Keep the chosen text boundaries when minimum reading times fit.
-			earliest := p.start + minFallbackFragmentMS
+			earliest := roundCentiseconds(p.start) + minFallbackFragmentMS
 			for i, cut := range proportional {
-				latest := p.end - (len(texts)-i-1)*minFallbackFragmentMS
-				proportional[i] = min(latest, max(earliest, cut))
+				latest := roundCentiseconds(p.end) - (len(texts)-i-1)*minFallbackFragmentMS
+				proportional[i] = min(latest, max(earliest, roundCentiseconds(cut)))
 				earliest = proportional[i] + minFallbackFragmentMS
 			}
 		}
