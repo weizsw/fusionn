@@ -3,6 +3,7 @@ package subtitlellm
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // The 17 acceptance scenarios defined in docs/llm-subtitle-integration.zh-CN.md.
@@ -258,7 +259,7 @@ func TestScenario11_ThreeLineMultiSpeakerFitsWidthFlattensToOneLine(t *testing.T
 	// Override font measurer to confirm it fits width
 	oldHook := fontWidthMeasurerOverride
 	defer func() { fontWidthMeasurerOverride = oldHook }()
-	fontWidthMeasurerOverride = func(text string, fontName string, fontSize float64, scaleX int, spacing float64) (float64, bool) {
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
 		return 300.0, true // fits well within 1760px
 	}
 
@@ -289,7 +290,7 @@ func TestScenario12_ThreeLineMultiSpeakerTooWideKeepsThreeLines(t *testing.T) {
 
 	oldHook := fontWidthMeasurerOverride
 	defer func() { fontWidthMeasurerOverride = oldHook }()
-	fontWidthMeasurerOverride = func(text string, fontName string, fontSize float64, scaleX int, spacing float64) (float64, bool) {
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
 		return 2000.0, true // exceeds 1760px
 	}
 
@@ -476,7 +477,7 @@ func TestFontNotFoundFallbackKeepsThreeLines(t *testing.T) {
 	// Force measurer to return false (font not found)
 	oldHook := fontWidthMeasurerOverride
 	defer func() { fontWidthMeasurerOverride = oldHook }()
-	fontWidthMeasurerOverride = func(text string, fontName string, fontSize float64, scaleX int, spacing float64) (float64, bool) {
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
 		return 0, false // font cannot be found / measured
 	}
 
@@ -674,13 +675,57 @@ func TestRegression_AsymmetricMultiSpeakerWithoutTwoSpeakersKeepsOriginal(t *tes
 func TestRegression_HeldOverCapLanguageStillUndergoesFinalWrapping(t *testing.T) {
 	cfg := renderTestConfig()
 	cfg.EnChars = 20
-	cfg.ZhChars = 10
-	// English cue splits in time (long).
-	// Chinese cue is held across English slices. It exceeds zh_chars (24 runes > 10).
-	// Even though b.zhText is set by timed split projection, it must still be wrapped by wrapSourceDisplay.
+	cfg.ZhChars = 12
+	// Genuinely eligible MULTILINE Chinese source: two native lines whose merged
+	// length exceeds zh_chars, so its own plan needs two fragments. Its total
+	// duration cannot supply two >=0.8s fragments after the English cuts, so the
+	// Chinese side cannot split and must be held while still being wrapped.
 	bundle := makeBundle(
-		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "First English slice and second English slice.", Plain: "First English slice\nand second English slice."}},
-		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "这是一句非常长的中文句子它必须在最终排版中被正确折行", Plain: "这是一句非常长的中文句子它必须在最终排版中被正确折行"}},
+		[]Cue{
+			{ID: 1, Start: 1000, End: 3000, Display: "First english slice here.", Plain: "First english slice\nhere."},
+			{ID: 2, Start: 3000, End: 5000, Display: "and the second english slice.", Plain: "and the second\nenglish slice."},
+		},
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "这是一句非常长的中文句子它必须在最终排版中被正确折行", Plain: "这是一句非常长的中文句子\n它必须在最终排版中被正确折行"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) == 0 {
+		t.Fatal("no events rendered")
+	}
+	wrappedSeen := false
+	for i, e := range events {
+		// Inspect the Chinese side only: everything before the bilingual separator.
+		zhOnly := e.text
+		if idx := strings.Index(zhOnly, `{\rEng}`); idx >= 0 {
+			zhOnly = zhOnly[:idx]
+		}
+		zhOnly = stripOverrideTags(zhOnly)
+		if strings.Count(zhOnly, `\N`) > 0 {
+			wrappedSeen = true
+		}
+		if utf8.RuneCountInString(strings.ReplaceAll(zhOnly, `\N`, "")) > cfg.ZhChars*2 {
+			t.Fatalf("event %d Chinese line count %d cannot honor zh_chars=%d: %q",
+				i, strings.Count(zhOnly, `\N`)+1, cfg.ZhChars, zhOnly)
+		}
+	}
+	if !wrappedSeen {
+		t.Fatal("held over-cap Chinese text was emitted as one unwrapped line")
+	}
+}
+
+// TestOriginalSingleLineOversizeStaysExempt keeps the agreed exception: an
+// originally single-line source above the limit is displayed whole.
+func TestOriginalSingleLineOversizeStaysExempt(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 8
+	single := "这是一句远远超过上限但是原本就是单行的中文"
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 9000, Display: "A short english line."}},
+		[]Cue{{ID: 1, Start: 1000, End: 9000, Display: single}},
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
 	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
@@ -688,12 +733,237 @@ func TestRegression_HeldOverCapLanguageStillUndergoesFinalWrapping(t *testing.T)
 		t.Fatal(err)
 	}
 	events := parseDialogues(t, string(output))
-	for i, e := range events {
-		// Chinese part must contain \N because 24 runes > 10 chars limit!
-		parts := strings.Split(e.text, `{\rEng}`)
-		zhText := parts[0]
-		if !strings.Contains(zhText, `\N`) {
-			t.Fatalf("event %d Chinese text was not wrapped despite exceeding zh_chars: %s", i, zhText)
+	if len(events) != 1 {
+		t.Fatalf("original single-line cue must not be split or wrap-forced, got %d events", len(events))
+	}
+	zhOnly := events[0].text
+	if idx := strings.Index(zhOnly, `{\rEng}`); idx >= 0 {
+		zhOnly = zhOnly[:idx]
+	}
+	// Drop the bilingual separator, which terminates the Chinese half.
+	zhOnly = strings.TrimSuffix(zhOnly, `\N`)
+	if strings.Count(zhOnly, `\N`) > 0 {
+		t.Fatalf("original single-line oversize text must stay on one line: %q", stripOverrideTags(zhOnly))
+	}
+}
+
+func stripOverrideTags(s string) string {
+	out := make([]rune, 0, len(s))
+	depth := 0
+	for _, r := range s {
+		switch {
+		case r == '{':
+			depth++
+		case r == '}':
+			if depth > 0 {
+				depth--
+			}
+		case depth == 0:
+			out = append(out, r)
+		}
+	}
+	return string(out)
+}
+
+// --- Approved-rules coverage: ordinary vs dialogue subtitles ---------------
+
+// TestOrdinaryThreeLineLateOverCapMergeAllowed: ordinary subtitles (no speaker
+// markers) may merge past the configured cap once temporal splitting failed,
+// as long as measured width says it fits. The 1.2s total makes two >=0.8s
+// fallback fragments impossible, so temporal splitting genuinely fails here.
+func TestOrdinaryThreeLineLateOverCapMergeAllowed(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 8 // merged Chinese will exceed this cap
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "Short english line.", Plain: "Short english line."}},
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "第一行中文内容 第二行中文内容", Plain: "第一行中文内容\n第二行中文内容"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+
+	var calls int
+	oldHook := fontWidthMeasurerOverride
+	defer func() { fontWidthMeasurerOverride = oldHook }()
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
+		calls++
+		return 400, true
+	}
+
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 1 {
+		t.Fatalf("expected single merged event, got %d", len(events))
+	}
+	if calls == 0 {
+		t.Fatal("width measurement was never consulted for the over-cap merge")
+	}
+	if got := strings.Count(events[0].text, `\N`); got != 1 {
+		t.Fatalf("expected 1 Chinese line + 1 English line, got %d separators: %q", got, events[0].text)
+	}
+	assertGlyphs(t, events[0].text, "第一行中文内容   第二行中文内容Short english line.")
+}
+
+// TestOrdinaryThreeLineSplitBeatsOverCapMerge: with enough time to split, the
+// over-cap merge must not pre-empt the temporal split.
+func TestOrdinaryThreeLineSplitBeatsOverCapMerge(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 8
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "Short english line.", Plain: "Short english line."}},
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "第一行中文内容 第二行中文内容", Plain: "第一行中文内容\n第二行中文内容"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+
+	oldHook := fontWidthMeasurerOverride
+	defer func() { fontWidthMeasurerOverride = oldHook }()
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
+		return 400, true // fits, so a width-first policy would have merged
+	}
+
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 2 {
+		t.Fatalf("temporal split must win over the width-based over-cap merge, got %d events", len(events))
+	}
+	for _, e := range events {
+		if strings.Contains(stripOverrideTags(e.text), mergeSeparator) {
+			t.Fatalf("Chinese was merged instead of time-split: %q", e.text)
+		}
+	}
+}
+
+// TestDialogueThreeLineOverCapMergeForbidden: the same shape carrying two
+// speakers must NOT break the configured cap even when the width would fit.
+func TestDialogueThreeLineOverCapMergeForbidden(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 8
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 3000, Display: "- Short english line.", Plain: "- Short english line.", MultiSpeaker: true}},
+		[]Cue{{ID: 1, Start: 1000, End: 3000, Display: "- 第一行中文内容\n- 第二行中文内容", Plain: "- 第一行中文内容\n- 第二行中文内容", MultiSpeaker: true}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+
+	oldHook := fontWidthMeasurerOverride
+	defer func() { fontWidthMeasurerOverride = oldHook }()
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
+		return 400, true // width would fit; the cap still forbids merging
+	}
+
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	for _, e := range events {
+		zh := e.text
+		if idx := strings.Index(zh, `{\rEng}`); idx >= 0 {
+			zh = zh[:idx]
+		}
+		if strings.Contains(stripOverrideTags(zh), mergeSeparator) {
+			t.Fatalf("dialogue subtitle merged past its cap using the ordinary exemption: %q", e.text)
+		}
+	}
+}
+
+// TestOrdinaryFourLineLastResortPartitionWithoutMarkers: ordinary 2ZH+2EN with
+// no speaker markers reaches the last-resort top/bottom partition when
+// temporal splitting and cap-respecting merging both fail.
+func TestOrdinaryFourLineLastResortPartitionWithoutMarkers(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 6
+	cfg.EnChars = 20
+	// 1.2s total: no side can produce two >=0.8s fragments, and both merged
+	// strings exceed their caps, so the block stays at four lines.
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "First english line. Second english line.",
+			Plain: "First english segment here.\nSecond english segment."}},
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "第一段中文 第二段中文",
+			Plain: "第一段中文\n第二段中文"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 2 {
+		t.Fatalf("expected last-resort partition into 2 events, got %d", len(events))
+	}
+	if !strings.HasPrefix(events[0].style, "Top") {
+		t.Fatalf("first segment should be placed on top, got style %q", events[0].style)
+	}
+	if strings.HasPrefix(events[1].style, "Top") {
+		t.Fatalf("second segment should stay at the bottom, got style %q", events[1].style)
+	}
+	assertGlyphs(t, events[0].text, "第一段中文First english line.")
+	assertGlyphs(t, events[1].text, "第二段中文Second english line.")
+}
+
+// TestTemporalSplitBeatsWidthMerge: a cue that still splits within its cap must
+// not be merged past the cap just because the width would fit.
+func TestTemporalSplitBeatsWidthMerge(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.EnChars = 24
+	cfg.ZhChars = 10
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "The first english line is long and the second english line is also long.",
+			Plain: "The first english line is long\nand the second english line is also long."}},
+		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "第一行中文", Plain: "第一行中文"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+
+	oldHook := fontWidthMeasurerOverride
+	defer func() { fontWidthMeasurerOverride = oldHook }()
+	doomed := false
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
+		doomed = true
+		return 100, true // would fit, so a width-first policy would merge
+	}
+
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) < 2 {
+		t.Fatalf("temporal split must take precedence over width-based merge, got %d events", len(events))
+	}
+	_ = doomed
+}
+
+// TestOrdinaryFourLineMeasurementUnavailableKeepsLayout: unreliable width means
+// no over-cap merge and no fabricated partitioning.
+func TestOrdinaryFourLineMeasurementUnavailableKeepsLayout(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 6
+	cfg.EnChars = 20
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "First english line. Second english line.",
+			Plain: "First english segment here.\nSecond english segment."}},
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "第一段中文 第二段中文", Plain: "第一段中文\n第二段中文"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+
+	oldHook := fontWidthMeasurerOverride
+	defer func() { fontWidthMeasurerOverride = oldHook }()
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
+		return 0, false // unknown font / unsupported style
+	}
+
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	for _, e := range events {
+		if strings.Contains(stripOverrideTags(e.text), mergeSeparator) {
+			t.Fatalf("merge happened without reliable width measurement: %q", e.text)
 		}
 	}
 }
