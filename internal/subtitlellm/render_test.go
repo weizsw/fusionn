@@ -648,6 +648,97 @@ func TestRenderRejectsCommandLikeSourceText(t *testing.T) {
 	}
 }
 
+func TestRenderSkipsFormatOnlySourceEvents(t *testing.T) {
+	for _, tc := range []struct {
+		name, enText, zhText, want string
+	}{
+		{name: "English position tag", enText: `{\an8}`},
+		{name: "Chinese position tag", zhText: `{\an8}`},
+		{name: "both languages", enText: `{\an8}`, zhText: `<i></i>`},
+		{name: "visible Chinese", enText: `{\an8}`, zhText: "真实字幕", want: "真实字幕"},
+		{name: "visible English", enText: "Actual dialogue", zhText: `{\an8}`, want: "Actual dialogue"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			enPath, zhPath := filepath.Join(dir, "en.srt"), filepath.Join(dir, "zh.srt")
+			writeFile(t, enPath, "1\n00:00:01,000 --> 00:00:03,000\nHello\n")
+			writeFile(t, zhPath, "1\n00:00:01,000 --> 00:00:03,000\n你好\n")
+			group := Group{Layer: LayerTop, Origin: OriginModel}
+			for _, track := range []struct{ path, text string }{{enPath, tc.enText}, {zhPath, tc.zhText}} {
+				if track.text == "" {
+					continue
+				}
+				f, err := os.OpenFile(track.path, os.O_APPEND|os.O_WRONLY, 0600)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = fmt.Fprintf(f, "\n2\n00:00:53,387 --> 00:00:55,221\n%s\n", track.text)
+				closeErr := f.Close()
+				if err != nil || closeErr != nil {
+					t.Fatalf("append source: write=%v close=%v", err, closeErr)
+				}
+				if track.path == enPath {
+					group.ENIDs = []int{2}
+				} else {
+					group.ZHIDs = []int{2}
+				}
+			}
+			bundle, err := LoadSources(enPath, zhPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mapping := makeMapping(bundle, []Group{
+				{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel},
+				group,
+			})
+			fingerprint := bundle.Fingerprint
+			data, err := Render(bundle, mapping, renderTestConfig(), renderTestStyle(), 1920, 1080)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			events := parseDialogues(t, string(data))
+			wantEvents := 1
+			if tc.want != "" {
+				wantEvents++
+			}
+			if len(events) != wantEvents {
+				t.Fatalf("event count = %d, want %d", len(events), wantEvents)
+			}
+			if events[0].start != 1000 || events[0].end != 3000 {
+				t.Fatalf("visible event timing changed: %+v", events[0])
+			}
+			assertGlyphs(t, events[0].text, "你好Hello")
+			if tc.want != "" {
+				assertGlyphs(t, events[1].text, tc.want)
+				if events[1].start != 53390 || events[1].end != 55220 {
+					t.Fatalf("one-sided timing changed: %+v", events[1])
+				}
+			}
+			got, err := bundleDigest(bundle)
+			if err != nil || got != fingerprint || mapping.SourceFingerprint != fingerprint {
+				t.Fatalf("source fingerprint changed: got=%s want=%s err=%v", got, fingerprint, err)
+			}
+		})
+	}
+}
+
+func TestLayoutRejectsLostVisibleSourceText(t *testing.T) {
+	empty := ""
+	blocks := []block{{start: 1000, end: 3000, enIDs: []int{1}, alignment: 2, enText: &empty}}
+	en := map[int]Cue{1: {ID: 1, Plain: "Actual dialogue", Display: "Actual dialogue"}}
+	geometry := renderGeometry{canvasWidth: 1920, canvasHeight: 1080, enFontSize: 36, lineHeight: 1.23, blockPadding: 16, marginV: 32, enChars: 65, zhChars: 25}
+	var writer assWriter
+	events, err := layoutBlocks(blocks, en, nil, geometry, func(_ block, start, end int, text, style string, align int, x, y float64, wrap string, hasPos bool) error {
+		return writer.writeDialogue(start, end, style, text, align, x, y, wrap, hasPos)
+	})
+	if err == nil || !strings.Contains(err.Error(), "empty dialogue event") {
+		t.Fatalf("lost source text error = %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("rejected event returned %d layout records", len(events))
+	}
+}
+
 func TestWrapDisplayIsGlyphPreserving(t *testing.T) {
 	text := "就在我们抵达之前 其他版本的我们…　感染了这个病毒 并带回了这里"
 	wrapped := wrapDisplay(text, "zh", 25, true)
