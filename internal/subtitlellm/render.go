@@ -70,20 +70,6 @@ func RenderWithWordTimings(bundle Bundle, mapping Mapping, llmcfg config.LLMConf
 		return nil, err
 	}
 	blocks := splitLongBlocks(buildBlocks(mapping, en, zh, llmcfg), en, zh, llmcfg, words)
-	sort.SliceStable(blocks, func(i, j int) bool {
-		a, b := blocks[i], blocks[j]
-		if a.start != b.start {
-			return a.start < b.start
-		}
-		if a.end != b.end {
-			return a.end < b.end
-		}
-		return a.group < b.group
-	})
-	if err := verifySourceCoverage(blocks, en, zh); err != nil {
-		return nil, err
-	}
-
 	effective := adaptedRenderStyle(renderBaseStyle(style), width, height)
 	geometry := renderGeometry{
 		zhFontSize:   float64(effective.PrimarySize),
@@ -100,6 +86,20 @@ func RenderWithWordTimings(bundle Bundle, mapping Mapping, llmcfg config.LLMConf
 		zhChars:      llmcfg.ZhChars,
 		frameWidth:   width,
 		frameHeight:  height,
+	}
+	blocks = applySpatialPolicies(blocks, mapping, en, zh, geometry, effective)
+	sort.SliceStable(blocks, func(i, j int) bool {
+		a, b := blocks[i], blocks[j]
+		if a.start != b.start {
+			return a.start < b.start
+		}
+		if a.end != b.end {
+			return a.end < b.end
+		}
+		return a.group < b.group
+	})
+	if err := verifySourceCoverage(blocks, en, zh); err != nil {
+		return nil, err
 	}
 	var out assWriter
 	out.writeHeader(effective)
@@ -685,6 +685,237 @@ func absInt(v int) int {
 		return -v
 	}
 	return v
+}
+
+// applySpatialPolicies executes multi-speaker spatial layout and on-screen text
+// collision avoidance across the full episode timeline.
+func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, geometry renderGeometry, style config.ASSStyleConfig) []block {
+	isOnScreenText := func(b block) bool {
+		if b.group < 0 || b.group >= len(mapping.Groups) {
+			return false
+		}
+		return mapping.Groups[b.group].Kind == KindOnScreenText
+	}
+
+	// Pass 1: Contiguous on-screen text grouping and relocation.
+	var ostIndices []int
+	for i, b := range blocks {
+		if isOnScreenText(b) {
+			ostIndices = append(ostIndices, i)
+		}
+	}
+	sort.SliceStable(ostIndices, func(i, j int) bool {
+		return blocks[ostIndices[i]].start < blocks[ostIndices[j]].start
+	})
+
+	var ostGroups [][]int
+	for _, idx := range ostIndices {
+		b := blocks[idx]
+		if len(ostGroups) == 0 {
+			ostGroups = append(ostGroups, []int{idx})
+			continue
+		}
+		lastGroup := ostGroups[len(ostGroups)-1]
+		firstInGroup := blocks[lastGroup[0]]
+		maxEndSoFar := 0
+		for _, gIdx := range lastGroup {
+			if blocks[gIdx].end > maxEndSoFar {
+				maxEndSoFar = blocks[gIdx].end
+			}
+		}
+		if b.top == firstInGroup.top && b.start-maxEndSoFar <= 500 {
+			ostGroups[len(ostGroups)-1] = append(ostGroups[len(ostGroups)-1], idx)
+		} else {
+			ostGroups = append(ostGroups, []int{idx})
+		}
+	}
+
+	for _, g := range ostGroups {
+		nativeSide := blocks[g[0]].top
+		oppositeSide := !nativeSide
+
+		hasSpeechCollision := false
+		for _, idx := range g {
+			b := blocks[idx]
+			bStart := roundCentiseconds(b.start)
+			bEnd := roundCentiseconds(b.end)
+			for _, other := range blocks {
+				if isOnScreenText(other) || other.top != nativeSide {
+					continue
+				}
+				oStart := roundCentiseconds(other.start)
+				oEnd := roundCentiseconds(other.end)
+				if max(bStart, oStart) < min(bEnd, oEnd) {
+					hasSpeechCollision = true
+					break
+				}
+			}
+			if hasSpeechCollision {
+				break
+			}
+		}
+		if !hasSpeechCollision {
+			continue
+		}
+
+		destFree := true
+		for _, idx := range g {
+			b := blocks[idx]
+			bStart := roundCentiseconds(b.start)
+			bEnd := roundCentiseconds(b.end)
+			for j, other := range blocks {
+				inSameGroup := false
+				for _, gIdx := range g {
+					if j == gIdx {
+						inSameGroup = true
+						break
+					}
+				}
+				if inSameGroup {
+					continue
+				}
+				if other.top == oppositeSide {
+					oStart := roundCentiseconds(other.start)
+					oEnd := roundCentiseconds(other.end)
+					if max(bStart, oStart) < min(bEnd, oEnd) {
+						destFree = false
+						break
+					}
+				}
+			}
+			if !destFree {
+				break
+			}
+		}
+
+		if destFree {
+			for _, idx := range g {
+				blocks[idx].top = oppositeSide
+				blocks[idx].position = nil
+				if oppositeSide {
+					blocks[idx].alignment = 8
+				} else {
+					blocks[idx].alignment = 2
+				}
+			}
+		}
+	}
+
+	// Pass 2: Multi-speaker 3-line flattening.
+	usableWidth := geometry.canvasWidth - geometry.marginL - geometry.marginR
+	for i := range blocks {
+		b := &blocks[i]
+		isMulti := false
+		for _, cue := range append(cuesFor(en, b.enIDs), cuesFor(zh, b.zhIDs)...) {
+			if cue.MultiSpeaker {
+				isMulti = true
+				break
+			}
+		}
+		if !isMulti {
+			continue
+		}
+		ztext := joinCues(zh, b.zhIDs, "　")
+		etext := joinCues(en, b.enIDs, " ")
+		if b.zhText != nil {
+			ztext = *b.zhText
+		}
+		if b.enText != nil {
+			etext = *b.enText
+		}
+		ztext = wrapSourceDisplay(ztext, "zh", geometry.zhChars, false, cuesFor(zh, b.zhIDs))
+		etext = wrapSourceDisplay(etext, "en", geometry.enChars, false, cuesFor(en, b.enIDs))
+		zhLines := sourceLines(ztext)
+		enLines := sourceLines(etext)
+		if len(zhLines)+len(enLines) == 3 {
+			if len(zhLines) == 2 && len(enLines) == 1 {
+				merged := zhLines[0] + "   " + zhLines[1]
+				if w, ok := MeasureTextWidth(merged, style.PrimaryFont, geometry.zhFontSize, style.ScaleX, style.Spacing, ""); ok && w <= usableWidth {
+					b.zhText = &merged
+				}
+			} else if len(enLines) == 2 && len(zhLines) == 1 {
+				merged := enLines[0] + "   " + enLines[1]
+				if w, ok := MeasureTextWidth(merged, style.SecondaryFont, geometry.enFontSize, style.ScaleX, style.Spacing, ""); ok && w <= usableWidth {
+					b.enText = &merged
+				}
+			}
+		}
+	}
+
+	// Pass 3: Multi-speaker 4-line spatial partitioning.
+	var finalBlocks []block
+	for i := range blocks {
+		b := blocks[i]
+		isMulti := false
+		for _, cue := range append(cuesFor(en, b.enIDs), cuesFor(zh, b.zhIDs)...) {
+			if cue.MultiSpeaker {
+				isMulti = true
+				break
+			}
+		}
+		if !isMulti {
+			finalBlocks = append(finalBlocks, b)
+			continue
+		}
+		ztext := joinCues(zh, b.zhIDs, "　")
+		etext := joinCues(en, b.enIDs, " ")
+		if b.zhText != nil {
+			ztext = *b.zhText
+		}
+		if b.enText != nil {
+			etext = *b.enText
+		}
+		ztext = wrapSourceDisplay(ztext, "zh", geometry.zhChars, false, cuesFor(zh, b.zhIDs))
+		etext = wrapSourceDisplay(etext, "en", geometry.enChars, false, cuesFor(en, b.enIDs))
+		zhLines := sourceLines(ztext)
+		enLines := sourceLines(etext)
+		if len(zhLines) == 2 && len(enLines) == 2 {
+			destSide := !b.top
+			destFree := true
+			bStart := roundCentiseconds(b.start)
+			bEnd := roundCentiseconds(b.end)
+			for j, other := range blocks {
+				if j == i {
+					continue
+				}
+				if other.top == destSide {
+					oStart := roundCentiseconds(other.start)
+					oEnd := roundCentiseconds(other.end)
+					if max(bStart, oStart) < min(bEnd, oEnd) {
+						destFree = false
+						break
+					}
+				}
+			}
+			if destFree {
+				// Speaker 1 Chinese & English on top
+				b1 := b
+				b1.top = true
+				b1.alignment = 8
+				b1.position = nil
+				t1Zh := zhLines[0]
+				t1En := enLines[0]
+				b1.zhText = &t1Zh
+				b1.enText = &t1En
+
+				// Speaker 2 Chinese & English on bottom
+				b2 := b
+				b2.top = false
+				b2.alignment = 2
+				b2.position = nil
+				t2Zh := zhLines[1]
+				t2En := enLines[1]
+				b2.zhText = &t2Zh
+				b2.enText = &t2En
+
+				finalBlocks = append(finalBlocks, b1, b2)
+				continue
+			}
+		}
+		finalBlocks = append(finalBlocks, b)
+	}
+
+	return finalBlocks
 }
 
 // layoutBlocks builds text, wrapping and collision-free vertical bands, then
