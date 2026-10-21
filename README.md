@@ -1,185 +1,266 @@
+```
+   ___           _                  
+  / _|_   _ ___(_) ___  _ __  _ __  
+ | |_| | | / __| |/ _ \| '_ \| '_ \ 
+ |  _| |_| \__ \ | (_) | | | | | | |
+ |_|  \__,_|___/_|\___/|_| |_|_| |_|
+```
+
 # fusionn
 
-Intelligent Media Automation Platform
+Bilingual subtitle automation for Sonarr and Radarr media libraries.
+
+[![CI](https://github.com/weizsw/fusionn/actions/workflows/ci.yml/badge.svg)](https://github.com/weizsw/fusionn/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go&logoColor=white)](go.mod)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+fusionn listens for Sonarr/Radarr import webhooks, finds the English and Chinese subtitle tracks in the new file, and writes a styled bilingual `.zh-CN.ass` back to the media directory. If the Chinese subtitle is missing, it can search Bazarr for one, or queue a translation job for an external service such as [fusionn-subs](https://github.com/weizsw/fusionn-subs) and merge the result when the callback arrives.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Sonarr / Radarr<br/>import webhook] --> B
+
+    subgraph B [Analyze pipeline - synchronous]
+        B1[Analyzer<br/>detect tracks] --> B2[Extractor<br/>English + Chinese] --> B3[Bazarr search] --> B4[Translation queue]
+    end
+
+    B --> C[Redis-backed merge queue]
+    C --> D
+
+    subgraph D [Merge pipeline - async worker]
+        D1[Merger<br/>LLM or DuoSubs] --> D2[Style] --> D3[Font embedding] --> D4[Output] --> D5[Notify] --> D6[Cleanup]
+    end
+
+    D5 -.-> E[Apprise]
+    D6 -.-> F[.zh-CN.ass<br/>next to the video]
+```
+
+The merge runs on a bounded worker queue, so a slow LLM request never blocks the webhook response.
 
 ## Features
 
-- 🚀 Fast and lightweight Go application
-- 🔧 Configuration management with hot-reload support
-- 📝 Structured logging with Zap
-- 🐳 Docker and Docker Compose support
-- 🔄 Graceful shutdown
-- 🌐 HTTP API with Gin framework
-- 🎬 Sonarr/Radarr webhook integration for subtitle automation
-- 🔤 Automatic dual-language subtitle generation (English + Chinese)
-- 🌐 Redis-based translation queue for external translation services
-- 🔠 Automatic font embedding in dual-language subtitles
+| | |
+|---|---|
+| **Zero-text-hallucination LLM merge** | The model only returns subtitle ID mappings (`en_ids`, `zh_ids`, `layer`). Every line of text and every timestamp is copied from the source files by local deterministic code. |
+| **Legacy DuoSubs engine** | Keep the existing semantic aligner (local binary or HTTP service) by setting `subtitle.engine: duosubs`. |
+| **Automatic subtitle sourcing** | Extract embedded tracks, ask Bazarr to download a Chinese subtitle, or queue a translation job on Redis and merge on callback. |
+| **Traditional to Simplified conversion** | OpenCC `t2s` applied before merging, with the conversion recorded in the cache fingerprint. |
+| **ASS styling for TV playback** | 1920x1080 script canvas, Chinese above English, letterbox-aware placement and scale, with a documented geometry model. |
+| **Font embedding** | Referenced fonts are subset to the used glyphs and embedded into the ASS file, so playback does not depend on installed fonts. |
+| **Word-level timing (optional)** | A bundled CPU service (`Qwen/Qwen3-ForcedAligner-0.6B-hf`) supplies real word times when a long cue must be split. Without it, fusionn falls back to proportional timing. |
+| **Caching** | Model request cache keyed on source text, model, prompt and window settings. Changing only the style reuses the cached alignment. |
+| **Notifications** | Optional Apprise notifications on success and failure. |
 
-## Quick Start
+## Requirements
 
-### Prerequisites
+- Go 1.23 or later (local builds) or Docker
+- `ffmpeg` and `ffprobe` on `PATH` (included in the Docker image)
+- An OpenAI-compatible chat endpoint, for `engine: llm`
+- Redis, only for the translation queue
+- Python 3, only to run the `word-align` service tests
 
-- Go 1.23 or later
-- Python 3 (for the word-alignment HTTP tests)
-- Docker (optional)
-- Redis server (if using translation queue feature)
+## Quick start
 
-### Local Development
+### Docker Compose
 
-1. Copy the example configuration:
+1. Copy the example configuration and edit it:
+
+   ```bash
+   cp config/config.example.yaml config/config.yaml
+   ```
+
+2. Set `subtitle.enabled: true`, choose an engine, and point `subtitle.llm.base_url` at a reachable model endpoint. Inside a container, `localhost` is the container itself.
+
+3. Point the media volume in `docker-compose.yml` at your library:
+
+   ```yaml
+   volumes:
+     - /path/to/your/media:/media
+   ```
+
+4. Start the stack:
+
+   ```bash
+   docker compose up -d --build
+   docker compose logs -f
+   ```
+
+Compose starts three services: `fusionn`, `word-align` (optional CPU alignment) and `redis`. A commented `fusionn-subs` service shows how to add translation.
+
+> [!NOTE]
+> The first `word-align` request downloads the alignment model into the Hugging Face volume. The model worker exits after 300 seconds of inactivity to release memory and reloads from cache on the next request. Set `ALIGN_IDLE_SECONDS` on the service to change this.
+
+### Local development
 
 ```bash
 cp config/config.example.yaml config/config.yaml
-```
-
-2. Run the application:
-
-```bash
 make run
 ```
 
-Or build and run:
+Or build a binary:
 
 ```bash
 make build
 ./fusionn
 ```
 
-### Docker
+### Webhook setup
 
-Build and run with Docker Compose:
+Point Sonarr and Radarr at fusionn, **Settings → Connect → Webhook**:
 
-```bash
-docker compose up -d
-```
+| Field | Value |
+|---|---|
+| URL | `http://<host>:8080/api/v1/webhook/sonarr` (or `/radarr`) |
+| Method | `POST` |
+| Trigger | On Import Complete (Download / Upgrade) |
 
-View logs:
+### Merge without the server
 
-```bash
-docker compose logs -f
-```
-
-Stop:
-
-```bash
-docker compose down
-```
-
-## Configuration
-
-Configuration is loaded from `config/config.yaml` by default. You can override this with the `CONFIG_PATH` environment variable.
-
-The configuration manager detects file changes. Subtitle services and queued merge workers capture their engine, connection, and style settings at startup: restart fusionn after changing these settings.
-
-### Subtitle Processing
-
-Enable automatic dual-language subtitle generation:
-
-```yaml
-subtitle:
-  enabled: true
-  # ... other subtitle settings
-```
-
-### Native LLM merge or DuoSubs
-
-New configurations default to the native Go ID-mapping engine. No Python merger,
-DuoSubs service, or embedding model is needed for LLM mode. An optional CPU
-word-alignment container supplies times for long subtitles. Select explicitly:
-
-```yaml
-subtitle:
-  enabled: true
-  engine: "llm" # use "duosubs" to keep the existing local/HTTP engine
-  llm:
-    base_url: "http://host.docker.internal:3425/v1" # Docker Desktop -> host
-    model: "group/auto-gfmodel"
-    api_key_env: "" # optional environment variable NAME, never a key value
-    cache_enabled: true
-    cache_dir: "/data/llm-subtitle-cache"
-    en_chars: 65
-    zh_chars: 20 # tested setting; the code default is 25
-```
-
-Use `http://127.0.0.1:3425/v1` when running on the host itself. Linux containers
-need a reachable host address/network configuration. Mount the cache directory
-persistently; style changes reuse ID mappings. Old configs with a `duosubs` block
-and no `engine` continue to select DuoSubs. Keep the original DuoSubs deployment
-for that mode; the fusionn image does not install a local duosubs executable.
-
-The Compose file starts `word-align` beside fusionn and sets the internal URL.
-It uses `Qwen/Qwen3-ForcedAligner-0.6B-hf` on CPU and keeps downloaded weights in
-the Hugging Face volume. It does not need a host MLX service or a media mount.
-Run `docker compose up -d --build` to build the service. The first request also
-downloads the model. For a standalone run, set `subtitle.llm.word_align_url` to a
-reachable service URL, or leave it empty to use proportional timing.
-The service starts its model worker on the first request. After 300 seconds
-without an alignment request, it stops the worker and releases model memory.
-Set `ALIGN_IDLE_SECONDS` on `word-align` to change this interval. The next
-request reloads the model from the cache. Active requests keep their worker.
-
-Long multiline source cues use the configured `en_chars` and `zh_chars` limits.
-Original single-line cues stay whole, even above these limits. They do not
-request word alignment. Joined source cues still obey the limits.
-The renderer keeps source text and order, holds a short language across slices,
-and splits only the long side. It reuses source boundaries before adding word
-boundaries. Invalid word times or a service failure use proportional timing.
-Chinese proportional slices reserve the minimum reading time when the total
-interval permits it. New fragments need 1.2 seconds of continuous display.
-If splitting would make reading too fast, the renderer keeps the original event
-and line wrapping. Speaker text uses its original breaks when wrapping is needed.
-
-The reading limits come from the configuration. The tested S02E08 values are
-`en_chars: 65` and `zh_chars: 20`. The code default for `zh_chars` remains 25.
-Restart fusionn after changing these values. English length examples and the
-current playback results are in the [integration guide](docs/llm-subtitle-integration.zh-CN.md#英文长度与配置调整参考).
-
-Word times do not have a persistent cache yet. With video and an alignment URL,
-each run requests word times again. The ID-mapping cache is separate.
-Follow-up work is recorded in [TODO.md](TODO.md).
-
-The shared style now uses a 1920×1080 script canvas and the experimental
-Chinese-above-English defaults. Legacy 384×288 style values are migrated at load
-when `play_res_y` is absent; set both play resolutions explicitly when copying new
-1080p values. Fonts must be installed or embedded (e.g. Noto Sans CJK SC / DejaVu
-Sans on Linux). A script canvas is not the physical resolution of a television.
-
-See the [中文集成与迁移说明](docs/llm-subtitle-integration.zh-CN.md) for cache import,
-TV letterbox geometry, supported formats, cancellation and reproducible checks.
-For an isolated run without starting the server:
+`subtitle-merge` runs the same merger as a standalone binary, which is useful for testing a pair of files:
 
 ```bash
 go run ./cmd/subtitle-merge --config config/config.yaml \
   --en /tmp/english.srt --zh /tmp/chinese.srt --out /tmp/new-bilingual-output
 ```
 
-The output directory must be new. `--video` plus absolute `--en-stream` and
-`--zh-stream` can extract directly into that directory; `--mapping` imports a
-validated existing mapping without LLM requests. The Docker image includes
-`subtitle-merge` as a standalone binary as well.
+The output directory must not exist yet. Add `--video` with absolute `--en-stream` and `--zh-stream` to extract directly from a media file, or `--mapping` to import a previously validated mapping instead of calling the model. A rendered sample is committed in [docs/examples/llm-native-dark-matter/bilingual.ass](docs/examples/llm-native-dark-matter/bilingual.ass).
 
-### Redis Integration
+## Configuration
 
-For automatic translation of missing Chinese subtitles, configure Redis to queue jobs for external translation services (e.g., fusionn-subs):
+Configuration is loaded from `config/config.yaml`, or from `CONFIG_PATH`. See [config/config.example.yaml](config/config.example.yaml) for every key and its default.
+
+> [!IMPORTANT]
+> The config manager detects file changes, but subtitle services and queue workers capture their engine, connection and style settings at startup. **Restart fusionn after changing those settings.**
+
+### Choosing an engine
+
+```yaml
+subtitle:
+  enabled: true
+  engine: "llm" # native Go ID-mapping merge  |  "duosubs" legacy aligner
+```
+
+New configurations default to `llm`. An older config that still has a `duosubs` block and no `engine` keeps using DuoSubs. An explicit `engine` always wins and overrides the legacy inference.
+
+| | `llm` | `duosubs` |
+|---|---|---|
+| Alignment | Model returns ID mappings only | LaBSE embeddings + DTW |
+| Extra service | Optional word alignment | DuoSubs binary or HTTP service |
+| SDH filtering | Skipped, so one-sided dialogue survives | `cleanit` filtering enabled |
+
+### LLM engine
+
+```yaml
+subtitle:
+  llm:
+    base_url: "http://host.docker.internal:3425/v1" # Docker Desktop -> host
+    model: "group/auto-gfmodel"
+    api_key_env: "" # name of an environment variable, never a key value
+    response_format: "json_object" # json_object | json_schema | none
+    timeout_seconds: 180
+    workers: 3
+    retries: 1
+    window_seconds: 210
+    overlap_seconds: 15
+    cache_enabled: true
+    cache_dir: "/data/llm-subtitle-cache"
+    en_chars: 65
+    zh_chars: 20 # S02E08 tested value; the code default is 25
+    word_align_url: "" # Compose injects http://word-align:8767
+```
+
+Use `http://127.0.0.1:3425/v1` when fusionn runs on the host. Linux containers need a reachable host address instead of `host.docker.internal`.
+
+- **Windows and context.** Subtitles are cut into 210-second windows with 15 seconds of context overlap. A cue belongs to the window containing its start time and is never split.
+- **Validation.** Every group is checked locally before use: reused or unknown IDs, non-integer IDs, empty groups, groups over the 8-second cross-language distance limit, top/bottom layer conflicts and bilingual span over 30 seconds are rejected. Lines the model dropped are restored on their original timing.
+- **Key handling.** `api_key_env` names an environment variable and takes precedence over the inline `api_key`. If the named variable is unset, startup fails loudly rather than silently falling back to plaintext.
+- **Cache.** Successful mappings are stored under `cache_dir/subtitlellm-v1/`. The key covers the source text, model, endpoint, request payload and window settings, but not the style or the key, so re-styling an episode costs no model request. Caches contain full subtitle text: keep the directory readable only by the account running fusionn.
+- **Offline import.** `mapping_path` loads an existing mapping file without contacting a model. It is validated against a sibling `sources.json` and fails on a fingerprint mismatch instead of searching for a different source file.
+- **Limits.** `en_chars` and `zh_chars` bound short-sentence joins and flag long cues for time splitting. A cue that was already a single line in the source is kept whole even above the limit; only its display may wrap.
+
+### DuoSubs engine (legacy)
+
+```yaml
+subtitle:
+  engine: "duosubs"
+  duosubs:
+    mode: "http" # "local" runs the binary, "http" calls duosubs-service on the host
+    model: "sentence-transformers/LaBSE"
+    http_url: "http://host.docker.internal:8765"
+    http_container_prefix: "/data" # container path prefix
+    http_host_prefix: "/Users/you/media" # must match the Docker volume mount
+    timeout_minutes: 10
+```
+
+`local` needs a `duosubs` executable in the container; the fusionn image does not ship one. Use [duosubs-service](duosubs-service/README.md) for HTTP mode, which also enables Metal acceleration on macOS where Docker cannot reach the GPU.
+
+### Subtitle style
+
+`subtitle.ass_style` is shared by both engines and drives the geometry of the output: a script canvas, a proportional bottom distance and a proportional glyph size, so the result looks the same regardless of encoded resolution.
+
+```yaml
+subtitle:
+  ass_style:
+    enabled: true
+    play_res_x: 1920
+    play_res_y: 1080
+    primary_font: "PingFang SC"
+    primary_size: 52
+    primary_color: "&H08EFECEA"
+    secondary_font: "Helvetica Neue"
+    secondary_size: 36
+    secondary_color: "&H087BC0E5"
+    margin_v: 32
+    alignment: 2
+```
+
+A config written before `play_res_x`/`play_res_y` existed used a 384x288 canvas. When `play_res_y` is absent, explicit sizes, margins, outline and shadow are scaled to the 1080p canvas on load. Set both play resolutions explicitly to opt out of the migration.
+
+> [!TIP]
+> Chinese and English fonts must exist in the container or be embedded. On Linux and TV players, `PingFang SC` and `Helvetica Neue` are usually absent — switch to `Noto Sans CJK SC` / `DejaVu Sans`, or enable font embedding.
+
+### Font embedding
+
+```yaml
+subtitle:
+  font_embedding:
+    enabled: true
+    fonts_dir: "/app/fonts"
+    timeout_seconds: 300
+```
+
+Mount a fonts directory (for example `- ./fonts:/app/fonts:ro`) holding the TTF/OTF files. fusionn detects the fonts referenced by the ASS file, subsets them to the glyphs actually used, embeds them as UUEncoded attachments, and degrades gracefully when a font is missing.
+
+If embedding does not run, check the log for `fusionn-font binary not found` — the `fusionn-font` release binary is downloaded during the Docker build.
+
+### Bazarr search
+
+When enabled, fusionn asks Bazarr to search for a Chinese subtitle before falling back to translation.
+
+```yaml
+bazarr:
+  enabled: true
+  url: "http://bazarr:6767"
+  api_key: ""
+  language_code: "zh"
+  poll_interval_seconds: 5
+  poll_timeout_seconds: 60
+```
+
+### Translation queue
+
+When no Chinese subtitle can be found, fusionn extracts the English track next to the media as `.eng.srt`, pushes a job to Redis, and waits for a callback.
 
 ```yaml
 redis:
   host: "redis"
   port: 6379
-  password: ""
-  database: 0
-  queue_key: "fusionn:translation_queue"
+  queue_key: "fusionn:translation:queue"
 ```
 
-When Chinese subtitles are missing from media files, fusionn will:
-1. Extract the English subtitle track to the media directory (`.eng.srt`)
-2. Queue a translation job to Redis
-3. Wait for the translation service to callback with the translated Chinese subtitle
-4. Merge both subtitles into a dual-language `.zh-CN.ass` file
-
-The translation service (like [fusionn-subs](https://github.com/weizsw/fusionn-subs)) polls the Redis queue, translates subtitles using AI, and callbacks to fusionn when complete.
-
-Queued jobs use the fusionn-subs-compatible JSON shape. The identity fields are optional but are included when Sonarr/Radarr provides them so downstream glossary reuse can key terms by stable media IDs:
+The queue key must match the one the translation service reads. Jobs use the fusionn-subs-compatible shape, including optional stable media identity so downstream glossaries can key terms by media ID:
 
 ```json
 {
@@ -190,101 +271,89 @@ Queued jobs use the fusionn-subs-compatible JSON shape. The identity fields are 
   "media_type": "episode",
   "source_system": "sonarr",
   "media_id": "42",
-  "external_ids": {
-    "sonarr": "42",
-    "tvdb": "355620",
-    "imdb": "tt8201186"
-  },
+  "external_ids": { "sonarr": "42", "tvdb": "355620", "imdb": "tt8201186" },
   "season": 1,
   "episode": 1
 }
 ```
 
-See `config/config.example.yaml` for full configuration options.
+The translation service polls Redis, translates, and posts back to `/api/v1/callback/translation` with `job_id`, `video_path`, `eng_subtitle_path` and `chs_subtitle_path`. fusionn then enqueues the merge.
 
-### Font Embedding
-
-Automatically embed fonts into ASS subtitle files for better portability and consistent rendering across all devices:
-
-**Setup:**
-
-1. Enable font embedding in your config:
+### Queue and notifications
 
 ```yaml
-subtitle:
-  font_embedding:
-    enabled: true
-    fonts_dir: "/app/fonts"
-    timeout_seconds: 300  # Optional, defaults to 300
+queue:
+  workers: 1 # 1 = sequential, 2+ = concurrent merges
+  queue_size: 100
+  max_retries: 3
+
+apprise:
+  enabled: false
+  base_url: "http://apprise:8000"
+  key: "apprise"
+  tag: "fusionn-subtitle"
 ```
 
-2. Mount your fonts directory in `docker-compose.yml`:
+## API
 
-```yaml
-volumes:
-  - ./fonts:/app/fonts:ro
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Liveness check |
+| `GET` | `/api/v1/status` | Version and running state |
+| `POST` | `/api/v1/webhook/sonarr` | Sonarr import webhook; returns `202` and processes in the background |
+| `POST` | `/api/v1/webhook/radarr` | Radarr import webhook |
+| `POST` | `/api/v1/callback/translation` | Translation completion callback from fusionn-subs |
+
+The webhook and callback routes are registered only when `subtitle.enabled` is `true`.
+
+```bash
+curl -s http://localhost:8080/api/v1/status
 ```
 
-3. Add your font files (TTF/OTF) to the `./fonts` directory
+## Configuration reference
 
-**How it works:**
+| Environment variable | Purpose |
+|---|---|
+| `ENV` | Set to `production` for Gin release mode and `info`-level console logging (default: development, `debug` level) |
+| `CONFIG_PATH` | Path to the configuration file (default `config/config.yaml`) |
+| `FUSIONN_*` | Override any config key, for example `FUSIONN_SERVER_PORT=9090` |
 
-fusionn will automatically:
-- Detect fonts referenced in ASS files
-- Subset fonts to only characters actually used (typically 90%+ size reduction)
-- Embed subsetted fonts directly into the ASS file using UUEncode format
-- Fall back gracefully if fonts are missing (subtitle still works, just without embedded fonts)
-
-**Benefits:**
-- **Portable** - Embedded ASS files work on any device without requiring font installation
-- **Smaller** - Font subsetting dramatically reduces file sizes
-- **Automatic** - No manual intervention needed, happens during subtitle processing
-
-**Troubleshooting:**
-- **Missing fonts warning**: Place required font files in your fonts directory and ensure the font family names match those used in the ASS file
-- **Timeout**: Increase `timeout_seconds` if processing large font files
-- **Feature not working**: Check logs for `⚠️ fusionn-font binary not found` - this indicates the Docker image wasn't built correctly
-
-## API Endpoints
-
-- `GET /health` - Health check
-- `GET /api/v1/status` - Application status and version
-- `POST /api/v1/webhook/sonarr` - Sonarr import webhook
-- `POST /api/v1/webhook/radarr` - Radarr import webhook
-- `POST /api/v1/callback/translation` - Translation completion callback (from fusionn-subs)
+Unknown or malformed values fail at startup rather than at first use.
 
 ## Development
 
-### Build
-
 ```bash
-make build
+make build        # build ./fusionn with a version from git describe
+make run          # run from source
+make test         # go test -race ./... plus the word-align Python tests
+make test-cover   # tests with an HTML coverage report
+make lint         # golangci-lint
+make tidy         # go mod tidy
+make docker       # build the image
 ```
 
-### Test
+Version information is injected with `-ldflags -X github.com/fusionn/internal/version.Version=<version>`; without a tag it reports `dev`.
 
-```bash
-make test
-```
+### Project layout
 
-### Lint
+| Path | Contents |
+|---|---|
+| `cmd/fusionn` | HTTP server, routing and lifecycle |
+| `cmd/subtitle-merge` | Standalone merge CLI |
+| `internal/config` | Config loading, defaults, validation and legacy migration |
+| `internal/handler` | Sonarr/Radarr webhooks and the translation callback |
+| `internal/service/subtitle` | Pipeline, processors, analyzer, style template |
+| `internal/subtitlellm` | Subtitle parsing, ID-mapping validation, timing and ASS rendering |
+| `internal/queue` | Redis translation queue and the in-process merge worker |
+| `internal/executor` | ffmpeg, OpenCC and cleanit wrappers |
+| `internal/client` | Bazarr and DuoSubs HTTP clients |
+| `services/word-align` | CPU word-alignment HTTP service |
+| `duosubs-service` | Host-side DuoSubs HTTP service for macOS GPU use |
+| `experiments/llm-subtitle-merge` | Standalone Python experiment that the Go implementation was ported from |
 
-```bash
-make lint
-```
+## Documentation
 
-### Clean
-
-```bash
-make clean
-```
-
-## Environment Variables
-
-- `ENV` - Set to `production` for production mode (default: development)
-- `CONFIG_PATH` - Path to configuration file (default: `config/config.yaml`)
-- `FUSIONN_*` - Any config value can be overridden with env vars (e.g., `FUSIONN_SERVER_PORT=9090`)
-
-## License
-
-MIT
+- [Native LLM subtitle integration and migration guide (Chinese)](docs/llm-subtitle-integration.zh-CN.md) — cache import, TV letterbox geometry, supported formats, cancellation and reproducible checks
+- [Zero-hallucination bilingual merge design (Chinese)](docs/llm-zero-hallucination-bilingual-subtitle-merge.md) — the design discussion and the boundaries that changed during implementation
+- [CONTEXT.md](CONTEXT.md) — glossary for the playback-canvas terminology
+- [TODO.md](TODO.md) — open follow-up work
