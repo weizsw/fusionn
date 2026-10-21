@@ -248,26 +248,33 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 
 	// 4. Source / display identity interval comparison against baseline.
 	baseline := buildBlocks(mapping, en, zh, llmcfg)
+	// Baseline windows come from the pre-policy source layout. For each identity
+	// the pre-policy envelope is the union of that identity's source windows, so
+	// an intentional hold (one cue displayed across the counterpart's slices) is
+	// compared against its own source envelope, not against a slice-local one.
 	baselineInts := map[string][][2]int{}
+	addBaseline := func(lang string, groupIndex int, ids []int, start, end int) {
+		if len(ids) == 0 {
+			return
+		}
+		for _, id := range ids {
+			key := fmt.Sprintf("%s:%d", lang, id)
+			baselineInts[key] = append(baselineInts[key], [2]int{roundCentiseconds(start), roundCentiseconds(end)})
+		}
+	}
 	for _, b := range baseline {
-		if len(b.enIDs) > 0 {
-			key := fmt.Sprintf("%d:en:%s", b.group, intsKey(b.enIDs))
-			baselineInts[key] = append(baselineInts[key], [2]int{roundCentiseconds(b.start), roundCentiseconds(b.end)})
-		}
-		if len(b.zhIDs) > 0 {
-			key := fmt.Sprintf("%d:zh:%s", b.group, intsKey(b.zhIDs))
-			baselineInts[key] = append(baselineInts[key], [2]int{roundCentiseconds(b.start), roundCentiseconds(b.end)})
-		}
+		addBaseline("en", b.group, b.enIDs, b.start, b.end)
+		addBaseline("zh", b.group, b.zhIDs, b.start, b.end)
 	}
 
 	emittedInts := map[string][][2]int{}
 	for _, e := range events {
-		if len(e.enIDs) > 0 {
-			key := fmt.Sprintf("%d:en:%s", e.group, intsKey(e.enIDs))
+		for _, id := range e.enIDs {
+			key := fmt.Sprintf("en:%d", id)
 			emittedInts[key] = append(emittedInts[key], [2]int{e.assStart, e.assEnd})
 		}
-		if len(e.zhIDs) > 0 {
-			key := fmt.Sprintf("%d:zh:%s", e.group, intsKey(e.zhIDs))
+		for _, id := range e.zhIDs {
+			key := fmt.Sprintf("zh:%d", id)
 			emittedInts[key] = append(emittedInts[key], [2]int{e.assStart, e.assEnd})
 		}
 	}
@@ -277,7 +284,7 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 		got := union(emittedInts[key])
 		if !equalIntervals(want, got) {
 			v.IntervalMismatches = append(v.IntervalMismatches, fmt.Sprintf(
-				"identity %s display intervals changed: want %v got %v", key, want, got))
+				"source identity %s display window changed: want %v got %v", key, want, got))
 		}
 	}
 
@@ -457,6 +464,47 @@ func TestReviewProbeValidatorRejectsOneToOneReplay(t *testing.T) {
 	}
 	if len(v.Verify()) == 0 {
 		t.Fatal("validator accepted one-to-one A-B-A-B replay")
+	}
+}
+
+// Probe 4b: a Chinese-only replay must fail while English stays correct.
+func TestReviewProbeValidatorRejectsChineseOnlyReplay(t *testing.T) {
+	bundle := fixtureBundle(
+		[]Cue{
+			{ID: 1, Start: 1000, End: 3000, Display: "First english part.", Plain: "First english part."},
+			{ID: 2, Start: 3000, End: 5000, Display: "Second english part.", Plain: "Second english part."},
+		},
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "甲 乙", Plain: "甲\n乙"}},
+	)
+	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	// English is emitted correctly once per slice; only Chinese replays A-B-A-B.
+	bad := []renderedEvent{
+		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 1000, assEnd: 2000, enText: "First english part.", zhText: "甲"},
+		{group: 0, enIDs: []int{2}, zhIDs: []int{1}, assStart: 2000, assEnd: 3000, enText: "Second english part.", zhText: "乙"},
+		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 3000, assEnd: 4000, enText: "First english part.", zhText: "甲"},
+		{group: 0, enIDs: []int{2}, zhIDs: []int{1}, assStart: 4000, assEnd: 5000, enText: "Second english part.", zhText: "乙"},
+	}
+	// en_chars is small here so the two English cues are not joined by the
+	// short-join path: the pre-policy layout is one slice per English cue with
+	// the single Chinese cue held across both.
+	cfg := fixtureConfig()
+	cfg.EnChars = 5
+	v, err := verifyEpisode(bundle, mapping, cfg, bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(v.OrderMismatches) == 0 {
+		t.Fatalf("Chinese-only replay was not detected: %+v", v)
+	}
+	// The English side of the same fixture alone must be accepted.
+	goodEnglish := []renderedEvent{
+		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 1000, assEnd: 3000, enText: "First english part.", zhText: "甲 乙"},
+		{group: 0, enIDs: []int{2}, zhIDs: []int{1}, assStart: 3000, assEnd: 5000, enText: "Second english part.", zhText: "甲 乙"},
+	}
+	if v2, err := verifyEpisode(bundle, mapping, cfg, goodEnglish); err != nil {
+		t.Fatal(err)
+	} else if len(v2.Verify()) != 0 {
+		t.Fatalf("valid English once-per-slice with a held Chinese was rejected: %v", v2.Verify())
 	}
 }
 
