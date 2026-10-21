@@ -253,7 +253,7 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 	// an intentional hold (one cue displayed across the counterpart's slices) is
 	// compared against its own source envelope, not against a slice-local one.
 	baselineInts := map[string][][2]int{}
-	addBaseline := func(lang string, groupIndex int, ids []int, start, end int) {
+	addBaseline := func(lang string, ids []int, start, end int) {
 		if len(ids) == 0 {
 			return
 		}
@@ -263,8 +263,8 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 		}
 	}
 	for _, b := range baseline {
-		addBaseline("en", b.group, b.enIDs, b.start, b.end)
-		addBaseline("zh", b.group, b.zhIDs, b.start, b.end)
+		addBaseline("en", b.enIDs, b.start, b.end)
+		addBaseline("zh", b.zhIDs, b.start, b.end)
 	}
 
 	emittedInts := map[string][][2]int{}
