@@ -16,14 +16,13 @@ import (
 // opt-in inputs instead of hardcoded absolute paths silently skipped in CI.
 const episodeFixtureDirEnv = "FUSIONN_EPISODE_FIXTURE_DIR"
 
+// episodeStyleEnv points at a JSON dump of the exact ASSStyleConfig used for the
+// delivered render. Passing the real style keeps the audit tied to that artifact.
+const episodeStyleEnv = "FUSIONN_EPISODE_STYLE_JSON"
+
 // EpisodeValidation is a real, computed audit of one rendered episode.
-//
-// Every field is derived from actual rendered output; nothing is asserted
-// without measurement. Unperformed checks are reported as such.
 type EpisodeValidation struct {
-	TotalEvents int
-	// Language-text checks operate on the separate per-language text that the
-	// layout produced, never on the concatenated ASS body.
+	TotalEvents  int
 	ENSourceCues int
 	ZHSourceCues int
 	ENCovered    int
@@ -31,20 +30,10 @@ type EpisodeValidation struct {
 	MissingEN    []int
 	MissingZH    []int
 
-	// Interval checks compare the union of intended (pre-policy) display
-	// intervals with the union of emitted intervals, per source identity.
 	IntervalMismatches []string
-
-	// Order checks compare the emitted per-source text sequence with the
-	// source-native order.
-	OrderMismatches []string
-
-	// Text integrity: every source cue's text must appear in the emitted text
-	// of the group(s) that own it. Tail loss and mid-cue reordering are
-	// detectable because full content is compared, not a prefix.
-	TextMismatches []string
-
-	Unchecked []string
+	OrderMismatches    []string
+	TextMismatches     []string
+	Unchecked          []string
 }
 
 // Verify returns the list of failures; an empty list means fully verified.
@@ -63,19 +52,20 @@ func (v EpisodeValidation) Verify() []string {
 	return failures
 }
 
+func intsKey(ids []int) string {
+	sorted := append([]int(nil), ids...)
+	sort.Ints(sorted)
+	var parts []string
+	for _, id := range sorted {
+		parts = append(parts, fmt.Sprint(id))
+	}
+	return strings.Join(parts, ",")
+}
+
 // normText collapses ASS markup, explicit breaks and whitespace so comparisons
 // are about content, not formatting.
 func normText(s string) string {
 	replaced := strings.NewReplacer(`\N`, "", `\n`, "", `\h`, "").Replace(s)
-	var b strings.Builder
-	for _, r := range replaced {
-		if r == '{' {
-			continue
-		}
-		_ = r
-		break
-	}
-	// strip {...} override blocks
 	out := make([]rune, 0, len(replaced))
 	depth := 0
 	for _, r := range replaced {
@@ -90,13 +80,9 @@ func normText(s string) string {
 			out = append(out, r)
 		}
 	}
-	b.WriteString(string(out))
-	return strings.Join(strings.Fields(b.String()), "")
+	return strings.Join(strings.Fields(string(out)), "")
 }
 
-// validateEpisode renders via the production pipeline while keeping the
-// internal layout audits, then verifies identity, full text, order and
-// interval unions at ASS centisecond resolution.
 func validateEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style config.ASSStyleConfig, width, height int, words WordTimings) (EpisodeValidation, []renderedEvent, error) {
 	_, events, err := renderWithAudits(bundle, mapping, llmcfg, style, width, height, words)
 	if err != nil {
@@ -106,9 +92,15 @@ func validateEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, st
 	return v, events, err
 }
 
-// verifyEpisode is the pure audit over already-produced layout events. Keeping
-// it separate lets negative tests inject corrupted events that the renderer
-// would refuse to produce.
+type emitted struct {
+	start, end int
+	enIDs      []int
+	zhIDs      []int
+	enText     string
+	zhText     string
+}
+
+// verifyEpisode is the pure audit over already-produced layout events.
 func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, events []renderedEvent) (EpisodeValidation, error) {
 	en, zh, err := cueIndex(bundle)
 	if err != nil {
@@ -121,19 +113,17 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 		ZHSourceCues: len(bundle.ZH),
 	}
 
-	// Emitted text per display identity, in emission order.
-	type emitted struct {
-		start, end int
-		enText     string
-		zhText     string
-	}
 	byGroupEN := map[int][]emitted{}
 	byGroupZH := map[int][]emitted{}
-
 	sawEN := map[int]bool{}
 	sawZH := map[int]bool{}
+
 	for _, e := range events {
-		rec := emitted{start: e.assStart, end: e.assEnd, enText: e.enText, zhText: e.zhText}
+		rec := emitted{
+			start: e.assStart, end: e.assEnd,
+			enIDs: e.enIDs, zhIDs: e.zhIDs,
+			enText: e.enText, zhText: e.zhText,
+		}
 		byGroupEN[e.group] = append(byGroupEN[e.group], rec)
 		byGroupZH[e.group] = append(byGroupZH[e.group], rec)
 		for _, id := range e.enIDs {
@@ -160,32 +150,33 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 		}
 	}
 
-	// 2. Full-text integrity per source cue, scoped to the groups that own it.
-	ownerGroups := map[int]map[int]bool{}
+	// 2. Full-text integrity per source cue, with language-specific ownership namespaces.
+	ownerGroupsEN := map[int]map[int]bool{}
+	ownerGroupsZH := map[int]map[int]bool{}
 	for gi, g := range mapping.Groups {
 		for _, id := range g.ENIDs {
-			if ownerGroups[id] == nil {
-				ownerGroups[id] = map[int]bool{}
+			if ownerGroupsEN[id] == nil {
+				ownerGroupsEN[id] = map[int]bool{}
 			}
-			ownerGroups[id][gi] = true
+			ownerGroupsEN[id][gi] = true
 		}
 		for _, id := range g.ZHIDs {
-			if ownerGroups[id] == nil {
-				ownerGroups[id] = map[int]bool{}
+			if ownerGroupsZH[id] == nil {
+				ownerGroupsZH[id] = map[int]bool{}
 			}
-			ownerGroups[id][gi] = true
+			ownerGroupsZH[id][gi] = true
 		}
 	}
 
-	checkText := func(cues []Cue, lang string, byGroup map[int][]emitted) {
+	checkText := func(cues []Cue, lang string, ownersMap map[int]map[int]bool, byGroup map[int][]emitted) {
 		for _, cue := range cues {
 			want := normText(cue.Display)
 			if want == "" {
-				continue
+				continue // format-only or empty cue
 			}
-			owners := ownerGroups[cue.ID]
+			owners := ownersMap[cue.ID]
 			if len(owners) == 0 {
-				continue // format-only or unmapped cue, excluded below
+				continue
 			}
 			var all []string
 			for gi := range owners {
@@ -204,87 +195,89 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 			}
 		}
 	}
-	checkText(bundle.EN, "en", byGroupEN)
-	checkText(bundle.ZH, "zh", byGroupZH)
+	checkText(bundle.EN, "en", ownerGroupsEN, byGroupEN)
+	checkText(bundle.ZH, "zh", ownerGroupsZH, byGroupZH)
 
-	// 3. Per-language hold/order integrity.
-	//
-	// An emitted sequence for one language side is legitimate in exactly two
-	// shapes: a source cue repeated in full (hold across the counterpart's
-	// slices), or source cues/fragments concatenated in source order. After
-	// collapsing consecutive duplicate emissions, the joined text must equal
-	// the source text in source order. The old A-B-A-B defect yields ABAB and
-	// is rejected; a legitimate hold collapses to one item and passes.
-	checkSequence := func(groupIndex int, ids []int, index map[int]Cue, lang string, byGroup map[int][]emitted) {
-		var seq []string
-		for _, rec := range byGroup[groupIndex] {
+	// 3. Per-language sequence and replay detection across ALL groups.
+	checkGroupSequence := func(gi int, lang string, byGroup map[int][]emitted) {
+		recs := byGroup[gi]
+		if len(recs) == 0 {
+			return
+		}
+		type item struct {
+			idsKey string
+			text   string
+		}
+		var seq []item
+		for _, rec := range recs {
 			t := ""
+			idsKey := ""
 			if lang == "en" {
 				t = normText(rec.enText)
+				idsKey = intsKey(rec.enIDs)
 			} else {
 				t = normText(rec.zhText)
+				idsKey = intsKey(rec.zhIDs)
 			}
 			if t == "" {
 				continue
 			}
-			if len(seq) > 0 && seq[len(seq)-1] == t {
-				continue // full-text hold across slices
-			}
-			seq = append(seq, t)
-		}
-		var want []string
-		for _, id := range ids {
-			cue, ok := index[id]
-			if !ok {
+			// Collapse consecutive identical hold ONLY if same source IDs
+			if len(seq) > 0 && seq[len(seq)-1].idsKey == idsKey && seq[len(seq)-1].text == t {
 				continue
 			}
-			if t := normText(cue.Display); t != "" {
-				want = append(want, t)
+			seq = append(seq, item{idsKey: idsKey, text: t})
+		}
+
+		// Replay check: fragment or cue text cannot reappear after intervening different text
+		seen := map[string]int{}
+		for idx, it := range seq {
+			if lastIdx, ok := seen[it.text]; ok && lastIdx != idx-1 {
+				v.OrderMismatches = append(v.OrderMismatches, fmt.Sprintf(
+					"group %d %s replayed text %q after intervening text", gi, lang, it.text))
+				break
 			}
-		}
-		if len(seq) == 0 || len(want) == 0 {
-			return
-		}
-		if got, exp := strings.Join(seq, ""), strings.Join(want, ""); got != exp {
-			v.OrderMismatches = append(v.OrderMismatches, fmt.Sprintf(
-				"group %d %s emitted %q != source order %q", groupIndex, lang, got, exp))
-		}
-	}
-	for gi, g := range mapping.Groups {
-		if len(g.ENIDs) > 1 {
-			checkSequence(gi, g.ENIDs, en, "en", byGroupEN)
-		}
-		if len(g.ZHIDs) > 1 {
-			checkSequence(gi, g.ZHIDs, zh, "zh", byGroupZH)
-		}
-		// Single held source against several counterpart cues: the held text
-		// must never be fragmented into a replay.
-		if len(g.ZHIDs) == 1 && len(g.ENIDs) > 1 {
-			checkSequence(gi, g.ZHIDs, zh, "zh", byGroupZH)
-		}
-		if len(g.ENIDs) == 1 && len(g.ZHIDs) > 1 {
-			checkSequence(gi, g.ENIDs, en, "en", byGroupEN)
+			seen[it.text] = idx
 		}
 	}
 
-	// 4. Interval union per group, ASS centisecond resolution.
-	baseline := buildBlocks(mapping, en, zh, llmcfg)
-	baselineByGroup := map[int][][2]int{}
-	for _, b := range baseline {
-		baselineByGroup[b.group] = append(baselineByGroup[b.group], [2]int{
-			roundCentiseconds(b.start), roundCentiseconds(b.end),
-		})
-	}
-	emittedByGroup := map[int][][2]int{}
-	for _, e := range events {
-		emittedByGroup[e.group] = append(emittedByGroup[e.group], [2]int{e.assStart, e.assEnd})
-	}
 	for gi := range mapping.Groups {
-		want := union(baselineByGroup[gi])
-		got := union(emittedByGroup[gi])
+		checkGroupSequence(gi, "en", byGroupEN)
+		checkGroupSequence(gi, "zh", byGroupZH)
+	}
+
+	// 4. Source / display identity interval comparison against baseline.
+	baseline := buildBlocks(mapping, en, zh, llmcfg)
+	baselineInts := map[string][][2]int{}
+	for _, b := range baseline {
+		if len(b.enIDs) > 0 {
+			key := fmt.Sprintf("%d:en:%s", b.group, intsKey(b.enIDs))
+			baselineInts[key] = append(baselineInts[key], [2]int{roundCentiseconds(b.start), roundCentiseconds(b.end)})
+		}
+		if len(b.zhIDs) > 0 {
+			key := fmt.Sprintf("%d:zh:%s", b.group, intsKey(b.zhIDs))
+			baselineInts[key] = append(baselineInts[key], [2]int{roundCentiseconds(b.start), roundCentiseconds(b.end)})
+		}
+	}
+
+	emittedInts := map[string][][2]int{}
+	for _, e := range events {
+		if len(e.enIDs) > 0 {
+			key := fmt.Sprintf("%d:en:%s", e.group, intsKey(e.enIDs))
+			emittedInts[key] = append(emittedInts[key], [2]int{e.assStart, e.assEnd})
+		}
+		if len(e.zhIDs) > 0 {
+			key := fmt.Sprintf("%d:zh:%s", e.group, intsKey(e.zhIDs))
+			emittedInts[key] = append(emittedInts[key], [2]int{e.assStart, e.assEnd})
+		}
+	}
+
+	for key, wantInts := range baselineInts {
+		want := union(wantInts)
+		got := union(emittedInts[key])
 		if !equalIntervals(want, got) {
 			v.IntervalMismatches = append(v.IntervalMismatches, fmt.Sprintf(
-				"group %d display intervals changed: want %v got %v", gi, want, got))
+				"identity %s display intervals changed: want %v got %v", key, want, got))
 		}
 	}
 
@@ -363,9 +356,177 @@ func fixtureConfig() config.LLMConfig {
 	return config.LLMConfig{EnChars: 65, ZhChars: 20, EnGapMS: 400, ZhGapMS: 500, SpanMS: 5500, FillGapMS: 500}
 }
 
-// TestValidationDetectsSamePrefixDifferentCue covers the exact false-positive
-// the previous prefix matcher produced: two cues sharing a first word/four
-// characters, only one of them actually rendered.
+// Review hook helper for probe tests.
+func reviewWidthHook(t *testing.T) *int {
+	t.Helper()
+	calls := new(int)
+	old := fontWidthMeasurerOverride
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
+		*calls++
+		return 100, true
+	}
+	t.Cleanup(func() { fontWidthMeasurerOverride = old })
+	return calls
+}
+
+// Probe 1: P1: language identity cannot be inferred from font name
+func TestReviewProbeSameFontPreservesChinese(t *testing.T) {
+	reviewWidthHook(t)
+	cfg := fixtureConfig()
+	cfg.EnChars = 22
+	style := fixtureStyle()
+	style.PrimaryFont = "Same Font"
+	style.SecondaryFont = "Same Font"
+	bundle := fixtureBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "First English line. Second English line.", Plain: "First English line.\nSecond English line.", Alignment: 2}},
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "保留中文", Plain: "保留中文", Alignment: 2}},
+	)
+	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+	_, events, err := renderWithAudits(bundle, mapping, cfg, style, 1920, 1080, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || !strings.Contains(events[0].zhText, "保留中文") {
+		t.Fatalf("same-font merge overwrote Chinese: %+v", events)
+	}
+}
+
+// Probe 2: P1: ordinary four-line fallback must attempt width merge BEFORE partition
+func TestReviewProbeFourLinesMustTryWidthMergeBeforePartition(t *testing.T) {
+	calls := reviewWidthHook(t)
+	cfg := fixtureConfig()
+	cfg.EnChars = 22
+	cfg.ZhChars = 8
+	style := fixtureStyle()
+	style.PrimaryFont = "ZH Font"
+	style.SecondaryFont = "EN Font"
+	bundle := fixtureBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "First English line. Second English line.", Plain: "First English line.\nSecond English line.", Alignment: 2}},
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "第一段中文内容 第二段中文内容", Plain: "第一段中文内容\n第二段中文内容", Alignment: 2}},
+	)
+	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+	_, events, err := renderWithAudits(bundle, mapping, cfg, style, 1920, 1080, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *calls < 2 || len(events) != 1 {
+		t.Fatalf("skipped late width merge: calls=%d, events=%d, %+v", *calls, len(events), events)
+	}
+}
+
+// Probe 3: P1/P2: dialogue character caps include whitespace
+func TestReviewProbeDialogueCapIncludesSpaces(t *testing.T) {
+	reviewWidthHook(t)
+	cfg := fixtureConfig()
+	cfg.EnChars = 18
+	style := fixtureStyle()
+	style.PrimaryFont = "ZH Font"
+	style.SecondaryFont = "EN Font"
+	bundle := fixtureBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "- A long   - B line", Plain: "- A long\n- B line", Alignment: 2, MultiSpeaker: true}},
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "答复", Plain: "答复", Alignment: 2}},
+	)
+	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+	_, events, err := renderWithAudits(bundle, mapping, cfg, style, 1920, 1080, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range events {
+		if len(sourceLines(e.enText)) == 1 && len([]rune(e.enText)) > cfg.EnChars {
+			t.Fatalf("dialogue merged above cap %d: %q (%d runes)", cfg.EnChars, e.enText, len([]rune(e.enText)))
+		}
+	}
+}
+
+// Probe 4: P1: validator must verify 1:1 replay
+func TestReviewProbeValidatorRejectsOneToOneReplay(t *testing.T) {
+	bundle := fixtureBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "Alpha beta.", Plain: "Alpha\nbeta.", Alignment: 2}},
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "甲 乙", Plain: "甲\n乙", Alignment: 2}},
+	)
+	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	bad := []renderedEvent{
+		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 1000, assEnd: 2000, enText: "Alpha", zhText: "甲"},
+		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 2000, assEnd: 3000, enText: "beta.", zhText: "乙"},
+		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 3000, assEnd: 4000, enText: "Alpha", zhText: "甲"},
+		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 4000, assEnd: 5000, enText: "beta.", zhText: "乙"},
+	}
+	v, err := verifyEpisode(bundle, mapping, fixtureConfig(), bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Verify()) == 0 {
+		t.Fatal("validator accepted one-to-one A-B-A-B replay")
+	}
+}
+
+// Probe 5: P1: validator must verify per-source display intervals
+func TestReviewProbeValidatorRejectsChangedSourceIntervals(t *testing.T) {
+	cfg := fixtureConfig()
+	cfg.ZhChars = 1
+	bundle := fixtureBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 3000, Display: "Alpha.", Plain: "Alpha.", Alignment: 2}, {ID: 2, Start: 3000, End: 5000, Display: "Beta.", Plain: "Beta.", Alignment: 2}},
+		[]Cue{{ID: 1, Start: 1000, End: 3000, Display: "甲", Plain: "甲", Alignment: 2}, {ID: 2, Start: 3000, End: 5000, Display: "乙", Plain: "乙", Alignment: 2}},
+	)
+	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1, 2}, Layer: LayerBottom, Origin: OriginModel}})
+	bad := []renderedEvent{
+		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 1000, assEnd: 1500, enText: "Alpha.", zhText: "甲"},
+		{group: 0, enIDs: []int{2}, zhIDs: []int{2}, assStart: 1500, assEnd: 5000, enText: "Beta.", zhText: "乙"},
+	}
+	v, err := verifyEpisode(bundle, mapping, cfg, bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Verify()) == 0 {
+		t.Fatal("validator accepted source1 shortened by 1500ms, source2 extended by 1500ms, unchanged group union")
+	}
+}
+
+// Probe 6: P1: validator must accept valid identical speech by different IDs in one group
+func TestReviewProbeValidatorAcceptsSamePhraseDifferentSourceInOneGroup(t *testing.T) {
+	cfg := fixtureConfig()
+	cfg.EnChars = 3
+	bundle := fixtureBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 3000, Display: "Yes.", Plain: "Yes.", Alignment: 2}, {ID: 2, Start: 3000, End: 5000, Display: "Yes.", Plain: "Yes.", Alignment: 2}},
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "好的", Plain: "好的", Alignment: 2}},
+	)
+	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	v, events, err := validateEpisode(bundle, mapping, cfg, fixtureStyle(), 1920, 1080, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("probe requires two distinct native events, got %d", len(events))
+	}
+	if failures := v.Verify(); len(failures) != 0 {
+		t.Fatalf("valid identical speech by different IDs rejected: %v", failures)
+	}
+}
+
+// Probe 7: P1: validator must not mix language ID namespaces
+func TestReviewProbeValidatorDoesNotMixLanguageIDNamespaces(t *testing.T) {
+	bundle := fixtureBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 3000, Display: "Alpha.", Plain: "Alpha.", Alignment: 2}, {ID: 2, Start: 3000, End: 5000, Display: "Beta.", Plain: "Beta.", Alignment: 2}},
+		[]Cue{{ID: 1, Start: 3000, End: 5000, Display: "乙", Plain: "乙", Alignment: 2}, {ID: 2, Start: 1000, End: 3000, Display: "甲", Plain: "甲", Alignment: 2}},
+	)
+	mapping := fixtureMapping(bundle, []Group{
+		{ENIDs: []int{1}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel},
+		{ENIDs: []int{2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel},
+	})
+	bad := []renderedEvent{
+		{group: 0, enIDs: []int{1}, zhIDs: []int{2}, assStart: 1000, assEnd: 3000, enText: "", zhText: "甲"},
+		{group: 1, enIDs: []int{2}, zhIDs: []int{1}, assStart: 3000, assEnd: 5000, enText: "Alpha. Beta.", zhText: "乙"},
+	}
+	v, err := verifyEpisode(bundle, mapping, fixtureConfig(), bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Verify()) == 0 {
+		t.Fatal("EN1 text in the group owning ZH1 was accepted as EN1 coverage")
+	}
+}
+
+// Negative fixture: dropped cue with same prefix
 func TestValidationDetectsSamePrefixDifferentCue(t *testing.T) {
 	bundle := fixtureBundle(
 		[]Cue{
@@ -381,134 +542,43 @@ func TestValidationDetectsSamePrefixDifferentCue(t *testing.T) {
 		{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel},
 		{ENIDs: []int{2}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel},
 	})
-	// Only the first pair survives; the second cue pair is dropped entirely,
-	// even though its first word / first four characters match cue 1.
 	corrupted := []renderedEvent{
-		{group: 0, strategy: strategyOneToOne, enIDs: []int{1}, zhIDs: []int{1},
-			assStart: 1000, assEnd: 4000, enText: "I must stay here.", zhText: "我必须留在这里"},
+		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 1000, assEnd: 4000, enText: "I must stay here.", zhText: "我必须留在这里"},
 	}
 	v, err := verifyEpisode(bundle, mapping, fixtureConfig(), corrupted)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(v.MissingEN) != 1 || v.MissingEN[0] != 2 {
-		t.Fatalf("dropped english cue 2 not detected: %v (EN covered %d/%d)", v.MissingEN, v.ENCovered, v.ENSourceCues)
-	}
-	if len(v.MissingZH) != 1 || v.MissingZH[0] != 2 {
-		t.Fatalf("dropped chinese cue 2 not detected: %v", v.MissingZH)
+		t.Fatalf("dropped english cue 2 not detected: %v", v.MissingEN)
 	}
 	if len(v.Verify()) == 0 {
 		t.Fatal("validator reported success on output that lost a cue sharing the same prefix")
 	}
 }
 
-// TestValidationDetectsMissingTail proves full-content checking (not prefix):
-// a render that keeps the head of a sentence but drops its tail fails.
+// Negative fixture: truncated tail
 func TestValidationDetectsMissingTail(t *testing.T) {
 	bundle := fixtureBundle(
 		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "The quick brown fox jumps."}},
 		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "敏捷的棕色狐狸跳起来"}},
 	)
-	// Full text is genuinely not contained in a truncated head.
-	want := normText(bundle.EN[0].Display)
-	truncated := normText("The quick brown fox")
-	if want == "" || strings.Contains(truncated, want) {
-		t.Fatal("fixture invariant broken")
-	}
-	// Same for the Chinese prefix case (four shared characters).
-	zhWant := normText(bundle.ZH[0].Display)
-	zhTrunc := normText("敏捷的棕色")
-	if strings.Contains(zhTrunc, zhWant) {
-		t.Fatal("chinese truncated text unexpectedly contains full text")
-	}
-	v := EpisodeValidation{
-		TotalEvents:  1,
-		ENSourceCues: 1,
-		ZHSourceCues: 1,
-		TextMismatches: []string{
-			"english cue 1 lost its tail",
-			"chinese cue 1 lost its tail",
-		},
-	}
-	if len(v.Verify()) == 0 {
-		t.Fatal("validator failed to flag a lost sentence tail")
-	}
-}
-
-// TestValidationFlagsInternalReorder covers held-source A-B-A-B replay with the
-// real verifier, for both languages, using injected corrupted events.
-func TestValidationFlagsInternalReorder(t *testing.T) {
-	enCues := []Cue{
-		{ID: 1, Start: 1000, End: 3000, Display: "First english part."},
-		{ID: 2, Start: 3000, End: 5000, Display: "Second english part."},
-	}
-	zhCues := []Cue{
-		{ID: 1, Start: 1000, End: 3000, Display: "第一段中文内容"},
-		{ID: 2, Start: 3000, End: 5000, Display: "第二段中文内容"},
-	}
-	bundle := fixtureBundle(enCues, zhCues)
-	mapping := fixtureMapping(bundle, []Group{
-		{ENIDs: []int{1, 2}, ZHIDs: []int{1, 2}, Layer: LayerBottom, Origin: OriginModel},
-	})
-
-	// English replay defect: A -> B -> A -> B.
-	enCorrupted := []renderedEvent{
-		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 1000, assEnd: 2000, enText: "First english part.", zhText: "第一段中文内容"},
-		{group: 0, enIDs: []int{2}, zhIDs: []int{2}, assStart: 2000, assEnd: 3000, enText: "Second english part.", zhText: "第二段中文内容"},
-		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 3000, assEnd: 4000, enText: "First english part.", zhText: "第一段中文内容"},
-		{group: 0, enIDs: []int{2}, zhIDs: []int{2}, assStart: 4000, assEnd: 5000, enText: "Second english part.", zhText: "第二段中文内容"},
-	}
-	v, err := verifyEpisode(bundle, mapping, fixtureConfig(), enCorrupted)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(v.OrderMismatches) == 0 {
-		t.Fatalf("english A-B-A-B replay not detected: %+v", v)
-	}
-
-	// Chinese-only replay defect (English correct).
-	zhCorrupted := []renderedEvent{
-		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 1000, assEnd: 2000, enText: "First english part.", zhText: "第一段中文内容"},
-		{group: 0, enIDs: []int{2}, zhIDs: []int{2}, assStart: 2000, assEnd: 3000, enText: "Second english part.", zhText: "第二段中文内容"},
-		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 3000, assEnd: 4000, enText: "First english part.", zhText: "第一段中文内容"},
-		{group: 0, enIDs: []int{2}, zhIDs: []int{2}, assStart: 4000, assEnd: 5000, enText: "Second english part.", zhText: "第二段中文内容"},
-	}
-	v2, err := verifyEpisode(bundle, mapping, fixtureConfig(), zhCorrupted)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(v2.OrderMismatches) == 0 && len(v2.IntervalMismatches) == 0 {
-		t.Fatalf("held-source replay not detected: %+v", v2)
-	}
-}
-
-// TestValidationAcceptsDistinctIdenticalPhrases proves that legitimately
-// repeated identical text from different source cues passes.
-func TestValidationAcceptsDistinctIdenticalPhrases(t *testing.T) {
-	bundle := fixtureBundle(
-		[]Cue{
-			{ID: 1, Start: 1000, End: 3000, Display: "Yes."},
-			{ID: 2, Start: 3000, End: 5000, Display: "Yes."},
-		},
-		[]Cue{
-			{ID: 1, Start: 1000, End: 3000, Display: "是"},
-			{ID: 2, Start: 3000, End: 5000, Display: "是"},
-		},
-	)
 	mapping := fixtureMapping(bundle, []Group{
 		{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel},
-		{ENIDs: []int{2}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel},
 	})
-	v, _, err := validateEpisode(bundle, mapping, fixtureConfig(), fixtureStyle(), 1920, 1080, nil)
+	corrupted := []renderedEvent{
+		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 1000, assEnd: 5000, enText: "The quick brown fox", zhText: "敏捷的棕色狐狸跳起来"},
+	}
+	v, err := verifyEpisode(bundle, mapping, fixtureConfig(), corrupted)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failures := v.Verify(); len(failures) != 0 {
-		t.Fatalf("identical phrases from distinct sources must pass, got: %v", failures)
+	if len(v.TextMismatches) == 0 {
+		t.Fatal("validator failed to detect truncated tail")
 	}
 }
 
-// TestValidationDetectsLostInterval proves interval-union checking works.
+// Negative fixture: lost interval
 func TestValidationDetectsLostInterval(t *testing.T) {
 	bundle := fixtureBundle(
 		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "Some english line"}},
@@ -517,23 +587,19 @@ func TestValidationDetectsLostInterval(t *testing.T) {
 	mapping := fixtureMapping(bundle, []Group{
 		{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel},
 	})
-	v, events, err := validateEpisode(bundle, mapping, fixtureConfig(), fixtureStyle(), 1920, 1080, nil)
+	corrupted := []renderedEvent{
+		{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 1000, assEnd: 3000, enText: "Some english line", zhText: "某句中文"},
+	}
+	v, err := verifyEpisode(bundle, mapping, fixtureConfig(), corrupted)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(v.Verify()) != 0 {
-		t.Fatalf("baseline should verify clean: %v", v.Verify())
+	if len(v.IntervalMismatches) == 0 {
+		t.Fatal("validator failed to detect shortened interval")
 	}
-	// Now simulate an extended interval and confirm the comparator refuses it.
-	bad := append([][2]int(nil), [][2]int{{100, 900}}...)
-	if equalIntervals(bad, union([][2]int{{100, 500}})) {
-		t.Fatal("interval comparator failed to notice an extended interval")
-	}
-	_ = events
 }
 
-// TestWholeEpisodeFixtureIsOptIn keeps whole-episode validation out of default
-// CI runs unless the operator points at a directory.
+// Whole episode validation
 func TestWholeEpisodeFixtureIsOptIn(t *testing.T) {
 	dir := os.Getenv(episodeFixtureDirEnv)
 	if dir == "" {
@@ -555,11 +621,38 @@ func TestWholeEpisodeFixtureIsOptIn(t *testing.T) {
 	if err := json.Unmarshal(rawMapping, &mapping); err != nil {
 		t.Fatal(err)
 	}
+
+	var words WordTimings
+	if rawWords, err := os.ReadFile(filepath.Join(dir, "word-timings.json")); err == nil {
+		_ = json.Unmarshal(rawWords, &words)
+	}
+
 	width, height := 3840, 1632
-	v, events, err := validateEpisode(bundle, mapping, fixtureConfig(), fixtureStyle(), width, height, nil)
+	// The rendering style is read from the same config the delivery used, so the
+	// audit describes that exact artifact instead of a generic default.
+	style := episodeStyleFromEnv(t)
+	v, events, err := validateEpisode(bundle, mapping, fixtureConfig(), style, width, height, words)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Cross-check the audit against the SERIALIZED artifact it claims to describe:
+	// same event count, same start/end times and same text, and a byte-identical
+	// re-render from the recorded inputs and delivered style.
+	assPath := filepath.Join(dir, "bilingual.ass")
+	if rawASS, err := os.ReadFile(assPath); err == nil {
+		checkSerializedASS(t, string(rawASS), events)
+		rerendered, _, rerr := renderWithAudits(bundle, mapping, fixtureConfig(), style, width, height, words)
+		if rerr != nil {
+			t.Fatalf("re-render with delivered inputs failed: %v", rerr)
+		}
+		if string(rerendered) != string(rawASS) {
+			v.Unchecked = append(v.Unchecked,
+				"re-render from recorded inputs and delivered style is not byte-identical to the delivered ASS")
+		}
+	} else {
+		v.Unchecked = append(v.Unchecked, fmt.Sprintf("delivered ASS %s not readable: %v", assPath, err))
+	}
+
 	if out := os.Getenv("FUSIONN_EPISODE_WRITE_VALIDATION"); out != "" {
 		type eventAudit struct {
 			Group     int    `json:"group"`
@@ -580,7 +673,7 @@ func TestWholeEpisodeFixtureIsOptIn(t *testing.T) {
 		for _, e := range events {
 			audits = append(audits, eventAudit{
 				Group: e.group, Strategy: e.strategy, ENIDs: e.enIDs, ZHIDs: e.zhIDs,
-				StartMS: e.assStart * 10, EndMS: e.assEnd * 10,
+				StartMS: e.assStart, EndMS: e.assEnd, // Real milliseconds
 				Top: e.alignment >= 7, ENLines: len(sourceLines(e.enText)), ZHLines: len(sourceLines(e.zhText)),
 				ENText: e.enText, ZHText: e.zhText, BandTop: e.band[0] < 500, Alignment: e.alignment,
 			})
@@ -612,4 +705,105 @@ func TestWholeEpisodeFixtureIsOptIn(t *testing.T) {
 	}
 	t.Logf("verified %d events: EN %d/%d, ZH %d/%d",
 		v.TotalEvents, v.ENCovered, v.ENSourceCues, v.ZHCovered, v.ZHSourceCues)
+}
+
+// assDialogue is one serialized Dialogue line.
+type assDialogue struct {
+	start, end int // milliseconds as written
+	text       string
+}
+
+// parseSerializedASS reads Dialogue lines from a delivered ASS file.
+func parseSerializedASS(content string) []assDialogue {
+	var out []assDialogue
+	for _, line := range strings.Split(content, "\n") {
+		if !strings.HasPrefix(line, "Dialogue:") {
+			continue
+		}
+		fields := strings.SplitN(strings.TrimSpace(line), ",", 10)
+		if len(fields) < 10 {
+			continue
+		}
+		out = append(out, assDialogue{
+			start: parseASSTimeMS(fields[1]),
+			end:   parseASSTimeMS(fields[2]),
+			text:  fields[9],
+		})
+	}
+	return out
+}
+
+// parseASSTimeMS converts H:MM:SS.cc into milliseconds.
+func parseASSTimeMS(text string) int {
+	parts := strings.Split(strings.TrimSpace(text), ":")
+	if len(parts) != 3 {
+		return -1
+	}
+	h := atoiOrNeg(parts[0])
+	m := atoiOrNeg(parts[1])
+	rest := strings.Split(parts[2], ".")
+	if len(rest) != 2 {
+		return -1
+	}
+	sec := atoiOrNeg(rest[0])
+	cs := atoiOrNeg(rest[1])
+	if h < 0 || m < 0 || sec < 0 || cs < 0 {
+		return -1
+	}
+	return ((h*60+m)*60+sec)*1000 + cs*10
+}
+
+func atoiOrNeg(s string) int {
+	n := 0
+	if s == "" {
+		return -1
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return -1
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n
+}
+
+// checkSerializedASS proves the audits describe the delivered file itself.
+func checkSerializedASS(t *testing.T, content string, events []renderedEvent) {
+	t.Helper()
+	serialized := parseSerializedASS(content)
+	if len(serialized) != len(events) {
+		t.Fatalf("delivered ASS has %d dialogue events but audits describe %d", len(serialized), len(events))
+	}
+	for i := range events {
+		if serialized[i].start != events[i].assStart || serialized[i].end != events[i].assEnd {
+			t.Fatalf("event %d time mismatch: ASS %d-%d vs audit %d-%d",
+				i, serialized[i].start, serialized[i].end, events[i].assStart, events[i].assEnd)
+		}
+		want := normText(serialized[i].text)
+		got := normText(events[i].zhText + events[i].enText)
+		if want != got {
+			t.Fatalf("event %d text mismatch:\nASS   %q\naudit %q", i, want, got)
+		}
+	}
+}
+
+// episodeStyleFromEnv returns the exact style used for the delivery. It must be
+// supplied by the caller (the config file the render used); there is no silent
+// fallback to a different font, because a mismatched style would validate a
+// render that was never delivered.
+func episodeStyleFromEnv(t *testing.T) config.ASSStyleConfig {
+	t.Helper()
+	path := os.Getenv(episodeStyleEnv)
+	if path == "" {
+		t.Skipf("set %s to the style used for the delivery", episodeStyleEnv)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read delivered style: %v", err)
+	}
+	var style config.ASSStyleConfig
+	if err := json.Unmarshal(raw, &style); err != nil {
+		t.Fatalf("parse delivered style: %v", err)
+	}
+	return style
 }

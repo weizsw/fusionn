@@ -136,15 +136,17 @@ func TestOneToNHeldSourceKeepsSinglePassOrder(t *testing.T) {
 		}
 		enSeq = append(enSeq, en)
 	}
-	// The held English cue may legitimately repeat in full, but must never be
-	// emitted as a partial fragment and must never interleave.
-	for i, s := range enSeq {
-		if !strings.Contains(strings.Join(enSeq, "|"), "memory pathways") {
-			t.Fatalf("english lost content: %q", enSeq)
+	// The held English cue must not replay in an A-B-A-B cycle.
+	seen := map[string]int{}
+	for idx, s := range enSeq {
+		if lastIdx, ok := seen[s]; ok && lastIdx != idx-1 {
+			t.Fatalf("1:N English replayed fragment %q after intervening text at index %d (previous %d)", s, idx, lastIdx)
 		}
-		if strings.HasPrefix(s, "it can lead") && i == 0 {
-			t.Fatalf("english started from its second half (restarted): %q", enSeq)
-		}
+		seen[s] = idx
+	}
+	joined := strings.Join(enSeq, " ")
+	if !strings.Contains(joined, "When our memory pathways") || !strings.Contains(joined, "things like conflation") {
+		t.Fatalf("1:N English lost source content: %q", enSeq)
 	}
 	t.Logf("1:N english sequence: %q", enSeq)
 }

@@ -22,9 +22,9 @@ var (
 	fontWidthMeasurerOverride func(text string, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool)
 )
 
-// MeasureTextWidth calculates the exact pixel width of text rendered with the
+// MeasureTextWidth estimates text advance width using sfnt glyph advances for the
 // specified font, size, horizontal scale, spacing and bold weight. If the font
-// cannot be found or verified, it returns (0, false) so callers can safely fall back.
+// cannot be found or verified, it returns (0, false) so callers safely fall back.
 func MeasureTextWidth(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool, fontsDir string) (float64, bool) {
 	if fontWidthMeasurerOverride != nil {
 		return fontWidthMeasurerOverride(text, fontName, fontSize, scaleX, spacing, bold)
