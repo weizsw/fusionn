@@ -24,9 +24,6 @@ type WordTimings map[int][]WordTiming
 // temporal splitting of native 2+2 line boundaries.
 const minSyncFragmentMS = 1200
 
-// minFragmentMS is an alias for minSyncFragmentMS for backward compatibility.
-const minFragmentMS = minSyncFragmentMS
-
 // minFallbackFragmentMS is the anti-flash floor for per-language fallback fragments.
 // Existing short source events retain their original timing.
 const minFallbackFragmentMS = 800
@@ -102,7 +99,7 @@ func sourceLines(plain string) []string {
 // trySyncSplit attempts synchronized temporal splitting at original line
 // boundaries when native Chinese and English both have two meaningful lines.
 // It requires >= 1.2s per fragment.
-func trySyncSplit(b block, enCue, zhCue Cue, cfg config.LLMConfig, words WordTimings) ([]block, bool) {
+func trySyncSplit(b block, enCue, zhCue Cue, words WordTimings) ([]block, bool) {
 	if enCue.MultiSpeaker || zhCue.MultiSpeaker || b.top {
 		return nil, false
 	}
@@ -178,7 +175,7 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 	for _, b := range blocks {
 		if len(b.enIDs) == 1 && len(b.zhIDs) == 1 {
 			enCue, zhCue := en[b.enIDs[0]], zh[b.zhIDs[0]]
-			if synced, ok := trySyncSplit(b, enCue, zhCue, cfg, words); ok {
+			if synced, ok := trySyncSplit(b, enCue, zhCue, words); ok {
 				syncSplitResult = append(syncSplitResult, synced...)
 				continue
 			}

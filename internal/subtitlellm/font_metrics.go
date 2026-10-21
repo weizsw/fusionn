@@ -25,7 +25,7 @@ var (
 // MeasureTextWidth calculates the exact pixel width of text rendered with the
 // specified font, size, horizontal scale and spacing. If the font cannot be found
 // or verified, it returns (0, false) so callers can safely fall back.
-func MeasureTextWidth(text string, fontName string, fontSize float64, scaleX int, spacing float64, fontsDir string) (float64, bool) {
+func MeasureTextWidth(text, fontName string, fontSize float64, scaleX int, spacing float64, fontsDir string) (float64, bool) {
 	if fontWidthMeasurerOverride != nil {
 		return fontWidthMeasurerOverride(text, fontName, fontSize, scaleX, spacing)
 	}
@@ -114,9 +114,9 @@ func findFont(fontName, fontsDir string) *sfnt.Font {
 	)
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		dirs = append(dirs,
-			filepath.Join(home, "Library/Fonts"),
+			filepath.Join(home, "Library", "Fonts"),
 			filepath.Join(home, ".fonts"),
-			filepath.Join(home, ".local/share/fonts"),
+			filepath.Join(home, ".local", "share", "fonts"),
 		)
 	}
 
@@ -124,8 +124,11 @@ func findFont(fontName, fontsDir string) *sfnt.Font {
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			continue
 		}
-		_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || d == nil || d.IsDir() {
+		_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if d == nil || d.IsDir() {
 				return nil
 			}
 			ext := strings.ToLower(filepath.Ext(path))
@@ -138,27 +141,26 @@ func findFont(fontName, fontsDir string) *sfnt.Font {
 				// Don't read file if base name doesn't even share substring
 				return nil
 			}
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return nil
-			}
-			if ext == ".ttc" {
-				coll, err := sfnt.ParseCollection(data)
-				if err == nil {
-					for i := 0; i < coll.NumFonts(); i++ {
-						parsed, err := coll.Font(i)
-						if err == nil && fontMatches(parsed, normalized) {
-							fontCache[normalized] = parsed
-							return fs.SkipAll
+			data, readErr := os.ReadFile(path)
+			if readErr == nil {
+				if ext == ".ttc" {
+					coll, parseErr := sfnt.ParseCollection(data)
+					if parseErr == nil {
+						for i := 0; i < coll.NumFonts(); i++ {
+							parsed, fontErr := coll.Font(i)
+							if fontErr == nil && fontMatches(parsed, normalized) {
+								fontCache[normalized] = parsed
+								return fs.SkipAll
+							}
 						}
 					}
+				} else {
+					parsed, parseErr := sfnt.Parse(data)
+					if parseErr == nil && fontMatches(parsed, normalized) {
+						fontCache[normalized] = parsed
+						return fs.SkipAll
+					}
 				}
-				return nil
-			}
-			parsed, err := sfnt.Parse(data)
-			if err == nil && fontMatches(parsed, normalized) {
-				fontCache[normalized] = parsed
-				return fs.SkipAll
 			}
 			return nil
 		})
