@@ -1153,6 +1153,7 @@ func layoutBlocks(blocks []block, en, zh map[int]Cue, geometry renderGeometry, e
 		events = append(events, renderedEvent{
 			group: b.group, strategy: b.strategy,
 			enIDs: append([]int(nil), b.enIDs...), zhIDs: append([]int(nil), b.zhIDs...),
+			zhMerged: b.zhFlattened, enMerged: b.enFlattened,
 			assStart: start, assEnd: end,
 			zhText: layouts[i].zhText, enText: layouts[i].enText,
 			band: [2]float64{lo, lo + height}, position: [2]float64{x, y},
@@ -1173,6 +1174,8 @@ type renderedEvent struct {
 	strategy  string
 	enIDs     []int
 	zhIDs     []int
+	zhMerged  bool
+	enMerged  bool
 	assStart  int
 	assEnd    int
 	zhText    string
