@@ -19,20 +19,20 @@ var (
 	fontNotFound = make(map[string]bool)
 
 	// Mock or override hook for deterministic testing.
-	fontWidthMeasurerOverride func(text string, fontName string, fontSize float64, scaleX int, spacing float64) (float64, bool)
+	fontWidthMeasurerOverride func(text string, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool)
 )
 
 // MeasureTextWidth calculates the exact pixel width of text rendered with the
-// specified font, size, horizontal scale and spacing. If the font cannot be found
-// or verified, it returns (0, false) so callers can safely fall back.
-func MeasureTextWidth(text, fontName string, fontSize float64, scaleX int, spacing float64, fontsDir string) (float64, bool) {
+// specified font, size, horizontal scale, spacing and bold weight. If the font
+// cannot be found or verified, it returns (0, false) so callers can safely fall back.
+func MeasureTextWidth(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool, fontsDir string) (float64, bool) {
 	if fontWidthMeasurerOverride != nil {
-		return fontWidthMeasurerOverride(text, fontName, fontSize, scaleX, spacing)
+		return fontWidthMeasurerOverride(text, fontName, fontSize, scaleX, spacing, bold)
 	}
 	if strings.TrimSpace(text) == "" {
 		return 0, true
 	}
-	f := findFont(fontName, fontsDir)
+	f := findFont(fontName, bold, fontsDir)
 	if f == nil {
 		return 0, false
 	}
@@ -70,18 +70,25 @@ func normalizeFontName(name string) string {
 	return s
 }
 
-func findFont(fontName, fontsDir string) *sfnt.Font {
+func findFont(fontName string, bold bool, fontsDir string) *sfnt.Font {
 	normalized := normalizeFontName(fontName)
 	if normalized == "" {
 		return nil
 	}
+	// The cache key must include the search directory: a face missing from one
+	// font directory must not poison lookups against another directory.
+	cacheKey := normalized
+	if bold {
+		cacheKey += ":bold"
+	}
+	cacheKey += "|" + fontsDir
 
 	fontCacheMu.RLock()
-	if f, ok := fontCache[normalized]; ok {
+	if f, ok := fontCache[cacheKey]; ok {
 		fontCacheMu.RUnlock()
 		return f
 	}
-	if fontNotFound[normalized] {
+	if fontNotFound[cacheKey] {
 		fontCacheMu.RUnlock()
 		return nil
 	}
@@ -91,10 +98,10 @@ func findFont(fontName, fontsDir string) *sfnt.Font {
 	defer fontCacheMu.Unlock()
 
 	// Double check after lock
-	if f, ok := fontCache[normalized]; ok {
+	if f, ok := fontCache[cacheKey]; ok {
 		return f
 	}
-	if fontNotFound[normalized] {
+	if fontNotFound[cacheKey] {
 		return nil
 	}
 
@@ -142,32 +149,32 @@ func findFont(fontName, fontsDir string) *sfnt.Font {
 					if parseErr == nil {
 						for i := 0; i < coll.NumFonts(); i++ {
 							parsed, fontErr := coll.Font(i)
-							if fontErr == nil && fontMatches(parsed, normalized) {
-								fontCache[normalized] = parsed
+							if fontErr == nil && fontMatches(parsed, normalized, bold) {
+								fontCache[cacheKey] = parsed
 								return fs.SkipAll
 							}
 						}
 					}
 				} else {
 					parsed, parseErr := sfnt.Parse(data)
-					if parseErr == nil && fontMatches(parsed, normalized) {
-						fontCache[normalized] = parsed
+					if parseErr == nil && fontMatches(parsed, normalized, bold) {
+						fontCache[cacheKey] = parsed
 						return fs.SkipAll
 					}
 				}
 			}
 			return nil
 		})
-		if fontCache[normalized] != nil {
-			return fontCache[normalized]
+		if fontCache[cacheKey] != nil {
+			return fontCache[cacheKey]
 		}
 	}
 
-	fontNotFound[normalized] = true
+	fontNotFound[cacheKey] = true
 	return nil
 }
 
-func fontMatches(f *sfnt.Font, normalizedTarget string) bool {
+func fontMatches(f *sfnt.Font, normalizedTarget string, bold bool) bool {
 	var b sfnt.Buffer
 	match := false
 	for _, id := range []sfnt.NameID{sfnt.NameIDFamily, sfnt.NameIDTypographicFamily, sfnt.NameIDFull} {
@@ -183,7 +190,15 @@ func fontMatches(f *sfnt.Font, normalizedTarget string) bool {
 	subfamily, err := f.Name(&b, sfnt.NameIDSubfamily)
 	if err == nil {
 		normSub := strings.ToLower(subfamily)
-		if strings.Contains(normSub, "bold") || strings.Contains(normSub, "italic") || strings.Contains(normSub, "oblique") {
+		isFaceBold := strings.Contains(normSub, "bold")
+		isFaceItalic := strings.Contains(normSub, "italic") || strings.Contains(normSub, "oblique")
+		if isFaceItalic {
+			return false
+		}
+		if bold && !isFaceBold {
+			return false
+		}
+		if !bold && isFaceBold {
 			return false
 		}
 	}

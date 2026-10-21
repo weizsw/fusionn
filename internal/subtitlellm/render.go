@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/fusionn/internal/config"
 )
@@ -63,13 +64,18 @@ func Render(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style confi
 // RenderWithWordTimings uses optional audio-derived English word times for
 // long cues. Missing or invalid times use proportional slices of source text.
 func RenderWithWordTimings(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style config.ASSStyleConfig, width, height int, words WordTimings) ([]byte, error) {
+	data, _, err := renderWithAudits(bundle, mapping, llmcfg, style, width, height, words)
+	return data, err
+}
+
+func renderWithAudits(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style config.ASSStyleConfig, width, height int, words WordTimings) ([]byte, []renderedEvent, error) {
 	if err := validateRenderInputs(bundle, mapping, llmcfg, style); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	en, zh, err := cueIndex(bundle)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	blocks := splitLongBlocks(buildBlocks(mapping, en, zh, llmcfg), en, zh, llmcfg, words)
 	effective := adaptedRenderStyle(renderBaseStyle(style), width, height)
@@ -101,16 +107,17 @@ func RenderWithWordTimings(bundle Bundle, mapping Mapping, llmcfg config.LLMConf
 		return a.group < b.group
 	})
 	if err := verifySourceCoverage(blocks, en, zh); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var out assWriter
 	out.writeHeader(effective)
-	if _, err := layoutBlocks(blocks, en, zh, geometry, func(b block, start, end int, text string, styleName string, align int, x, y float64, wrap string, hasPos bool) error {
+	audits, err := layoutBlocks(blocks, en, zh, geometry, func(b block, start, end int, text string, styleName string, align int, x, y float64, wrap string, hasPos bool) error {
 		return out.writeDialogue(start, end, styleName, text, align, x, y, wrap, hasPos)
-	}); err != nil {
-		return nil, err
+	})
+	if err != nil {
+		return nil, nil, err
 	}
-	return []byte(out.String()), nil
+	return []byte(out.String()), audits, nil
 }
 
 // renderBaseStyle returns the style used to render events. The renderer always
@@ -701,14 +708,39 @@ func hasTwoSpeakers(lines []string) bool {
 	return isSpeakerLine(lines[0]) && isSpeakerLine(lines[1])
 }
 
-func countSpeakerMarkers(line string) int {
-	count := 0
-	for _, word := range strings.Fields(line) {
-		if strings.HasPrefix(word, "-") || strings.HasPrefix(word, "–") || strings.HasPrefix(word, "—") {
-			count++
+// mergeSeparator joins two source lines that stay on one display line,
+// preserving the original text and order.
+const mergeSeparator = "   "
+
+// blockIsDialogue reports whether any source cue of the block carries two
+// speakers in one event.
+func blockIsDialogue(b block, en, zh map[int]Cue) bool {
+	for _, cue := range append(cuesFor(en, b.enIDs), cuesFor(zh, b.zhIDs)...) {
+		if cue.MultiSpeaker {
+			return true
 		}
 	}
-	return count
+	return false
+}
+
+// blockDisplayText returns the current text of a block without re-wrapping text
+// that a policy already fixed on purpose (merged or partitioned lines).
+func blockDisplayText(b block, en, zh map[int]Cue, geometry renderGeometry) (string, string) {
+	ztext := joinCues(zh, b.zhIDs, "\u3000")
+	etext := joinCues(en, b.enIDs, " ")
+	if b.zhText != nil {
+		ztext = *b.zhText
+	}
+	if b.enText != nil {
+		etext = *b.enText
+	}
+	if !b.zhFlattened && ztext != "" {
+		ztext = wrapSourceDisplay(ztext, "zh", geometry.zhChars, false, cuesFor(zh, b.zhIDs))
+	}
+	if !b.enFlattened && etext != "" {
+		etext = wrapSourceDisplay(etext, "en", geometry.enChars, false, cuesFor(en, b.enIDs))
+	}
+	return ztext, etext
 }
 
 // applySpatialPolicies executes multi-speaker spatial layout and on-screen text
@@ -825,146 +857,119 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 		}
 	}
 
-	// Pass 2: Multi-speaker 3-line flattening.
+	// Pass 2: three-line merge.
+	//
+	// Ordinary subtitles may merge past the configured cap here only because
+	// temporal splitting already ran (splitLongBlocks) and this is the late
+	// resort; the merge still needs reliable measured width. Dialogue subtitles
+	// (two speakers in one source event) never get the over-cap exemption.
 	usableWidth := geometry.canvasWidth - geometry.marginL - geometry.marginR
 	for i := range blocks {
 		b := &blocks[i]
-		isMulti := false
-		for _, cue := range append(cuesFor(en, b.enIDs), cuesFor(zh, b.zhIDs)...) {
-			if cue.MultiSpeaker {
-				isMulti = true
-				break
-			}
-		}
-		if !isMulti {
-			continue
-		}
-		ztext := joinCues(zh, b.zhIDs, "　")
-		etext := joinCues(en, b.enIDs, " ")
-		if b.zhText != nil {
-			ztext = *b.zhText
-		}
-		if b.enText != nil {
-			etext = *b.enText
-		}
-		ztext = wrapSourceDisplay(ztext, "zh", geometry.zhChars, false, cuesFor(zh, b.zhIDs))
-		etext = wrapSourceDisplay(etext, "en", geometry.enChars, false, cuesFor(en, b.enIDs))
+		ztext, etext := blockDisplayText(*b, en, zh, geometry)
 		zhLines := sourceLines(ztext)
 		enLines := sourceLines(etext)
-		if len(zhLines)+len(enLines) == 3 {
-			if len(zhLines) == 2 && len(enLines) == 1 {
-				if hasTwoSpeakers(zhLines) && countSpeakerMarkers(enLines[0]) >= 2 {
-					merged := zhLines[0] + "   " + zhLines[1]
-					if w, ok := MeasureTextWidth(merged, style.PrimaryFont, geometry.zhFontSize, style.ScaleX, style.Spacing, ""); ok && w <= usableWidth {
-						b.zhText = &merged
-						b.zhFlattened = true
-					}
-				}
-			} else if len(enLines) == 2 && len(zhLines) == 1 {
-				if hasTwoSpeakers(enLines) && countSpeakerMarkers(zhLines[0]) >= 2 {
-					merged := enLines[0] + "   " + enLines[1]
-					if w, ok := MeasureTextWidth(merged, style.SecondaryFont, geometry.enFontSize, style.ScaleX, style.Spacing, ""); ok && w <= usableWidth {
-						b.enText = &merged
-						b.enFlattened = true
-					}
+		if len(zhLines)+len(enLines) != 3 {
+			continue
+		}
+		multi := blockIsDialogue(*b, en, zh)
+		mergeSide := func(lines []string, font string, size float64, cap int) {
+			merged := lines[0] + mergeSeparator + lines[1]
+			if multi && utf8.RuneCountInString(compactText(merged, false)) > cap {
+				return // dialogue keeps the configured cap, no exemption
+			}
+			if w, ok := MeasureTextWidth(merged, font, size, style.ScaleX, style.Spacing, style.Bold, ""); ok && w <= usableWidth {
+				if font == style.PrimaryFont {
+					b.zhText = &merged
+					b.zhFlattened = true
+				} else {
+					b.enText = &merged
+					b.enFlattened = true
 				}
 			}
+		}
+		if len(zhLines) == 2 && len(enLines) == 1 {
+			mergeSide(zhLines, style.PrimaryFont, geometry.zhFontSize, geometry.zhChars)
+		} else if len(enLines) == 2 && len(zhLines) == 1 {
+			mergeSide(enLines, style.SecondaryFont, geometry.enFontSize, geometry.enChars)
 		}
 	}
 
-	// Pass 3: Multi-speaker 4-line spatial partitioning.
+	// Pass 3: last-resort top/bottom partitioning of two segments.
+	//
+	// Ordinary subtitles need only reliable two-segment grouping; dialogue
+	// subtitles additionally need trustworthy two-speaker attribution.
 	var finalBlocks []block
 	for i := range blocks {
 		b := blocks[i]
-		isMulti := false
-		for _, cue := range append(cuesFor(en, b.enIDs), cuesFor(zh, b.zhIDs)...) {
-			if cue.MultiSpeaker {
-				isMulti = true
-				break
-			}
-		}
-		if !isMulti {
+		// Partitioning needs reliable two-segment grouping, so it only applies to
+		// a 1:1 block whose two sides each keep exactly their native two source
+		// lines. Blocks projected by temporal splitting, or slices of a larger
+		// group where the other language holds, have no such segmentation;
+		// splitting their wrapped lines would duplicate content.
+		if b.zhText != nil || b.enText != nil || len(b.enIDs) != 1 || len(b.zhIDs) != 1 {
 			finalBlocks = append(finalBlocks, b)
 			continue
 		}
-		ztext := joinCues(zh, b.zhIDs, "　")
-		etext := joinCues(en, b.enIDs, " ")
-		if b.zhText != nil {
-			ztext = *b.zhText
+		if len(sourceLines(en[b.enIDs[0]].Plain)) != 2 || len(sourceLines(zh[b.zhIDs[0]].Plain)) != 2 {
+			finalBlocks = append(finalBlocks, b)
+			continue
 		}
-		if b.enText != nil {
-			etext = *b.enText
-		}
-		ztext = wrapSourceDisplay(ztext, "zh", geometry.zhChars, false, cuesFor(zh, b.zhIDs))
-		etext = wrapSourceDisplay(etext, "en", geometry.enChars, false, cuesFor(en, b.enIDs))
+		ztext, etext := blockDisplayText(b, en, zh, geometry)
 		zhLines := sourceLines(ztext)
 		enLines := sourceLines(etext)
-		if len(zhLines) == 2 && len(enLines) == 2 {
-			if !hasTwoSpeakers(zhLines) || !hasTwoSpeakers(enLines) {
-				finalBlocks = append(finalBlocks, b)
+		if len(zhLines) != 2 || len(enLines) != 2 {
+			finalBlocks = append(finalBlocks, b)
+			continue
+		}
+		if blockIsDialogue(b, en, zh) && (!hasTwoSpeakers(zhLines) || !hasTwoSpeakers(enLines)) {
+			finalBlocks = append(finalBlocks, b)
+			continue
+		}
+		destSide := !b.top
+		bStart, bEnd := roundCentiseconds(b.start), roundCentiseconds(b.end)
+		overlaps := func(start, end int) bool { return max(bStart, start) < min(bEnd, end) }
+		destFree := true
+		for j, other := range blocks {
+			if j == i || other.top != destSide {
 				continue
 			}
-			destSide := !b.top
-			destFree := true
-			bStart := roundCentiseconds(b.start)
-			bEnd := roundCentiseconds(b.end)
-			// Check against original blocks
-			for j, other := range blocks {
-				if j == i {
-					continue
-				}
-				if other.top == destSide {
-					oStart := roundCentiseconds(other.start)
-					oEnd := roundCentiseconds(other.end)
-					if max(bStart, oStart) < min(bEnd, oEnd) {
-						destFree = false
-						break
-					}
-				}
-			}
-			// Check against newly created blocks already assigned in finalBlocks
-			if destFree {
-				for _, fb := range finalBlocks {
-					if fb.top == destSide {
-						fbStart := roundCentiseconds(fb.start)
-						fbEnd := roundCentiseconds(fb.end)
-						if max(bStart, fbStart) < min(bEnd, fbEnd) {
-							destFree = false
-							break
-						}
-					}
-				}
-			}
-			if destFree {
-				// Speaker 1 Chinese & English on top
-				b1 := b
-				b1.top = true
-				b1.alignment = 8
-				b1.position = nil
-				t1Zh := zhLines[0]
-				t1En := enLines[0]
-				b1.zhText = &t1Zh
-				b1.enText = &t1En
-				b1.zhFlattened = true
-				b1.enFlattened = true
-
-				// Speaker 2 Chinese & English on bottom
-				b2 := b
-				b2.top = false
-				b2.alignment = 2
-				b2.position = nil
-				t2Zh := zhLines[1]
-				t2En := enLines[1]
-				b2.zhText = &t2Zh
-				b2.enText = &t2En
-				b2.zhFlattened = true
-				b2.enFlattened = true
-
-				finalBlocks = append(finalBlocks, b1, b2)
-				continue
+			if overlaps(roundCentiseconds(other.start), roundCentiseconds(other.end)) {
+				destFree = false
+				break
 			}
 		}
-		finalBlocks = append(finalBlocks, b)
+		if destFree {
+			for _, fb := range finalBlocks {
+				if fb.top == destSide && overlaps(roundCentiseconds(fb.start), roundCentiseconds(fb.end)) {
+					destFree = false
+					break
+				}
+			}
+		}
+		if !destFree {
+			finalBlocks = append(finalBlocks, b)
+			continue
+		}
+
+		// First segment Chinese+English on the opposite side, second stays native.
+		b1 := b
+		b1.top = true
+		b1.alignment = 8
+		b1.position = nil
+		t1Zh, t1En := zhLines[0], enLines[0]
+		b1.zhText, b1.enText = &t1Zh, &t1En
+		b1.zhFlattened, b1.enFlattened = true, true
+
+		b2 := b
+		b2.top = false
+		b2.alignment = 2
+		b2.position = nil
+		t2Zh, t2En := zhLines[1], enLines[1]
+		b2.zhText, b2.enText = &t2Zh, &t2En
+		b2.zhFlattened, b2.enFlattened = true, true
+
+		finalBlocks = append(finalBlocks, b1, b2)
 	}
 
 	return finalBlocks
@@ -1143,6 +1148,7 @@ func layoutBlocks(blocks []block, en, zh map[int]Cue, geometry renderGeometry, e
 		}
 		events = append(events, renderedEvent{
 			group: b.group, strategy: b.strategy,
+			enIDs: append([]int(nil), b.enIDs...), zhIDs: append([]int(nil), b.zhIDs...),
 			assStart: start, assEnd: end,
 			zhText: layouts[i].zhText, enText: layouts[i].enText,
 			band: [2]float64{lo, lo + height}, position: [2]float64{x, y},
@@ -1161,6 +1167,8 @@ type band struct {
 type renderedEvent struct {
 	group     int
 	strategy  string
+	enIDs     []int
+	zhIDs     []int
 	assStart  int
 	assEnd    int
 	zhText    string
