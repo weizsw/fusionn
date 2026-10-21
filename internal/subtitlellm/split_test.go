@@ -245,8 +245,9 @@ func TestSingleLineExceptionDoesNotPermitOverLimitJoins(t *testing.T) {
 func TestChineseSourceBreakSurvivesMinimumReadingTime(t *testing.T) {
 	cfg := renderTestConfig()
 	cfg.ZhChars = 20
+	english := "Tell me if it starts to weaken or get thready."
 	bundle := makeBundle(
-		[]Cue{{ID: 1, Start: 380964, End: 384176, Display: "Tell me if it starts to weaken or get thready.", Plain: "Tell me if it starts to weaken\nor get thready."}},
+		[]Cue{{ID: 1, Start: 380964, End: 384176, Display: english, Plain: "Tell me if it starts to weaken\nor get thready."}},
 		[]Cue{{ID: 1, Start: 380964, End: 384176, Display: "如果脉搏开始变弱 或者变得细弱难辨 马上告诉我", Plain: "如果脉搏开始变弱\n或者变得细弱难辨 马上告诉我"}},
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
@@ -258,11 +259,44 @@ func TestChineseSourceBreakSurvivesMinimumReadingTime(t *testing.T) {
 	if len(events) != 2 {
 		t.Fatalf("events = %d, want 2", len(events))
 	}
-	assertGlyphs(t, events[0].text, "如果脉搏开始变弱Tell me if it starts to weaken")
-	assertGlyphs(t, events[1].text, "或者变得细弱难辨 马上告诉我or get thready.")
-	if events[0].end != events[1].start || events[0].end-events[0].start < minSyncFragmentMS || events[1].end-events[1].start < minSyncFragmentMS {
+	assertGlyphs(t, events[0].text, "如果脉搏开始变弱"+english)
+	assertGlyphs(t, events[1].text, "或者变得细弱难辨 马上告诉我"+english)
+	if events[0].end != events[1].start || events[0].end-events[0].start < minFallbackFragmentMS {
 		t.Fatalf("source cut did not receive the minimum reading time: %+v", events)
 	}
+}
+
+func TestChineseSourceBreakWithWordTimingSyncSplits(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 20
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 380964, End: 384176, Display: "Tell me if it starts to weaken or get thready.", Plain: "Tell me if it starts to weaken\nor get thready."}},
+		[]Cue{{ID: 1, Start: 380964, End: 384176, Display: "如果脉搏开始变弱 或者变得细弱难辨 马上告诉我", Plain: "如果脉搏开始变弱\n或者变得细弱难辨 马上告诉我"}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	// Word timings providing qualified cut >= 1.2s on both sides
+	words := WordTimings{1: {
+		{Text: "Tell", StartMS: 380964, EndMS: 381200},
+		{Text: "me", StartMS: 381200, EndMS: 381400},
+		{Text: "if", StartMS: 381400, EndMS: 381600},
+		{Text: "it", StartMS: 381600, EndMS: 381800},
+		{Text: "starts", StartMS: 381800, EndMS: 382200},
+		{Text: "to", StartMS: 382200, EndMS: 382400},
+		{Text: "weaken", StartMS: 382400, EndMS: 382700},
+		{Text: "or", StartMS: 382800, EndMS: 383000},
+		{Text: "get", StartMS: 383000, EndMS: 383300},
+		{Text: "thready.", StartMS: 383300, EndMS: 384176},
+	}}
+	output, err := RenderWithWordTimings(bundle, mapping, cfg, renderTestStyle(), 1920, 1080, words)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2", len(events))
+	}
+	assertGlyphs(t, events[0].text, "如果脉搏开始变弱Tell me if it starts to weaken")
+	assertGlyphs(t, events[1].text, "或者变得细弱难辨 马上告诉我or get thready.")
 }
 
 func TestChineseSourceBreakIsNotForcedBelowTotalReadingTime(t *testing.T) {

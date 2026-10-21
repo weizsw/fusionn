@@ -135,12 +135,6 @@ func findFont(fontName, fontsDir string) *sfnt.Font {
 			if ext != ".ttf" && ext != ".otf" && ext != ".ttc" {
 				return nil
 			}
-			// Fast check: if filename matches normalized font name
-			base := normalizeFontName(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
-			if !strings.Contains(base, normalized) && !strings.Contains(normalized, base) {
-				// Don't read file if base name doesn't even share substring
-				return nil
-			}
 			data, readErr := os.ReadFile(path)
 			if readErr == nil {
 				if ext == ".ttc" {
@@ -175,11 +169,23 @@ func findFont(fontName, fontsDir string) *sfnt.Font {
 
 func fontMatches(f *sfnt.Font, normalizedTarget string) bool {
 	var b sfnt.Buffer
-	for _, id := range []sfnt.NameID{sfnt.NameIDFamily, sfnt.NameIDFull, sfnt.NameIDPostScript, sfnt.NameIDTypographicFamily} {
+	match := false
+	for _, id := range []sfnt.NameID{sfnt.NameIDFamily, sfnt.NameIDTypographicFamily, sfnt.NameIDFull} {
 		name, err := f.Name(&b, id)
 		if err == nil && normalizeFontName(name) == normalizedTarget {
-			return true
+			match = true
+			break
 		}
 	}
-	return false
+	if !match {
+		return false
+	}
+	subfamily, err := f.Name(&b, sfnt.NameIDSubfamily)
+	if err == nil {
+		normSub := strings.ToLower(subfamily)
+		if strings.Contains(normSub, "bold") || strings.Contains(normSub, "italic") || strings.Contains(normSub, "oblique") {
+			return false
+		}
+	}
+	return true
 }
