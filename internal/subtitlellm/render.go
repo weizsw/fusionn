@@ -930,19 +930,17 @@ func layoutBlocks(blocks []block, en, zh map[int]Cue, geometry renderGeometry, e
 	layouts := make([]layout, len(blocks))
 	holdHeights := map[int]float64{}
 	for i, b := range blocks {
+		hold := b.strategy == strategyMNReview
 		ztext := joinCues(zh, b.zhIDs, "　")
 		etext := joinCues(en, b.enIDs, " ")
 		if b.zhText != nil {
 			ztext = *b.zhText
+		} else if ztext != "" {
+			ztext = wrapSourceDisplay(ztext, "zh", geometry.zhChars, hold, cuesFor(zh, b.zhIDs))
 		}
 		if b.enText != nil {
 			etext = *b.enText
-		}
-		hold := b.strategy == strategyMNReview
-		if ztext != "" {
-			ztext = wrapSourceDisplay(ztext, "zh", geometry.zhChars, hold, cuesFor(zh, b.zhIDs))
-		}
-		if etext != "" {
+		} else if etext != "" {
 			etext = wrapSourceDisplay(etext, "en", geometry.enChars, false, cuesFor(en, b.enIDs))
 		}
 		height := float64(lineCount(ztext))*geometry.zhLineHeight() +
