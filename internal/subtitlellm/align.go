@@ -793,8 +793,6 @@ func (e *Engine) requestWindow(ctx context.Context, client *http.Client, endpoin
 // validateResponse enforces the strict ID-only schema and quarantines unsafe
 // rows. A malformed top-level object is an error; individual bad rows are
 // returned as rejections and never guessed.
-//
-//nolint:unparam // maxDistance is parameterized for tests and future custom tolerance configuration.
 func validateResponse(content json.RawMessage, w window, maxDistance int) ([]Group, []RejectedRow, error) {
 	if err := rejectDuplicateJSONKeys(content); err != nil {
 		return nil, nil, fmt.Errorf("invalid alignment JSON: %w", err)
