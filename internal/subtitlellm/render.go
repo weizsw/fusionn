@@ -1043,6 +1043,31 @@ const mergeSeparator = "   "
 // blockIsDialogue reports whether any source cue of the block carries two
 // speakers in one event.
 func blockIsDialogue(b block, en, zh map[int]Cue) bool {
+	if b.enText != nil || b.zhText != nil {
+		enMulti := false
+		if b.enText != nil {
+			enMulti = cueSpeakerLines(sourceLines(*b.enText)) >= 2
+		} else {
+			for _, cue := range cuesFor(en, b.enIDs) {
+				if cue.MultiSpeaker {
+					enMulti = true
+					break
+				}
+			}
+		}
+		zhMulti := false
+		if b.zhText != nil {
+			zhMulti = cueSpeakerLines(sourceLines(*b.zhText)) >= 2
+		} else {
+			for _, cue := range cuesFor(zh, b.zhIDs) {
+				if cue.MultiSpeaker {
+					zhMulti = true
+					break
+				}
+			}
+		}
+		return enMulti || zhMulti
+	}
 	for _, cue := range append(cuesFor(en, b.enIDs), cuesFor(zh, b.zhIDs)...) {
 		if cue.MultiSpeaker {
 			return true

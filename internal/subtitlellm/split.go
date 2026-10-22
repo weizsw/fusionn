@@ -84,6 +84,16 @@ func displayKey(group int, ids []int, top bool) string {
 	return fmt.Sprintf("%d:%v:%t", group, ids, top)
 }
 
+func cueSpeakerLines(lines []string) int {
+	count := 0
+	for _, l := range lines {
+		if startsWithDash(l) {
+			count++
+		}
+	}
+	return count
+}
+
 // sourceLines splits source text into meaningful trimmed lines, ignoring
 // whitespace and empty lines.
 func sourceLines(plain string) []string {
@@ -101,11 +111,25 @@ func sourceLines(plain string) []string {
 // boundaries when native Chinese and English both have two meaningful lines.
 // It requires >= 1.2s per fragment on the real candidate timestamps.
 func trySyncSplit(b block, enCue, zhCue Cue, words WordTimings) ([]block, bool) {
-	if enCue.MultiSpeaker || zhCue.MultiSpeaker || b.top {
+	enText := enCue.Plain
+	enDisplay := enCue.Display
+	enMulti := enCue.MultiSpeaker
+	if b.enText != nil {
+		enText = *b.enText
+		enDisplay = *b.enText
+		enMulti = cueSpeakerLines(sourceLines(*b.enText)) >= 2
+	}
+	zhText := zhCue.Plain
+	zhMulti := zhCue.MultiSpeaker
+	if b.zhText != nil {
+		zhText = *b.zhText
+		zhMulti = cueSpeakerLines(sourceLines(*b.zhText)) >= 2
+	}
+	if enMulti || zhMulti || b.top {
 		return nil, false
 	}
-	enLines := sourceLines(enCue.Plain)
-	zhLines := sourceLines(zhCue.Plain)
+	enLines := sourceLines(enText)
+	zhLines := sourceLines(zhText)
 	if len(enLines) != 2 || len(zhLines) != 2 {
 		return nil, false
 	}
@@ -117,7 +141,7 @@ func trySyncSplit(b block, enCue, zhCue Cue, words WordTimings) ([]block, bool) 
 	foundCut := false
 	// Priority 1: Word alignment timestamps
 	if words != nil && len(words[enCue.ID]) >= 2 {
-		cuts := wordCuts(enCue.Display, enLines, words[enCue.ID])
+		cuts := wordCuts(enDisplay, enLines, words[enCue.ID])
 		if len(cuts) == 1 {
 			c := cuts[0]
 			if roundCentiseconds(c)-roundCentiseconds(b.start) >= minSyncFragmentMS &&
@@ -209,14 +233,7 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 				for _, cue := range cuesFor(index, ids) {
 					if cue.MultiSpeaker {
 						if isRoleFragment {
-							lines := sourceLines(text)
-							dashCount := 0
-							for _, l := range lines {
-								if startsWithDash(l) {
-									dashCount++
-								}
-							}
-							if dashCount < 2 {
+							if cueSpeakerLines(sourceLines(text)) < 2 {
 								continue
 							}
 						}
@@ -224,11 +241,21 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 						break
 					}
 				}
-				if b.strategy == strategyOneToOne && len(b.enIDs) == 1 && len(b.zhIDs) == 1 && !isRoleFragment {
+				if b.strategy == strategyOneToOne && len(b.enIDs) == 1 && len(b.zhIDs) == 1 {
 					enCue, zhCue := en[b.enIDs[0]], zh[b.zhIDs[0]]
-					if !enCue.MultiSpeaker && !zhCue.MultiSpeaker && !b.top {
-						enLines := sourceLines(enCue.Plain)
-						zhLines := sourceLines(zhCue.Plain)
+					enMulti := enCue.MultiSpeaker
+					enLines := sourceLines(enCue.Plain)
+					if b.enText != nil {
+						enLines = sourceLines(*b.enText)
+						enMulti = cueSpeakerLines(enLines) >= 2
+					}
+					zhMulti := zhCue.MultiSpeaker
+					zhLines := sourceLines(zhCue.Plain)
+					if b.zhText != nil {
+						zhLines = sourceLines(*b.zhText)
+						zhMulti = cueSpeakerLines(zhLines) >= 2
+					}
+					if !enMulti && !zhMulti && !b.top {
 						if len(enLines) == 2 && len(zhLines) == 2 {
 							enMerged := strings.Join(enLines, " ")
 							zhMerged := strings.Join(zhLines, "　")
