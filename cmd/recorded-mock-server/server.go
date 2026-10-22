@@ -83,6 +83,23 @@ func parseCoreMS(rawRequest json.RawMessage) ([2]int, string, error) {
 	return [2]int{}, "", fmt.Errorf("could not extract core_ms from user message")
 }
 
+// isValidAlignmentContent validates that content is valid JSON with a top-level {alignments: [...]} array.
+func isValidAlignmentContent(content string) bool {
+	if strings.TrimSpace(content) == "" {
+		return false
+	}
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(content), &obj); err != nil {
+		return false
+	}
+	alignments, ok := obj["alignments"]
+	if !ok || alignments == nil {
+		return false
+	}
+	_, isArray := alignments.([]any)
+	return isArray
+}
+
 // NewReplayServer loads recorded cache files and initializes the replay server.
 // Fails fast on missing directory, corrupt JSON, missing core_ms, or files without valid content.
 func NewReplayServer(cacheDir string, failWindow, failCode int) (*ReplayServer, error) {
@@ -145,13 +162,15 @@ func NewReplayServer(cacheDir string, failWindow, failCode int) (*ReplayServer, 
 			return nil, fmt.Errorf("cache file %s: %w", entry.Name(), err)
 		}
 
-		// Determine successful attempt content, model, and usage
+		// Determine successful attempt content, model, and usage.
+		// Select the final successful attempt conforming to the alignment protocol.
 		var chosenModel string
 		var chosenContent string
 		var chosenUsage json.RawMessage
 
-		for _, att := range record.Attempts {
-			if att.Error == "" && att.FinishReason == "stop" && att.Content != "" {
+		for i := len(record.Attempts) - 1; i >= 0; i-- {
+			att := record.Attempts[i]
+			if att.Error == "" && att.FinishReason == "stop" && isValidAlignmentContent(att.Content) {
 				chosenModel = att.Model
 				chosenContent = att.Content
 				chosenUsage = att.Usage
@@ -159,12 +178,12 @@ func NewReplayServer(cacheDir string, failWindow, failCode int) (*ReplayServer, 
 			}
 		}
 
-		if chosenContent == "" && len(record.Response) > 0 {
+		if chosenContent == "" && len(record.Response) > 0 && isValidAlignmentContent(string(record.Response)) {
 			chosenContent = string(record.Response)
 		}
 
 		if chosenContent == "" {
-			return nil, fmt.Errorf("cache file %s has no successful attempt or valid response", entry.Name())
+			return nil, fmt.Errorf("cache file %s has no valid successful attempt conforming to alignment protocol", entry.Name())
 		}
 
 		if chosenModel == "" {

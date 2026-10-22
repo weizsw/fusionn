@@ -189,6 +189,93 @@ func TestReplayServer_AttemptSelection_PicksSuccessfulAttempt(t *testing.T) {
 	}
 }
 
+func TestReplayServer_AttemptSelection_PicksFinalSuccessfulAttempt_HTTP(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Record with:
+	// attempt 0: finish_reason "stop", but content is malformed/invalid protocol (alignments is string, not array)
+	// attempt 1: finish_reason "stop", content is valid {"alignments":[...]}
+	reqBody := `{"model":"test-model","messages":[{"role":"user","content":"{\"core_ms\":[0,1000],\"en\":[],\"zh\":[]}"}]}`
+	record := map[string]any{
+		"index":        0,
+		"request_hash": "hash-attempt-select-invalid-first",
+		"request":      json.RawMessage(reqBody),
+		"attempts": []map[string]any{
+			{
+				"model":         "test-model-attempt-0",
+				"finish_reason": "stop",
+				"content":       `{"alignments": "not-an-array", "invalid": true}`,
+				"usage": map[string]int{
+					"prompt_tokens":     10,
+					"completion_tokens": 5,
+				},
+			},
+			{
+				"model":         "test-model-attempt-1",
+				"finish_reason": "stop",
+				"content":       `{"alignments":[{"en_ids":[10],"zh_ids":[20],"layer":"bottom","kind":"dialogue"}]}`,
+				"usage": map[string]int{
+					"prompt_tokens":     15,
+					"completion_tokens": 25,
+				},
+			},
+		},
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "000-attempt.json"), data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	server, err := NewReplayServer(tempDir, -1, 503)
+	if err != nil {
+		t.Fatalf("NewReplayServer: %v", err)
+	}
+
+	ts := httptest.NewServer(server.Handler())
+	defer ts.Close()
+
+	// Make HTTP request to /chat/completions
+	resp, body := sendChatRequest(t, ts, 0, 1000)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	var chatResp struct {
+		Model   string `json:"model"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens int `json:"prompt_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal([]byte(body), &chatResp); err != nil {
+		t.Fatalf("unmarshal resp: %v", err)
+	}
+
+	// Verify that the HTTP response carries valid alignment protocol content and picked attempt 1
+	var alignmentContent struct {
+		Alignments []map[string]any `json:"alignments"`
+	}
+	if err := json.Unmarshal([]byte(chatResp.Choices[0].Message.Content), &alignmentContent); err != nil {
+		t.Fatalf("HTTP served content is not valid JSON: %v, content: %q", err, chatResp.Choices[0].Message.Content)
+	}
+	if alignmentContent.Alignments == nil {
+		t.Fatalf("HTTP served content violates alignment protocol (alignments is not an array): %q", chatResp.Choices[0].Message.Content)
+	}
+	if chatResp.Model != "test-model-attempt-1" {
+		t.Errorf("expected model from final valid attempt 'test-model-attempt-1', got %q", chatResp.Model)
+	}
+	if chatResp.Usage.PromptTokens != 15 {
+		t.Errorf("expected usage from final valid attempt 15, got %d", chatResp.Usage.PromptTokens)
+	}
+}
+
 func TestReplayServer_FailWindow_StableRetry503AndStats(t *testing.T) {
 	tempDir := t.TempDir()
 	makeTestCacheFile(t, tempDir, 0, 0, 1000, `{"alignments":[]}`)
