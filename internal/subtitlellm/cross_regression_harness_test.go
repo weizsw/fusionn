@@ -42,9 +42,8 @@ type SerializedDialogue struct {
 }
 
 var (
-	posRegex = regexp.MustCompile(`\\pos\(([-0-9.]+),\s*([-0-9.]+)\)`)
-	anRegex  = regexp.MustCompile(`\\an([1-9])`)
-	qRegex   = regexp.MustCompile(`\\q([0-3])`)
+	anRegex = regexp.MustCompile(`\\an([1-9])`)
+	qRegex  = regexp.MustCompile(`\\q([0-3])`)
 )
 
 // parseTimeMS converts H:MM:SS.cc into milliseconds.
@@ -653,28 +652,28 @@ func VerifyDeliveredASSContentAgainstReference(deliveredASS string, bundle Bundl
 
 // ConcurrentLineSpan describes a time slice where simultaneous visible lines are active.
 type ConcurrentLineSpan struct {
-	StartMS      int      `json:"start_ms"`
-	EndMS        int      `json:"end_ms"`
-	TopLines     int      `json:"top_lines"`
-	BottomLines  int      `json:"bottom_lines"`
-	TopEventIDs  []int    `json:"top_event_indices"`
-	BotEventIDs  []int    `json:"bot_event_indices"`
-	TopGroups    []int    `json:"top_groups"`
-	BotGroups    []int    `json:"bot_groups"`
-	TopTexts     []string `json:"top_texts"`
-	BotTexts     []string `json:"bot_texts"`
-	Reason       string   `json:"reason"`
+	StartMS     int      `json:"start_ms"`
+	EndMS       int      `json:"end_ms"`
+	TopLines    int      `json:"top_lines"`
+	BottomLines int      `json:"bottom_lines"`
+	TopEventIDs []int    `json:"top_event_indices"`
+	BotEventIDs []int    `json:"bot_event_indices"`
+	TopGroups   []int    `json:"top_groups"`
+	BotGroups   []int    `json:"bot_groups"`
+	TopTexts    []string `json:"top_texts"`
+	BotTexts    []string `json:"bot_texts"`
+	Reason      string   `json:"reason"`
 }
 
 // OneSidedGroupRecord records details of a single-sided group.
 type OneSidedGroupRecord struct {
-	Group    int    `json:"group"`
-	Side     string `json:"side"` // "zh_only" or "en_only"
-	IDs      []int  `json:"ids"`
-	StartMS  int    `json:"start_ms"`
-	EndMS    int    `json:"end_ms"`
-	Text     string `json:"text"`
-	Reason   string `json:"reason"`
+	Group   int    `json:"group"`
+	Side    string `json:"side"` // "zh_only" or "en_only"
+	IDs     []int  `json:"ids"`
+	StartMS int    `json:"start_ms"`
+	EndMS   int    `json:"end_ms"`
+	Text    string `json:"text"`
+	Reason  string `json:"reason"`
 }
 
 // HoldGroupRecord records details of a group where one side holds across counterpart slices.
@@ -896,7 +895,7 @@ func ReplayRecordedResponsesHTTP(ctx context.Context, bundle Bundle, cfg config.
 			return Mapping{}, Audit{}, fmt.Errorf("read %s: %w", f, err)
 		}
 		var obj struct {
-			Index int `json:"index"`
+			Index    int `json:"index"`
 			Attempts []struct {
 				Content string `json:"content"`
 			} `json:"attempts"`
@@ -1574,23 +1573,23 @@ func RunDarkMatterCrossRegressionToDir(dir, outDir string) (*RegressionRunResult
 	md.WriteString("# Dark Matter S02E07 跨作品回归基线与验证报告\n\n")
 	md.WriteString("| 指标 / 参数 | 设定值 / 测量值 |\n")
 	md.WriteString("|---|---|\n")
-	md.WriteString(fmt.Sprintf("| **Commit SHA** | `87c95c1` (固定当前基线) |\n"))
-	md.WriteString(fmt.Sprintf("| **对齐模型** | `group/flash-models` |\n"))
-	md.WriteString(fmt.Sprintf("| **输入源集数** | Dark Matter S02E07 (WEBDL-2160p 原盘提取) |\n"))
-	md.WriteString(fmt.Sprintf("| **源指纹 (SHA-256)** | `%s` |\n", bundle.Fingerprint))
-	md.WriteString(fmt.Sprintf("| **源字幕条数** | 英文 %d 条, 中文 %d 条 |\n", len(bundle.EN), len(bundle.ZH)))
-	md.WriteString(fmt.Sprintf("| **源字幕字符数** | 英文 %d 字符, 中文 %d 汉字 |\n", enChars, zhChars))
-	md.WriteString(fmt.Sprintf("| **渲染事件总数** | %d 条 (顶部 %d 条, 底部 %d 条) |\n", len(dialogues), topCount, botCount))
-	md.WriteString(fmt.Sprintf("| **同屏最大行数** | 顶部最大 %d 行, 底部最大 %d 行 |\n", concurrentReport.MaxTopLines, concurrentReport.MaxBottomLines))
-	md.WriteString(fmt.Sprintf("| **单边组数** | %d 组 (均为中文单边 zh_only) |\n", len(concurrentReport.OneSidedGroups)))
-	md.WriteString(fmt.Sprintf("| **跨切片保持组数** | %d 组 |\n", len(concurrentReport.HoldGroups)))
-	md.WriteString(fmt.Sprintf("| **未知/缺kind组数** | %d 组 (Kind 全部严格为空串，0 虚构分类) |\n", len(importedMapping.Groups)))
+	fmt.Fprintf(&md, "| **Commit SHA** | `87c95c1` (固定当前基线) |\n")
+	fmt.Fprintf(&md, "| **对齐模型** | `group/flash-models` |\n")
+	fmt.Fprintf(&md, "| **输入源集数** | Dark Matter S02E07 (WEBDL-2160p 原盘提取) |\n")
+	fmt.Fprintf(&md, "| **源指纹 (SHA-256)** | `%s` |\n", bundle.Fingerprint)
+	fmt.Fprintf(&md, "| **源字幕条数** | 英文 %d 条, 中文 %d 条 |\n", len(bundle.EN), len(bundle.ZH))
+	fmt.Fprintf(&md, "| **源字幕字符数** | 英文 %d 字符, 中文 %d 汉字 |\n", enChars, zhChars)
+	fmt.Fprintf(&md, "| **渲染事件总数** | %d 条 (顶部 %d 条, 底部 %d 条) |\n", len(dialogues), topCount, botCount)
+	fmt.Fprintf(&md, "| **同屏最大行数** | 顶部最大 %d 行, 底部最大 %d 行 |\n", concurrentReport.MaxTopLines, concurrentReport.MaxBottomLines)
+	fmt.Fprintf(&md, "| **单边组数** | %d 组 (均为中文单边 zh_only) |\n", len(concurrentReport.OneSidedGroups))
+	fmt.Fprintf(&md, "| **跨切片保持组数** | %d 组 |\n", len(concurrentReport.HoldGroups))
+	fmt.Fprintf(&md, "| **未知/缺kind组数** | %d 组 (Kind 全部严格为空串，0 虚构分类) |\n", len(importedMapping.Groups))
 	md.WriteString("| **旧Mapping导入 vs 19响应重算** | 100% 完全一致 (712 组全部匹配, 0 差异) |\n")
 	judge := "FAIL"
 	if valReport.AllChecksPassed {
 		judge = "ALL PASS (全部检查通过)"
 	}
-	md.WriteString(fmt.Sprintf("| **综合验证判定** | **%s** |\n\n", judge))
+	fmt.Fprintf(&md, "| **综合验证判定** | **%s** |\n\n", judge)
 
 	md.WriteString("## 1. 产物规划与生成文件\n\n")
 	md.WriteString("所有产物统一生成于 `experiments/llm-subtitle-merge/results/dark-matter-s02e07/`：\n\n")
@@ -1604,22 +1603,22 @@ func RunDarkMatterCrossRegressionToDir(dir, outDir string) (*RegressionRunResult
 	md.WriteString("## 2. 旧 Mapping 导入 vs 19 响应重算 对照\n\n")
 	md.WriteString("| 比较项 | 导入旧 mapping.json | 重放 19 响应对齐 | 对照结果 |\n")
 	md.WriteString("|---|---|---|---|\n")
-	md.WriteString(fmt.Sprintf("| **分组总数** | %d 组 | %d 组 | 完全一致 |\n", compRecord.ImportedGroupCount, compRecord.RecomputedGroupCount))
-	md.WriteString(fmt.Sprintf("| **英文源覆盖** | %d / %d | %d / %d | 100%% |\n", compRecord.ImportedCoverage.EN, len(bundle.EN), compRecord.RecomputedCoverage.EN, len(bundle.EN)))
-	md.WriteString(fmt.Sprintf("| **中文源覆盖** | %d / %d | %d / %d | 100%% |\n", compRecord.ImportedCoverage.ZH, len(bundle.ZH), compRecord.RecomputedCoverage.ZH, len(bundle.ZH)))
+	fmt.Fprintf(&md, "| **分组总数** | %d 组 | %d 组 | 完全一致 |\n", compRecord.ImportedGroupCount, compRecord.RecomputedGroupCount)
+	fmt.Fprintf(&md, "| **英文源覆盖** | %d / %d | %d / %d | 100%% |\n", compRecord.ImportedCoverage.EN, len(bundle.EN), compRecord.RecomputedCoverage.EN, len(bundle.EN))
+	fmt.Fprintf(&md, "| **中文源覆盖** | %d / %d | %d / %d | 100%% |\n", compRecord.ImportedCoverage.ZH, len(bundle.ZH), compRecord.RecomputedCoverage.ZH, len(bundle.ZH))
 	md.WriteString("| **逐组 EN/ZH ID 序列** | 712 组完全相同 | 712 组完全相同 | 100% 逐组无差异 |\n")
-	md.WriteString(fmt.Sprintf("| **源包指纹** | `%s` | `%s` | 匹配 |\n\n", importedMapping.SourceFingerprint, recomputedMapping.SourceFingerprint))
+	fmt.Fprintf(&md, "| **源包指纹** | `%s` | `%s` | 匹配 |\n\n", importedMapping.SourceFingerprint, recomputedMapping.SourceFingerprint)
 
 	md.WriteString("## 3. 全文、顺序与窗口包络验证\n\n")
-	md.WriteString(fmt.Sprintf("1. **全文字符完整性**: %t (所有源字幕文本在所属组的输出事件中 100%% 完整保留，0 缺漏或篡改)\n", valReport.TextPreservationMatch))
-	md.WriteString(fmt.Sprintf("2. **语言内严格单调递增次序**: %t (所有组内部的推进与保持严格遵循源时序与状态机)\n", valReport.MonotonicOrderMatch))
-	md.WriteString(fmt.Sprintf("3. **窗口包络完整性**: %t (各条字幕在渲染切片后的显示区间并集严格等于基线窗口并集)\n", valReport.WindowEnvelopeMatch))
-	md.WriteString(fmt.Sprintf("4. **实际 ASS 与内存 Audit 逐事件精确对应**: %t (解析 ASS 文本、起止时间、\\pos 坐标、\\an 对齐与 audit 100%% 一致)\n\n", valReport.ASSvsAuditMatch))
+	fmt.Fprintf(&md, "1. **全文字符完整性**: %t (所有源字幕文本在所属组的输出事件中 100%% 完整保留，0 缺漏或篡改)\n", valReport.TextPreservationMatch)
+	fmt.Fprintf(&md, "2. **语言内严格单调递增次序**: %t (所有组内部的推进与保持严格遵循源时序与状态机)\n", valReport.MonotonicOrderMatch)
+	fmt.Fprintf(&md, "3. **窗口包络完整性**: %t (各条字幕在渲染切片后的显示区间并集严格等于基线窗口并集)\n", valReport.WindowEnvelopeMatch)
+	fmt.Fprintf(&md, "4. **实际 ASS 与内存 Audit 逐事件精确对应**: %t (解析 ASS 文本、起止时间、\\pos 坐标、\\an 对齐与 audit 100%% 一致)\n\n", valReport.ASSvsAuditMatch)
 
 	md.WriteString("## 4. 同屏可见行数普查与分类\n\n")
-	md.WriteString(fmt.Sprintf("- **顶部最大同屏行数**: %d 行 (屏幕顶部最多 2 行)\n", concurrentReport.MaxTopLines))
-	md.WriteString(fmt.Sprintf("- **底部最大同屏行数**: %d 行 (屏幕底部最多 3 行)\n", concurrentReport.MaxBottomLines))
-	md.WriteString(fmt.Sprintf("- **同屏超过 2 行的时间片数**: %d 处 (均为长对白真实换行或多人对白，无异常重叠)\n\n", len(concurrentReport.OverTwoLinesSpans)))
+	fmt.Fprintf(&md, "- **顶部最大同屏行数**: %d 行 (屏幕顶部最多 2 行)\n", concurrentReport.MaxTopLines)
+	fmt.Fprintf(&md, "- **底部最大同屏行数**: %d 行 (屏幕底部最多 3 行)\n", concurrentReport.MaxBottomLines)
+	fmt.Fprintf(&md, "- **同屏超过 2 行的时间片数**: %d 处 (均为长对白真实换行或多人对白，无异常重叠)\n\n", len(concurrentReport.OverTwoLinesSpans))
 
 	md.WriteString("### 4.1 所有同屏超过 2 行的时间片段及原因\n\n")
 	md.WriteString("| 时间范围 (ms) | 顶部行数 | 底部行数 | 对应分组 | 原因与文本摘要 |\n")
@@ -1634,27 +1633,27 @@ func RunDarkMatterCrossRegressionToDir(dir, outDir string) (*RegressionRunResult
 				txt = string(r)
 			}
 		}
-		md.WriteString(fmt.Sprintf("| %d - %d | %d | %d | %v | %s (%s) |\n",
-			span.StartMS, span.EndMS, span.TopLines, span.BottomLines, span.BotGroups, span.Reason, txt))
+		fmt.Fprintf(&md, "| %d - %d | %d | %d | %v | %s (%s) |\n",
+			span.StartMS, span.EndMS, span.TopLines, span.BottomLines, span.BotGroups, span.Reason, txt)
 	}
 	md.WriteString("\n")
 
 	md.WriteString("### 4.2 所有单边分组 (One-Sided Groups)\n\n")
-	md.WriteString(fmt.Sprintf("共发现 %d 组单边对齐 (全部为中文单边 `zh_only`)：\n\n", len(concurrentReport.OneSidedGroups)))
+	fmt.Fprintf(&md, "共发现 %d 组单边对齐 (全部为中文单边 `zh_only`)：\n\n", len(concurrentReport.OneSidedGroups))
 	md.WriteString("| 分组索引 | 类型 | 包含条目 ID | 判定原因 |\n")
 	md.WriteString("|---|---|---|---|\n")
 	for _, g := range concurrentReport.OneSidedGroups {
-		md.WriteString(fmt.Sprintf("| Group %d | `%s` | %v | %s |\n", g.Group, g.Side, g.IDs, g.Reason))
+		fmt.Fprintf(&md, "| Group %d | `%s` | %v | %s |\n", g.Group, g.Side, g.IDs, g.Reason)
 	}
 	md.WriteString("\n")
 
 	md.WriteString("### 4.3 所有跨切片保持分组 (Hold Groups)\n\n")
-	md.WriteString(fmt.Sprintf("共发现 %d 组保持分组：\n\n", len(concurrentReport.HoldGroups)))
+	fmt.Fprintf(&md, "共发现 %d 组保持分组：\n\n", len(concurrentReport.HoldGroups))
 	md.WriteString("| 分组索引 | 保持方 | 保持条目 ID | 切片数 | 总时长 (ms) | 说明 |\n")
 	md.WriteString("|---|---|---|---|---|---|\n")
 	for _, h := range concurrentReport.HoldGroups {
-		md.WriteString(fmt.Sprintf("| Group %d | `%s` | %v | %d | %d | %s |\n",
-			h.Group, h.HeldSide, h.HeldIDs, h.SliceCount, h.TotalSpanMS, h.Reason))
+		fmt.Fprintf(&md, "| Group %d | `%s` | %v | %d | %d | %s |\n",
+			h.Group, h.HeldSide, h.HeldIDs, h.SliceCount, h.TotalSpanMS, h.Reason)
 	}
 	md.WriteString("\n")
 
@@ -1689,4 +1688,3 @@ func RunDarkMatterCrossRegressionToDir(dir, outDir string) (*RegressionRunResult
 		Comparison:            compRecord,
 	}, nil
 }
-
