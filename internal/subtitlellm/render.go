@@ -1068,25 +1068,35 @@ func sideSpeakerEvidence(text *string, separated bool, cue Cue, hasCue bool) (st
 // blockIsDialogue reports whether any source cue of the block carries two
 // speakers in one event.
 func blockIsDialogue(b block, en, zh map[int]Cue) bool {
-	enCue, hasEn := en[b.enIDs[0]]
-	if len(b.enIDs) != 1 {
-		hasEn = false
+	var enCue Cue
+	var hasEn bool
+	if len(b.enIDs) == 1 {
+		enCue, hasEn = en[b.enIDs[0]]
 	}
-	zhCue, hasZh := zh[b.zhIDs[0]]
-	if len(b.zhIDs) != 1 {
-		hasZh = false
+	var zhCue Cue
+	var hasZh bool
+	if len(b.zhIDs) == 1 {
+		zhCue, hasZh = zh[b.zhIDs[0]]
 	}
 	_, enMulti := sideSpeakerEvidence(b.enText, b.enSeparatedRole, enCue, hasEn)
-	_, zhMulti := sideSpeakerEvidence(b.zhText, b.zhSeparatedRole, zhCue, hasZh)
-	if enMulti || zhMulti {
-		return true
-	}
-	for _, cue := range append(cuesFor(en, b.enIDs), cuesFor(zh, b.zhIDs)...) {
-		if cue.MultiSpeaker {
-			return true
+	if !b.enSeparatedRole {
+		for _, cue := range cuesFor(en, b.enIDs) {
+			if cue.MultiSpeaker {
+				enMulti = true
+				break
+			}
 		}
 	}
-	return false
+	_, zhMulti := sideSpeakerEvidence(b.zhText, b.zhSeparatedRole, zhCue, hasZh)
+	if !b.zhSeparatedRole {
+		for _, cue := range cuesFor(zh, b.zhIDs) {
+			if cue.MultiSpeaker {
+				zhMulti = true
+				break
+			}
+		}
+	}
+	return enMulti || zhMulti
 }
 
 // blockDisplayText returns the current text of a block without re-wrapping text
