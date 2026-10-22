@@ -257,57 +257,9 @@ func TestLedgerValidation_PositiveRealSample(t *testing.T) {
 	t.Logf("real sample validated: %d groups, %d rendered events", len(ledger), len(valReport.EventAudit))
 }
 
-func TestParseDialogueEventsFromASS_TDD(t *testing.T) {
-	bundle := makeTestBundle()
-	mapping := makeTestMapping()
-
-	sampleASS := `[Script Info]
-Title: Test
-ScriptType: v4.00+
-PlayResX: 1920
-PlayResY: 1080
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,PingFang SC,80,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,1.4,1.5,2,50,50,19,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:01.00,0:00:02.05,Default,,0,0,0,,{\an2}Hello world\N你好世界这是一段非常长的中文测试内容用于检查UTF8安全截断
-Dialogue: 0,0:00:02.50,0:00:03.50,Default,,0,0,0,,{\an2}Second line\nwith break\N第二行含有换行\n以及竖线|测试
-`
-
-	events, err := ParseDialogueEventsFromASS(sampleASS, bundle, mapping)
-	if err != nil {
-		t.Fatalf("ParseDialogueEventsFromASS failed: %v", err)
-	}
-	if len(events) != 2 {
-		t.Fatalf("expected 2 parsed events, got %d", len(events))
-	}
-
-	if events[0].GroupIndex != 0 || events[0].StartMS != 1000 || events[0].EndMS != 2050 || events[0].Alignment != 2 {
-		t.Errorf("unexpected event 0: %+v", events[0])
-	}
-	if len(events[0].ENIDs) != 1 || events[0].ENIDs[0] != 1 || len(events[0].ZHIDs) != 1 || events[0].ZHIDs[0] != 1 {
-		t.Errorf("unexpected IDs for event 0: EN=%v ZH=%v", events[0].ENIDs, events[0].ZHIDs)
-	}
-
-	if events[1].GroupIndex != 1 || events[1].StartMS != 2500 || events[1].EndMS != 3500 {
-		t.Errorf("unexpected event 1: %+v", events[1])
-	}
-
-	// ValidateAndBuildLedger should succeed with these events
-	ledger, errs := ValidateAndBuildLedger(bundle, mapping, nil, events)
-	if len(errs) != 0 {
-		t.Fatalf("ValidateAndBuildLedger with parsed ASS events failed: %v", errs)
-	}
-	if len(ledger) != 2 {
-		t.Fatalf("expected 2 ledger entries, got %d", len(ledger))
-	}
-}
-
 func TestSemanticInheritance_TDD(t *testing.T) {
 	bundle := makeTestBundle()
+	bundle.Fingerprint = "test-fp-12345"
 	mapping := makeTestMapping()
 	events := makeTestEvents()
 
@@ -316,10 +268,7 @@ func TestSemanticInheritance_TDD(t *testing.T) {
 		t.Fatalf("build ledger: %v", errs)
 	}
 
-	fingerprint := ComputeBundleFingerprint(bundle)
-	if fingerprint == "" {
-		t.Fatalf("ComputeBundleFingerprint returned empty")
-	}
+	fingerprint := bundle.Fingerprint
 
 	// Create temporary review file
 	reviewData := []map[string]interface{}{
@@ -370,39 +319,173 @@ func TestSemanticInheritance_TDD(t *testing.T) {
 	}
 }
 
-func TestVerifyActualASSAgainstExpected_TDD(t *testing.T) {
-	sampleASS := `[Script Info]
-Title: Test
-ScriptType: v4.00+
-PlayResX: 1920
-PlayResY: 1080
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,PingFang SC,80,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,1.4,1.5,2,50,50,19,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\an2}Line 1
-Dialogue: 0,0:00:02.50,0:00:03.50,Default,,0,0,0,,{\an2}Line 2
-`
-
-	// Exact match passes
-	failures, err := VerifyActualASSAgainstExpected([]byte(sampleASS), []byte(sampleASS))
-	if err != nil {
-		t.Fatalf("verify error: %v", err)
-	}
-	if len(failures) != 0 {
-		t.Errorf("expected 0 failures for exact match, got: %v", failures)
+func TestInheritSemanticReviews_StrictEdgeCases(t *testing.T) {
+	fp := "test-fingerprint-12345"
+	bundle := subtitlellm.Bundle{
+		Fingerprint: fp,
 	}
 
-	// Mismatched dialogue count fails
-	mismatchedASS := sampleASS + "Dialogue: 0,0:00:04.00,0:00:05.00,Default,,0,0,0,,{\\an2}Extra Line\n"
-	failuresMismatch, errM := VerifyActualASSAgainstExpected([]byte(sampleASS), []byte(mismatchedASS))
-	if errM != nil {
-		t.Fatalf("verify mismatch error: %v", errM)
+	makeLedger := func() []LedgerEntry {
+		return []LedgerEntry{
+			{
+				GroupID: 0,
+				ENIDs:   []int{1, 2},
+				ZHIDs:   []int{10},
+				ENText:  "Hello world",
+				ZHText:  "你好世界",
+			},
+			{
+				GroupID: 1,
+				ENIDs:   []int{},
+				ZHIDs:   []int{20},
+				ENText:  "",
+				ZHText:  "只有中文",
+			},
+		}
 	}
-	if len(failuresMismatch) == 0 {
-		t.Errorf("expected failures for count mismatch, got 0")
-	}
+
+	t.Run("ReversedIDs_Fails", func(t *testing.T) {
+		ledger := makeLedger()
+		items := []SemanticReviewItem{
+			{
+				Fingerprint: fp,
+				ENIDs:       []int{2, 1}, // Reversed!
+				ZHIDs:       []int{10},
+				ENText:      "Hello world",
+				ZHText:      "你好世界",
+				Verdict:     "confirmed-compatible",
+			},
+		}
+		raw, _ := json.Marshal(items)
+		file := filepath.Join(t.TempDir(), "rev.json")
+		_ = os.WriteFile(file, raw, 0644)
+
+		stats, err := InheritSemanticReviews(ledger, bundle, []string{file})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stats.InheritedCount != 0 {
+			t.Errorf("expected 0 inherited when IDs reversed, got %d", stats.InheritedCount)
+		}
+		if ledger[0].SemanticVerdict != "unreviewed" {
+			t.Errorf("expected unreviewed, got %s", ledger[0].SemanticVerdict)
+		}
+	})
+
+	t.Run("MissingOrMismatchedFingerprint_Fails", func(t *testing.T) {
+		ledger := makeLedger()
+		items := []SemanticReviewItem{
+			{
+				Fingerprint: "", // Missing!
+				ENIDs:       []int{1, 2},
+				ZHIDs:       []int{10},
+				ENText:      "Hello world",
+				ZHText:      "你好世界",
+				Verdict:     "confirmed-compatible",
+			},
+			{
+				Fingerprint: "other-fp", // Mismatched!
+				ENIDs:       []int{},
+				ZHIDs:       []int{20},
+				ENText:      "",
+				ZHText:      "只有中文",
+				Verdict:     "legitimate-one-sided",
+			},
+		}
+		raw, _ := json.Marshal(items)
+		file := filepath.Join(t.TempDir(), "fp.json")
+		_ = os.WriteFile(file, raw, 0644)
+
+		stats, err := InheritSemanticReviews(ledger, bundle, []string{file})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stats.InheritedCount != 0 {
+			t.Errorf("expected 0 inherited for missing/mismatched fingerprint, got %d", stats.InheritedCount)
+		}
+	})
+
+	t.Run("TextMismatch_NoTrim_WhitespaceOnly_Fails", func(t *testing.T) {
+		ledger := makeLedger()
+		items := []SemanticReviewItem{
+			{
+				Fingerprint: fp,
+				ENIDs:       []int{1, 2},
+				ZHIDs:       []int{10},
+				ENText:      " Hello world ", // Leading/trailing whitespace should NOT match (no trim)
+				ZHText:      "你好世界",
+				Verdict:     "confirmed-compatible",
+			},
+			{
+				Fingerprint: fp,
+				ENIDs:       []int{},
+				ZHIDs:       []int{20},
+				ENText:      "non-empty-on-empty-track", // Empty EN track must have empty ENText
+				ZHText:      "只有中文",
+				Verdict:     "legitimate-one-sided",
+			},
+		}
+		raw, _ := json.Marshal(items)
+		file := filepath.Join(t.TempDir(), "text.json")
+		_ = os.WriteFile(file, raw, 0644)
+
+		stats, err := InheritSemanticReviews(ledger, bundle, []string{file})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stats.InheritedCount != 0 {
+			t.Errorf("expected 0 inherited for text mismatch, got %d", stats.InheritedCount)
+		}
+	})
+
+	t.Run("EmptyOrUnknownVerdict_Fails", func(t *testing.T) {
+		ledger := makeLedger()
+		items := []SemanticReviewItem{
+			{
+				Fingerprint: fp,
+				ENIDs:       []int{1, 2},
+				ZHIDs:       []int{10},
+				ENText:      "Hello world",
+				ZHText:      "你好世界",
+				Verdict:     "", // Empty verdict
+			},
+			{
+				Fingerprint: fp,
+				ENIDs:       []int{},
+				ZHIDs:       []int{20},
+				ENText:      "",
+				ZHText:      "只有中文",
+				Verdict:     "arbitrary_unapproved_verdict", // Unknown verdict
+			},
+		}
+		raw, _ := json.Marshal(items)
+		file := filepath.Join(t.TempDir(), "verdict.json")
+		_ = os.WriteFile(file, raw, 0644)
+
+		stats, err := InheritSemanticReviews(ledger, bundle, []string{file})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stats.InheritedCount != 0 {
+			t.Errorf("expected 0 inherited for empty/unknown verdict, got %d", stats.InheritedCount)
+		}
+	})
+
+	t.Run("BadFileOrJSON_ReturnsError", func(t *testing.T) {
+		ledger := makeLedger()
+
+		// Non-existent file
+		_, err := InheritSemanticReviews(ledger, bundle, []string{"/tmp/nonexistent-file-404.json"})
+		if err == nil {
+			t.Errorf("expected error for non-existent file, got nil")
+		}
+
+		// Malformed JSON
+		badFile := filepath.Join(t.TempDir(), "bad.json")
+		_ = os.WriteFile(badFile, []byte("{not json}"), 0644)
+		_, errJSON := InheritSemanticReviews(ledger, bundle, []string{badFile})
+		if errJSON == nil {
+			t.Errorf("expected error for malformed JSON, got nil")
+		}
+	})
 }

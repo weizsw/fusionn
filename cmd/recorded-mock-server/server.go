@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,24 +28,71 @@ type ServerStats struct {
 	Requests       []RequestLog `json:"requests"`
 }
 
-type ReplayServer struct {
-	Responses       map[int]string // window index -> completion content string
-	CoreStartToWin  map[int]int    // core_start_ms -> window index
-	FailWindow      int            // window to fail, -1 for none
-	FailCode        int            // HTTP status code to return on failure, default 503
-	mu              sync.Mutex
-	Stats           ServerStats
-	sequentialIndex int
+type RecordedWindow struct {
+	Index   int
+	Core    [2]int
+	Model   string
+	Content string
+	Usage   json.RawMessage
 }
 
+type ReplayServer struct {
+	Windows        map[[2]int]*RecordedWindow // [start_ms, end_ms] -> window
+	WindowsByIndex map[int]*RecordedWindow
+	FailWindow     int // window index to fail, -1 for none
+	FailCode       int // HTTP status code to return on failure, default 503
+	mu             sync.Mutex
+	Stats          ServerStats
+}
+
+type rawCacheRecord struct {
+	Index    *int            `json:"index"`
+	Request  json.RawMessage `json:"request"`
+	Attempts []struct {
+		Seconds      float64         `json:"seconds"`
+		Model        string          `json:"model"`
+		Usage        json.RawMessage `json:"usage"`
+		FinishReason string          `json:"finish_reason"`
+		Content      string          `json:"content"`
+		Error        string          `json:"error"`
+	} `json:"attempts"`
+	Response json.RawMessage `json:"response"`
+}
+
+func parseCoreMS(rawRequest json.RawMessage) ([2]int, string, error) {
+	var req struct {
+		Model    string `json:"model"`
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(rawRequest, &req); err != nil {
+		return [2]int{}, "", fmt.Errorf("unmarshal request: %w", err)
+	}
+	for _, m := range req.Messages {
+		if m.Role == "user" {
+			var userContent struct {
+				CoreMS []int `json:"core_ms"`
+			}
+			if err := json.Unmarshal([]byte(m.Content), &userContent); err == nil && len(userContent.CoreMS) == 2 {
+				return [2]int{userContent.CoreMS[0], userContent.CoreMS[1]}, req.Model, nil
+			}
+		}
+	}
+	return [2]int{}, "", fmt.Errorf("could not extract core_ms from user message")
+}
+
+// NewReplayServer loads recorded cache files and initializes the replay server.
+// Fails fast on missing directory, corrupt JSON, missing core_ms, or files without valid content.
 func NewReplayServer(cacheDir string, failWindow, failCode int) (*ReplayServer, error) {
 	if failCode <= 0 {
 		failCode = http.StatusServiceUnavailable
 	}
 
 	server := &ReplayServer{
-		Responses:      make(map[int]string),
-		CoreStartToWin: make(map[int]int),
+		Windows:        make(map[[2]int]*RecordedWindow),
+		WindowsByIndex: make(map[int]*RecordedWindow),
 		FailWindow:     failWindow,
 		FailCode:       failCode,
 		Stats: ServerStats{
@@ -60,27 +106,28 @@ func NewReplayServer(cacheDir string, failWindow, failCode int) (*ReplayServer, 
 		return nil, fmt.Errorf("read cache dir %s: %w", cacheDir, err)
 	}
 
+	foundJSON := false
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
+		foundJSON = true
 		path := filepath.Join(cacheDir, entry.Name())
 		raw, err := os.ReadFile(path)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("read cache file %s: %w", entry.Name(), err)
 		}
 
-		var data map[string]interface{}
-		if err := json.Unmarshal(raw, &data); err != nil {
-			continue
+		var record rawCacheRecord
+		if err := json.Unmarshal(raw, &record); err != nil {
+			return nil, fmt.Errorf("unmarshal cache file %s: %w", entry.Name(), err)
 		}
 
 		// Determine window index
 		winIdx := -1
-		if idxVal, ok := data["index"].(float64); ok {
-			winIdx = int(idxVal)
+		if record.Index != nil {
+			winIdx = *record.Index
 		} else {
-			// Extract from filename like "001-..."
 			parts := strings.Split(entry.Name(), "-")
 			if len(parts) > 0 {
 				if parsed, err := strconv.Atoi(parts[0]); err == nil {
@@ -88,92 +135,59 @@ func NewReplayServer(cacheDir string, failWindow, failCode int) (*ReplayServer, 
 				}
 			}
 		}
-
 		if winIdx < 0 {
-			continue
+			return nil, fmt.Errorf("cache file %s has no valid window index", entry.Name())
 		}
 
-		// Determine completion content
-		var contentStr string
-		if attempts, ok := data["attempts"].([]interface{}); ok && len(attempts) > 0 {
-			if firstAtt, ok := attempts[0].(map[string]interface{}); ok {
-				if c, ok := firstAtt["content"].(string); ok && c != "" {
-					contentStr = c
-				}
-			}
+		// Extract core_ms and request model
+		coreMS, reqModel, err := parseCoreMS(record.Request)
+		if err != nil {
+			return nil, fmt.Errorf("cache file %s: %w", entry.Name(), err)
 		}
-		if contentStr == "" {
-			if resp, ok := data["response"].(map[string]interface{}); ok {
-				respBytes, err := json.Marshal(resp)
-				if err == nil {
-					contentStr = string(respBytes)
-				}
+
+		// Determine successful attempt content, model, and usage
+		var chosenModel string
+		var chosenContent string
+		var chosenUsage json.RawMessage
+
+		for _, att := range record.Attempts {
+			if att.Error == "" && att.FinishReason == "stop" && att.Content != "" {
+				chosenModel = att.Model
+				chosenContent = att.Content
+				chosenUsage = att.Usage
+				break
 			}
 		}
 
-		if contentStr != "" {
-			server.Responses[winIdx] = contentStr
-			// Standard step is 210,000ms
-			server.CoreStartToWin[winIdx*210000] = winIdx
+		if chosenContent == "" && len(record.Response) > 0 {
+			chosenContent = string(record.Response)
 		}
+
+		if chosenContent == "" {
+			return nil, fmt.Errorf("cache file %s has no successful attempt or valid response", entry.Name())
+		}
+
+		if chosenModel == "" {
+			chosenModel = reqModel
+		}
+
+		win := &RecordedWindow{
+			Index:   winIdx,
+			Core:    coreMS,
+			Model:   chosenModel,
+			Content: chosenContent,
+			Usage:   chosenUsage,
+		}
+
+		server.Windows[coreMS] = win
+		server.WindowsByIndex[winIdx] = win
 	}
 
-	if len(server.Responses) == 0 {
-		return nil, fmt.Errorf("no valid cached responses found in %s", cacheDir)
+	if !foundJSON || len(server.Windows) == 0 {
+		return nil, fmt.Errorf("no valid cache records found in %s", cacheDir)
 	}
 
 	return server, nil
-}
-
-var coreMSRegex = regexp.MustCompile(`"core_ms"\s*:\s*\[\s*(\d+)`)
-
-func (s *ReplayServer) identifyWindowIndex(bodyBytes []byte) int {
-	// Try parsing JSON body to inspect messages
-	var req map[string]interface{}
-	if err := json.Unmarshal(bodyBytes, &req); err == nil {
-		if msgs, ok := req["messages"].([]interface{}); ok {
-			for _, m := range msgs {
-				if msgMap, ok := m.(map[string]interface{}); ok {
-					if content, ok := msgMap["content"].(string); ok {
-						match := coreMSRegex.FindStringSubmatch(content)
-						if len(match) > 1 {
-							if startMS, err := strconv.Atoi(match[1]); err == nil {
-								s.mu.Lock()
-								win, exists := s.CoreStartToWin[startMS]
-								s.mu.Unlock()
-								if exists {
-									return win
-								}
-								// Fallback: estimate by 210000ms
-								return startMS / 210000
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Try regex directly on raw body
-	match := coreMSRegex.FindSubmatch(bodyBytes)
-	if len(match) > 1 {
-		if startMS, err := strconv.Atoi(string(match[1])); err == nil {
-			s.mu.Lock()
-			win, exists := s.CoreStartToWin[startMS]
-			s.mu.Unlock()
-			if exists {
-				return win
-			}
-			return startMS / 210000
-		}
-	}
-
-	// Fallback to sequential
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	idx := s.sequentialIndex % len(s.Responses)
-	s.sequentialIndex++
-	return idx
 }
 
 func (s *ReplayServer) Handler() http.Handler {
@@ -198,30 +212,60 @@ func (s *ReplayServer) Handler() http.Handler {
 		}
 		buf, err := io.ReadAll(r.Body)
 		_ = r.Body.Close()
-		if err != nil {
-			http.Error(w, `{"error":{"message":"cannot read body"}}`, http.StatusBadRequest)
+		if err != nil || len(buf) == 0 {
+			http.Error(w, `{"error":{"message":"empty or unreadable body"}}`, http.StatusBadRequest)
 			return
 		}
 
-		// Quick check for valid JSON
-		var testJSON map[string]interface{}
-		if err := json.Unmarshal(buf, &testJSON); err != nil {
-			http.Error(w, `{"error":{"message":"invalid json"}}`, http.StatusBadRequest)
+		var req struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.Unmarshal(buf, &req); err != nil {
+			http.Error(w, `{"error":{"message":"invalid request json"}}`, http.StatusBadRequest)
 			return
 		}
 
-		winIdx := s.identifyWindowIndex(buf)
+		var reqCore [2]int
+		foundCore := false
+		for _, m := range req.Messages {
+			if m.Role == "user" {
+				var userContent struct {
+					CoreMS []int `json:"core_ms"`
+				}
+				if err := json.Unmarshal([]byte(m.Content), &userContent); err == nil && len(userContent.CoreMS) == 2 {
+					reqCore = [2]int{userContent.CoreMS[0], userContent.CoreMS[1]}
+					foundCore = true
+					break
+				}
+			}
+		}
 
+		if !foundCore {
+			http.Error(w, `{"error":{"message":"request missing user message or valid core_ms"}}`, http.StatusBadRequest)
+			return
+		}
+
+		// Strict identity match against loaded windows: NO division, NO sequential guessing!
 		s.mu.Lock()
+		win, exists := s.Windows[reqCore]
+		if !exists {
+			s.mu.Unlock()
+			http.Error(w, fmt.Sprintf(`{"error":{"message":"unknown window core_ms: [%d, %d]"}}`, reqCore[0], reqCore[1]), http.StatusBadRequest)
+			return
+		}
+
 		s.Stats.TotalRequests++
-		s.Stats.WindowAttempts[winIdx]++
+		s.Stats.WindowAttempts[win.Index]++
 		nowStr := time.Now().UTC().Format(time.RFC3339Nano)
 
-		if winIdx == s.FailWindow {
+		if win.Index == s.FailWindow {
 			s.Stats.FailedAttempts++
 			s.Stats.Requests = append(s.Stats.Requests, RequestLog{
 				Timestamp:   nowStr,
-				WindowIndex: winIdx,
+				WindowIndex: win.Index,
 				Status:      s.FailCode,
 				Method:      r.Method,
 				Path:        r.URL.Path,
@@ -230,9 +274,9 @@ func (s *ReplayServer) Handler() http.Handler {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(s.FailCode)
-			resp := map[string]interface{}{
-				"error": map[string]interface{}{
-					"message": fmt.Sprintf("service temporarily unavailable for window %d (simulated degradable error)", winIdx),
+			resp := map[string]any{
+				"error": map[string]any{
+					"message": fmt.Sprintf("service temporarily unavailable for window %d (simulated degradable error)", win.Index),
 					"type":    "server_error",
 					"code":    s.FailCode,
 				},
@@ -241,49 +285,33 @@ func (s *ReplayServer) Handler() http.Handler {
 			return
 		}
 
-		content, exists := s.Responses[winIdx]
-		if !exists {
-			s.Stats.Requests = append(s.Stats.Requests, RequestLog{
-				Timestamp:   nowStr,
-				WindowIndex: winIdx,
-				Status:      http.StatusNotFound,
-				Method:      r.Method,
-				Path:        r.URL.Path,
-			})
-			s.mu.Unlock()
-			http.Error(w, fmt.Sprintf(`{"error":{"message":"window %d not found in recorded cache"}}`, winIdx), http.StatusNotFound)
-			return
-		}
-
 		s.Stats.Requests = append(s.Stats.Requests, RequestLog{
 			Timestamp:   nowStr,
-			WindowIndex: winIdx,
+			WindowIndex: win.Index,
 			Status:      http.StatusOK,
 			Method:      r.Method,
 			Path:        r.URL.Path,
 		})
 		s.mu.Unlock()
 
-		respObj := map[string]interface{}{
-			"id":      fmt.Sprintf("chatcmpl-mock-win%d", winIdx),
+		respObj := map[string]any{
+			"id":      fmt.Sprintf("chatcmpl-mock-win%d", win.Index),
 			"object":  "chat.completion",
 			"created": time.Now().Unix(),
-			"model":   "codex/gpt-6.1-sol",
-			"choices": []map[string]interface{}{
+			"model":   win.Model,
+			"choices": []map[string]any{
 				{
 					"index": 0,
-					"message": map[string]interface{}{
+					"message": map[string]any{
 						"role":    "assistant",
-						"content": content,
+						"content": win.Content,
 					},
 					"finish_reason": "stop",
 				},
 			},
-			"usage": map[string]interface{}{
-				"prompt_tokens":     150,
-				"completion_tokens": 100,
-				"total_tokens":      250,
-			},
+		}
+		if len(win.Usage) > 0 {
+			respObj["usage"] = win.Usage
 		}
 
 		w.Header().Set("Content-Type", "application/json")

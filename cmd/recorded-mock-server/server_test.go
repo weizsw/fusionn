@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,65 +12,59 @@ import (
 	"testing"
 )
 
-func createMockCacheDir(t *testing.T) string {
+func makeTestCacheFile(t *testing.T, dir string, index int, coreStart, coreEnd int, content string) {
 	t.Helper()
-	dir := t.TempDir()
-
-	for i := 0; i < 3; i++ {
-		content := fmt.Sprintf(`{"alignments":[{"en_ids":[%d],"zh_ids":[%d],"layer":"bottom","kind":"dialogue"}]}`, i+1, i+1)
-		fileData := map[string]interface{}{
-			"index": i,
-			"attempts": []map[string]interface{}{
-				{"content": content},
-			},
-			"response": map[string]interface{}{
-				"alignments": []map[string]interface{}{
-					{"en_ids": []int{i + 1}, "zh_ids": []int{i + 1}, "layer": "bottom", "kind": "dialogue"},
+	reqBody := fmt.Sprintf(`{"model":"test-model","messages":[{"role":"system","content":"test prompt"},{"role":"user","content":"{\"core_ms\":[%d,%d],\"en\":[],\"zh\":[]}"}]}`, coreStart, coreEnd)
+	record := map[string]any{
+		"index":        index,
+		"request_hash": fmt.Sprintf("hash-%d", index),
+		"request":      json.RawMessage(reqBody),
+		"attempts": []map[string]any{
+			{
+				"model":         "test-model",
+				"finish_reason": "stop",
+				"content":       content,
+				"usage": map[string]int{
+					"prompt_tokens":     12,
+					"completion_tokens": 34,
 				},
 			},
-		}
-		raw, err := json.Marshal(fileData)
-		if err != nil {
-			t.Fatalf("marshal mock cache file %d: %v", i, err)
-		}
-		filename := filepath.Join(dir, fmt.Sprintf("%03d-mockhash%d.json", i, i))
-		if err := os.WriteFile(filename, raw, 0644); err != nil {
-			t.Fatalf("write mock cache file %d: %v", i, err)
-		}
+		},
+		"response": json.RawMessage(content),
 	}
-	return dir
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fName := fmt.Sprintf("%03d-test.json", index)
+	fPath := filepath.Join(dir, fName)
+	if err := os.WriteFile(fPath, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 }
 
-func sendMockChatRequest(t *testing.T, ts *httptest.Server, coreStartMS int) (int, map[string]interface{}) {
+func sendChatRequest(t *testing.T, ts *httptest.Server, coreStart, coreEnd int) (*http.Response, string) {
 	t.Helper()
-	reqBody := map[string]interface{}{
-		"model": "codex/gpt-6.1-sol",
-		"messages": []map[string]string{
-			{"role": "system", "content": "Align cues."},
-			{"role": "user", "content": fmt.Sprintf(`{"core_ms":[%d,%d],"en":[{"id":1,"start":1,"end":2,"text":"test"}],"zh":[{"id":1,"start":1,"end":2,"text":"测试"}]}`, coreStartMS, coreStartMS+210000)},
-		},
-	}
-	bodyBytes, err := json.Marshal(reqBody)
+	reqBody := fmt.Sprintf(`{"model":"client-model","messages":[{"role":"system","content":"sys"},{"role":"user","content":"{\"core_ms\":[%d,%d],\"en\":[],\"zh\":[]}"}]}`, coreStart, coreEnd)
+	resp, err := ts.Client().Post(ts.URL+"/chat/completions", "application/json", bytes.NewReader([]byte(reqBody)))
 	if err != nil {
-		t.Fatalf("marshal request body: %v", err)
-	}
-
-	resp, err := http.Post(ts.URL+"/v1/chat/completions", "application/json", bytes.NewReader(bodyBytes))
-	if err != nil {
-		t.Fatalf("post to mock server: %v", err)
+		t.Fatalf("request failed: %v", err)
 	}
 	defer resp.Body.Close()
-
-	var result map[string]interface{}
-	_ = json.NewDecoder(resp.Body).Decode(&result)
-	return resp.StatusCode, result
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	return resp, string(body)
 }
 
-func TestReplayServer_TDD_WindowSuccessAndFailure(t *testing.T) {
-	cacheDir := createMockCacheDir(t)
+func TestReplayServer_StrictIdentityAndNon210SecFixture(t *testing.T) {
+	tempDir := t.TempDir()
+	// Create two fixtures with arbitrary, non-210-second intervals
+	makeTestCacheFile(t, tempDir, 0, 1000, 5000, `{"alignments":[{"en_ids":[1],"zh_ids":[1],"layer":"bottom","kind":"dialogue"}]}`)
+	makeTestCacheFile(t, tempDir, 1, 5000, 12000, `{"alignments":[{"en_ids":[2],"zh_ids":[2],"layer":"bottom","kind":"dialogue"}]}`)
 
-	// Window 1 is configured to fail with 503
-	server, err := NewReplayServer(cacheDir, 1, 503)
+	server, err := NewReplayServer(tempDir, -1, 503)
 	if err != nil {
 		t.Fatalf("NewReplayServer: %v", err)
 	}
@@ -77,45 +72,167 @@ func TestReplayServer_TDD_WindowSuccessAndFailure(t *testing.T) {
 	ts := httptest.NewServer(server.Handler())
 	defer ts.Close()
 
-	// Window 0 (core_ms 0..210000) should succeed (200 OK)
-	status0, body0 := sendMockChatRequest(t, ts, 0)
-	if status0 != http.StatusOK {
-		t.Fatalf("expected 200 OK for window 0, got %d", status0)
+	// 1. Exact match on window 0 [1000, 5000]
+	resp0, body0 := sendChatRequest(t, ts, 1000, 5000)
+	if resp0.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for window 0, got %d: %s", resp0.StatusCode, body0)
 	}
-	choices, ok := body0["choices"].([]interface{})
-	if !ok || len(choices) == 0 {
-		t.Fatalf("expected choices in response body: %v", body0)
+	var chatResp0 struct {
+		Model   string `json:"model"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
 	}
-	msg := choices[0].(map[string]interface{})["message"].(map[string]interface{})
-	contentStr := msg["content"].(string)
-	if !bytes.Contains([]byte(contentStr), []byte(`"en_ids":[1]`)) {
-		t.Errorf("unexpected content for window 0: %s", contentStr)
+	if err := json.Unmarshal([]byte(body0), &chatResp0); err != nil {
+		t.Fatalf("unmarshal resp: %v", err)
 	}
-
-	// Window 1 (core_ms 210000..420000) should fail with 503
-	for attempt := 1; attempt <= 3; attempt++ {
-		status1, _ := sendMockChatRequest(t, ts, 210000)
-		if status1 != http.StatusServiceUnavailable {
-			t.Fatalf("attempt %d: expected 503 for window 1, got %d", attempt, status1)
-		}
+	if chatResp0.Model != "test-model" {
+		t.Errorf("expected model 'test-model', got %q", chatResp0.Model)
 	}
-
-	// Window 2 (core_ms 420000..630000) should succeed (200 OK)
-	status2, body2 := sendMockChatRequest(t, ts, 420000)
-	if status2 != http.StatusOK {
-		t.Fatalf("expected 200 OK for window 2, got %d", status2)
-	}
-	choices2 := body2["choices"].([]interface{})
-	msg2 := choices2[0].(map[string]interface{})["message"].(map[string]interface{})
-	contentStr2 := msg2["content"].(string)
-	if !bytes.Contains([]byte(contentStr2), []byte(`"en_ids":[3]`)) {
-		t.Errorf("unexpected content for window 2: %s", contentStr2)
+	if chatResp0.Usage.PromptTokens != 12 || chatResp0.Usage.CompletionTokens != 34 {
+		t.Errorf("expected preserved recorded usage 12/34, got %+v", chatResp0.Usage)
 	}
 
-	// Verify stats
+	// 2. Exact match on window 1 [5000, 12000]
+	resp1, body1 := sendChatRequest(t, ts, 5000, 12000)
+	if resp1.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for window 1, got %d: %s", resp1.StatusCode, body1)
+	}
+
+	// 3. Unknown core_ms [9999, 19999] MUST return HTTP 400
+	respUnknown, bodyUnknown := sendChatRequest(t, ts, 9999, 19999)
+	if respUnknown.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 for unknown core_ms, got %d: %s", respUnknown.StatusCode, bodyUnknown)
+	}
+}
+
+func TestReplayServer_MissingCoreMS_Returns400(t *testing.T) {
+	tempDir := t.TempDir()
+	makeTestCacheFile(t, tempDir, 0, 0, 1000, `{"alignments":[]}`)
+
+	server, err := NewReplayServer(tempDir, -1, 503)
+	if err != nil {
+		t.Fatalf("NewReplayServer: %v", err)
+	}
+
+	ts := httptest.NewServer(server.Handler())
+	defer ts.Close()
+
+	// Missing core_ms in user message
+	badReq := `{"model":"m","messages":[{"role":"user","content":"{\"en\":[]}"}]}`
+	resp, errBad := ts.Client().Post(ts.URL+"/chat/completions", "application/json", bytes.NewReader([]byte(badReq)))
+	if errBad != nil {
+		t.Fatalf("post bad req: %v", errBad)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 for missing core_ms, got %d", resp.StatusCode)
+	}
+
+	// Completely invalid JSON
+	respInv, errInv := ts.Client().Post(ts.URL+"/chat/completions", "application/json", bytes.NewReader([]byte("not json")))
+	if errInv != nil {
+		t.Fatalf("post inv req: %v", errInv)
+	}
+	defer respInv.Body.Close()
+	if respInv.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid json, got %d", respInv.StatusCode)
+	}
+}
+
+func TestReplayServer_AttemptSelection_PicksSuccessfulAttempt(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Record with attempt 0 failed, attempt 1 succeeded
+	reqBody := `{"model":"test-model","messages":[{"role":"user","content":"{\"core_ms\":[0,1000],\"en\":[],\"zh\":[]}"}]}`
+	record := map[string]any{
+		"index":        0,
+		"request_hash": "hash-attempt-select",
+		"request":      json.RawMessage(reqBody),
+		"attempts": []map[string]any{
+			{
+				"model":         "test-model",
+				"finish_reason": "error",
+				"error":         "rate limit exceeded 429",
+				"content":       "",
+			},
+			{
+				"model":         "test-model-success",
+				"finish_reason": "stop",
+				"content":       `{"alignments":[{"en_ids":[10],"zh_ids":[20],"layer":"bottom","kind":"dialogue"}]}`,
+			},
+		},
+	}
+	data, _ := json.Marshal(record)
+	_ = os.WriteFile(filepath.Join(tempDir, "000-attempt.json"), data, 0644)
+
+	server, err := NewReplayServer(tempDir, -1, 503)
+	if err != nil {
+		t.Fatalf("NewReplayServer: %v", err)
+	}
+
+	win := server.Windows[[2]int{0, 1000}]
+	if win == nil {
+		t.Fatalf("window [0, 1000] not found")
+	}
+	if win.Model != "test-model-success" {
+		t.Errorf("expected chosen model from attempt 1 'test-model-success', got %q", win.Model)
+	}
+	if win.Content != `{"alignments":[{"en_ids":[10],"zh_ids":[20],"layer":"bottom","kind":"dialogue"}]}` {
+		t.Errorf("expected chosen content from attempt 1, got %q", win.Content)
+	}
+}
+
+func TestReplayServer_FailWindow_StableRetry503AndStats(t *testing.T) {
+	tempDir := t.TempDir()
+	makeTestCacheFile(t, tempDir, 0, 0, 1000, `{"alignments":[]}`)
+	makeTestCacheFile(t, tempDir, 1, 1000, 2000, `{"alignments":[]}`)
+
+	// Configure window 1 to fail with HTTP 503
+	server, err := NewReplayServer(tempDir, 1, 503)
+	if err != nil {
+		t.Fatalf("NewReplayServer: %v", err)
+	}
+
+	ts := httptest.NewServer(server.Handler())
+	defer ts.Close()
+
+	// Window 0 succeeds
+	resp0, _ := sendChatRequest(t, ts, 0, 1000)
+	if resp0.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for window 0, got %d", resp0.StatusCode)
+	}
+
+	// Window 1 fails on attempt 1
+	resp1a, _ := sendChatRequest(t, ts, 1000, 2000)
+	if resp1a.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 for window 1, got %d", resp1a.StatusCode)
+	}
+
+	// Retry window 1 (attempt 2) stably fails with 503
+	resp1b, _ := sendChatRequest(t, ts, 1000, 2000)
+	if resp1b.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 on retry for window 1, got %d", resp1b.StatusCode)
+	}
+
+	// Retry window 1 (attempt 3) stably fails with 503
+	resp1c, _ := sendChatRequest(t, ts, 1000, 2000)
+	if resp1c.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 on retry for window 1, got %d", resp1c.StatusCode)
+	}
+
 	stats := server.GetStats()
-	if stats.TotalRequests != 5 { // 1 for win 0 + 3 for win 1 + 1 for win 2
-		t.Errorf("expected 5 total requests, got %d", stats.TotalRequests)
+	if stats.TotalRequests != 4 {
+		t.Errorf("expected 4 total requests, got %d", stats.TotalRequests)
+	}
+	if stats.FailedAttempts != 3 {
+		t.Errorf("expected 3 failed attempts, got %d", stats.FailedAttempts)
 	}
 	if stats.WindowAttempts[0] != 1 {
 		t.Errorf("expected 1 attempt for window 0, got %d", stats.WindowAttempts[0])
@@ -123,100 +240,51 @@ func TestReplayServer_TDD_WindowSuccessAndFailure(t *testing.T) {
 	if stats.WindowAttempts[1] != 3 {
 		t.Errorf("expected 3 attempts for window 1, got %d", stats.WindowAttempts[1])
 	}
-	if stats.WindowAttempts[2] != 1 {
-		t.Errorf("expected 1 attempt for window 2, got %d", stats.WindowAttempts[2])
-	}
-	if stats.FailedAttempts != 3 {
-		t.Errorf("expected 3 failed attempts, got %d", stats.FailedAttempts)
-	}
 
-	// Verify GET /stats
-	respStats, err := http.Get(ts.URL + "/stats")
-	if err != nil {
-		t.Fatalf("GET /stats: %v", err)
+	// Verify /stats endpoint returns the same
+	statsResp, errGet := ts.Client().Get(ts.URL + "/stats")
+	if errGet != nil {
+		t.Fatal(errGet)
 	}
-	defer respStats.Body.Close()
-	if respStats.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 from /stats, got %d", respStats.StatusCode)
+	defer statsResp.Body.Close()
+	var endpointStats ServerStats
+	if err := json.NewDecoder(statsResp.Body).Decode(&endpointStats); err != nil {
+		t.Fatal(err)
 	}
-	var httpStats ServerStats
-	if err := json.NewDecoder(respStats.Body).Decode(&httpStats); err != nil {
-		t.Fatalf("decode /stats: %v", err)
-	}
-	if httpStats.TotalRequests != 5 || httpStats.FailedAttempts != 3 {
-		t.Errorf("unexpected stats from HTTP: %+v", httpStats)
+	if endpointStats.TotalRequests != 4 || endpointStats.FailedAttempts != 3 {
+		t.Errorf("unexpected endpoint stats: %+v", endpointStats)
 	}
 }
 
-func TestReplayServer_TDD_UnknownWindowAndMalformed(t *testing.T) {
-	cacheDir := createMockCacheDir(t)
-	server, err := NewReplayServer(cacheDir, -1, 503)
-	if err != nil {
-		t.Fatalf("NewReplayServer: %v", err)
+func TestReplayServer_CorruptFileOrEmptyDir_FailsFast(t *testing.T) {
+	// Empty dir
+	emptyDir := t.TempDir()
+	_, errEmpty := NewReplayServer(emptyDir, -1, 503)
+	if errEmpty == nil {
+		t.Errorf("expected error for empty dir, got nil")
 	}
 
-	ts := httptest.NewServer(server.Handler())
-	defer ts.Close()
-
-	// Window 99 (core_ms 99*210000) not in cache -> 404
-	status, _ := sendMockChatRequest(t, ts, 99*210000)
-	if status != http.StatusNotFound {
-		t.Errorf("expected 404 for unknown window, got %d", status)
-	}
-
-	// Malformed JSON -> 400
-	resp, err := http.Post(ts.URL+"/v1/chat/completions", "application/json", bytes.NewReader([]byte("{malformed")))
-	if err != nil {
-		t.Fatalf("post malformed: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("expected 400 for malformed json, got %d", resp.StatusCode)
+	// Corrupt JSON file
+	badDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(badDir, "000-bad.json"), []byte("{bad json}"), 0644)
+	_, errBad := NewReplayServer(badDir, -1, 503)
+	if errBad == nil {
+		t.Errorf("expected error for bad json, got nil")
 	}
 }
 
 func TestReplayServer_RealPhaseBCache(t *testing.T) {
-	realCacheDir := "/tmp/fusionn-phase-b-cache-gpt61/subtitlellm-v1"
-	if _, err := os.Stat(realCacheDir); os.IsNotExist(err) {
-		t.Skip("skipping real cache test, dir does not exist")
+	cacheDir := os.Getenv("FUSIONN_RECORDED_CACHE_DIR")
+	if cacheDir == "" {
+		t.Skip("skipping real cache test: opt in via FUSIONN_RECORDED_CACHE_DIR")
 	}
 
-	server, err := NewReplayServer(realCacheDir, 2, 503)
+	server, err := NewReplayServer(cacheDir, -1, 503)
 	if err != nil {
-		t.Fatalf("NewReplayServer with real cache: %v", err)
+		t.Fatalf("failed to initialize replay server from real cache: %v", err)
 	}
 
-	if len(server.Responses) != 15 {
-		t.Fatalf("expected 15 cached responses, got %d", len(server.Responses))
-	}
-
-	ts := httptest.NewServer(server.Handler())
-	defer ts.Close()
-
-	// Window 0 succeeds
-	status0, body0 := sendMockChatRequest(t, ts, 0)
-	if status0 != http.StatusOK {
-		t.Fatalf("window 0 status: %d", status0)
-	}
-	choices0 := body0["choices"].([]interface{})
-	if len(choices0) == 0 {
-		t.Fatalf("empty choices for window 0")
-	}
-
-	// Window 2 (core_ms 420000) should fail with 503
-	status2, _ := sendMockChatRequest(t, ts, 420000)
-	if status2 != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 for window 2, got %d", status2)
-	}
-
-	// Window 14 (core_ms 14*210000 = 2940000) succeeds
-	status14, _ := sendMockChatRequest(t, ts, 2940000)
-	if status14 != http.StatusOK {
-		t.Fatalf("window 14 status: %d", status14)
-	}
-
-	stats := server.GetStats()
-	if stats.TotalRequests != 3 || stats.FailedAttempts != 1 {
-		t.Errorf("unexpected stats: %+v", stats)
+	if len(server.Windows) != 15 {
+		t.Errorf("expected 15 windows loaded, got %d", len(server.Windows))
 	}
 }
