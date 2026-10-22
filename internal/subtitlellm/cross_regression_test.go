@@ -648,10 +648,7 @@ func TestCrossRegression_R3_CoordinateVerification(t *testing.T) {
 func TestCrossRegression_R4_PositionTagPresenceAndReference(t *testing.T) {
 	cfg := review939Config()
 	style := fixtureStyle()
-	tmpDir := "/tmp/fusionn-actual-ass-verifier-20261022"
-	if err := os.MkdirAll(tmpDir, 0755); err != nil {
-		t.Fatalf("mkdir tmpDir: %v", err)
-	}
+	tmpDir := t.TempDir()
 
 	pos := [2]float64{960, 200}
 	en := []Cue{
@@ -889,7 +886,11 @@ func TestCrossRegression_ReplayRecordedResponsesHTTP(t *testing.T) {
 // ensuring that all independent regression artifacts are produced and strictly verified.
 func TestCrossRegression_GenerateAndVerifyArtifacts(t *testing.T) {
 	dir := prototypeSources
-	result, err := RunDarkMatterCrossRegression(dir)
+	outDir := os.Getenv("FUSIONN_REGRESSION_OUT_DIR")
+	if outDir == "" {
+		outDir = filepath.Join(t.TempDir(), "artifacts")
+	}
+	result, err := RunDarkMatterCrossRegressionToDir(dir, outDir)
 	if err != nil {
 		t.Fatalf("RunDarkMatterCrossRegression failed: %v", err)
 	}
