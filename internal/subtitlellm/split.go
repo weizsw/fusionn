@@ -620,6 +620,48 @@ func readablePiecesWithFloor(parts []textPiece, windows [][2]int, floorMS int) b
 	return true
 }
 
+// adjustCutsForSourceGaps rolls back candidate cut points that land just after an
+// English source gap when the earlier Chinese cue already finished at or before the
+// gap (cues[i].End <= gapStart) and already had sufficient reading time in the
+// prior window, preventing unreadable flashback tails from projecting across the gap.
+func adjustCutsForSourceGaps(cuts []int, cues []Cue, windows [][2]int) []int {
+	if len(cuts) == 0 || len(windows) < 2 {
+		return cuts
+	}
+	adjusted := append([]int(nil), cuts...)
+	for i := 0; i < len(adjusted) && i+1 < len(cues); i++ {
+		cut := adjusted[i]
+		for w := 0; w+1 < len(windows); w++ {
+			gapStart := windows[w][1]
+			gapEnd := windows[w+1][0]
+			if gapStart >= gapEnd {
+				continue
+			}
+			// If the cut lands inside the window after the gap, but the earlier Chinese
+			// cue already finished at or before the gap, had sufficient display in the
+			// earlier window (evaluated in ASS centiseconds), and lands in the next window
+			// as an unreadably short tail, roll back the cut to the gap boundary so the old
+			// cue does not flash back.
+			if cut > gapEnd && cut < windows[w+1][1] {
+				cueVisibleStart := windows[w][0]
+				if i > 0 && adjusted[i-1] > cueVisibleStart {
+					cueVisibleStart = adjusted[i-1]
+				}
+				priorDuration := roundCentiseconds(gapStart) - roundCentiseconds(cueVisibleStart)
+				tailDuration := roundCentiseconds(cut) - roundCentiseconds(gapEnd)
+				if cues[i].End <= gapStart && priorDuration >= minFallbackFragmentMS && tailDuration < minFallbackFragmentMS {
+					newCut := gapEnd
+					if (i == 0 || newCut > adjusted[i-1]) && (i+1 == len(adjusted) || newCut < adjusted[i+1]) {
+						adjusted[i] = newCut
+					}
+					break
+				}
+			}
+		}
+	}
+	return adjusted
+}
+
 // splitChineseSources restores source fragments inside the English outer
 // bounds. Invalid or unreadably short source cuts use proportional timing.
 // If any source would become invisible in an English gap, retain the hold.
@@ -637,7 +679,9 @@ func splitChineseSources(slices []block, cues []Cue) []block {
 			cuts = append(cuts, cue.Start)
 		}
 	}
-	for _, candidate := range [][]int{cuts, proportionalCuts(texts, start, end)} {
+	cuts = adjustCutsForSourceGaps(cuts, cues, windows)
+	proportional := adjustCutsForSourceGaps(proportionalCuts(texts, start, end), cues, windows)
+	for _, candidate := range [][]int{cuts, proportional} {
 		bounds := append([]int{start}, candidate...)
 		bounds = append(bounds, end)
 		pieces := make([]textPiece, len(cues))
