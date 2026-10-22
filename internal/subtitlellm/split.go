@@ -111,20 +111,12 @@ func sourceLines(plain string) []string {
 // boundaries when native Chinese and English both have two meaningful lines.
 // It requires >= 1.2s per fragment on the real candidate timestamps.
 func trySyncSplit(b block, enCue, zhCue Cue, words WordTimings) ([]block, bool) {
-	enText := enCue.Plain
+	enText, enMulti := sideSpeakerEvidence(b.enText, b.enSeparatedRole, enCue, true)
 	enDisplay := enCue.Display
-	enMulti := enCue.MultiSpeaker
-	if b.enText != nil {
-		enText = *b.enText
+	if b.enSeparatedRole && b.enText != nil {
 		enDisplay = *b.enText
-		enMulti = cueSpeakerLines(sourceLines(*b.enText)) >= 2
 	}
-	zhText := zhCue.Plain
-	zhMulti := zhCue.MultiSpeaker
-	if b.zhText != nil {
-		zhText = *b.zhText
-		zhMulti = cueSpeakerLines(sourceLines(*b.zhText)) >= 2
-	}
+	zhText, zhMulti := sideSpeakerEvidence(b.zhText, b.zhSeparatedRole, zhCue, true)
 	if enMulti || zhMulti || b.top {
 		return nil, false
 	}
@@ -223,13 +215,13 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 			p := result[key]
 			if p == nil {
 				text := joinCues(index, ids, separator)
-				if english && b.enText != nil {
+				if english && b.enSeparatedRole && b.enText != nil {
 					text = *b.enText
-				} else if !english && b.zhText != nil {
+				} else if !english && b.zhSeparatedRole && b.zhText != nil {
 					text = *b.zhText
 				}
 				isProtected := b.top
-				isRoleFragment := (english && b.enText != nil) || (!english && b.zhText != nil)
+				isRoleFragment := (english && b.enSeparatedRole) || (!english && b.zhSeparatedRole)
 				for _, cue := range cuesFor(index, ids) {
 					if cue.MultiSpeaker {
 						if isRoleFragment {
@@ -243,18 +235,10 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 				}
 				if b.strategy == strategyOneToOne && len(b.enIDs) == 1 && len(b.zhIDs) == 1 {
 					enCue, zhCue := en[b.enIDs[0]], zh[b.zhIDs[0]]
-					enMulti := enCue.MultiSpeaker
-					enLines := sourceLines(enCue.Plain)
-					if b.enText != nil {
-						enLines = sourceLines(*b.enText)
-						enMulti = cueSpeakerLines(enLines) >= 2
-					}
-					zhMulti := zhCue.MultiSpeaker
-					zhLines := sourceLines(zhCue.Plain)
-					if b.zhText != nil {
-						zhLines = sourceLines(*b.zhText)
-						zhMulti = cueSpeakerLines(zhLines) >= 2
-					}
+					enText, enMulti := sideSpeakerEvidence(b.enText, b.enSeparatedRole, enCue, true)
+					enLines := sourceLines(enText)
+					zhText, zhMulti := sideSpeakerEvidence(b.zhText, b.zhSeparatedRole, zhCue, true)
+					zhLines := sourceLines(zhText)
 					if !enMulti && !zhMulti && !b.top {
 						if len(enLines) == 2 && len(zhLines) == 2 {
 							enMerged := strings.Join(enLines, " ")

@@ -53,6 +53,13 @@ type block struct {
 	zhFlattened bool
 	enFlattened bool
 	isLyric     bool
+	// enSeparatedRole and zhSeparatedRole mark text overrides that hold a role
+	// separated out of a mixed lyric cue. Overrides produced by temporal
+	// projection, holds, short joins or layout keep their source cue's speaker
+	// evidence instead, so an ordinary override is never mistaken for evidence
+	// that the source's speakers were separated.
+	enSeparatedRole bool
+	zhSeparatedRole bool
 }
 
 // Render produces bilingual ASS from an immutable source bundle and ID mapping.
@@ -535,40 +542,42 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 					zhText := zs[0].Plain
 
 					lyricBlock := block{
-						start:       es[0].Start,
-						end:         es[0].End,
-						enIDs:       []int{es[0].ID},
-						zhIDs:       nil,
-						group:       groupIndex,
-						strategy:    strategyOneToOne,
-						top:         true,
-						sourceTop:   sourceTop,
-						alignment:   8,
-						position:    nil,
-						enText:      &lyricText,
-						enFlattened: false,
-						isLyric:     true,
+						start:           es[0].Start,
+						end:             es[0].End,
+						enIDs:           []int{es[0].ID},
+						zhIDs:           nil,
+						group:           groupIndex,
+						strategy:        strategyOneToOne,
+						top:             true,
+						sourceTop:       sourceTop,
+						alignment:       8,
+						position:        nil,
+						enText:          &lyricText,
+						enSeparatedRole: true,
+						enFlattened:     false,
+						isLyric:         true,
 					}
 					var spokenPos *[2]float64
 					if !sourceTop {
 						spokenPos = native.Position
 					}
 					spokenBlock := block{
-						start:       sStart,
-						end:         sEnd,
-						enIDs:       []int{es[0].ID},
-						zhIDs:       []int{zs[0].ID},
-						group:       groupIndex,
-						strategy:    strategyOneToOne,
-						top:         false,
-						sourceTop:   sourceTop,
-						alignment:   2,
-						position:    spokenPos,
-						enText:      &spokenText,
-						zhText:      &zhText,
-						enFlattened: false,
-						zhFlattened: false,
-						isLyric:     false,
+						start:           sStart,
+						end:             sEnd,
+						enIDs:           []int{es[0].ID},
+						zhIDs:           []int{zs[0].ID},
+						group:           groupIndex,
+						strategy:        strategyOneToOne,
+						top:             false,
+						sourceTop:       sourceTop,
+						alignment:       2,
+						position:        spokenPos,
+						enText:          &spokenText,
+						zhText:          &zhText,
+						enSeparatedRole: true,
+						enFlattened:     false,
+						zhFlattened:     false,
+						isLyric:         false,
 					}
 					result = append(result, lyricBlock, spokenBlock)
 					continue
@@ -591,40 +600,42 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 					enText := es[0].Plain
 
 					lyricBlock := block{
-						start:       zs[0].Start,
-						end:         zs[0].End,
-						enIDs:       nil,
-						zhIDs:       []int{zs[0].ID},
-						group:       groupIndex,
-						strategy:    strategyOneToOne,
-						top:         true,
-						sourceTop:   sourceTop,
-						alignment:   8,
-						position:    nil,
-						zhText:      &lyricText,
-						zhFlattened: false,
-						isLyric:     true,
+						start:           zs[0].Start,
+						end:             zs[0].End,
+						enIDs:           nil,
+						zhIDs:           []int{zs[0].ID},
+						group:           groupIndex,
+						strategy:        strategyOneToOne,
+						top:             true,
+						sourceTop:       sourceTop,
+						alignment:       8,
+						position:        nil,
+						zhText:          &lyricText,
+						zhSeparatedRole: true,
+						zhFlattened:     false,
+						isLyric:         true,
 					}
 					var spokenPos *[2]float64
 					if !sourceTop {
 						spokenPos = native.Position
 					}
 					spokenBlock := block{
-						start:       sStart,
-						end:         sEnd,
-						enIDs:       []int{es[0].ID},
-						zhIDs:       []int{zs[0].ID},
-						group:       groupIndex,
-						strategy:    strategyOneToOne,
-						top:         false,
-						sourceTop:   sourceTop,
-						alignment:   2,
-						position:    spokenPos,
-						enText:      &enText,
-						zhText:      &spokenText,
-						enFlattened: false,
-						zhFlattened: false,
-						isLyric:     false,
+						start:           sStart,
+						end:             sEnd,
+						enIDs:           []int{es[0].ID},
+						zhIDs:           []int{zs[0].ID},
+						group:           groupIndex,
+						strategy:        strategyOneToOne,
+						top:             false,
+						sourceTop:       sourceTop,
+						alignment:       2,
+						position:        spokenPos,
+						enText:          &enText,
+						zhText:          &spokenText,
+						zhSeparatedRole: true,
+						enFlattened:     false,
+						zhFlattened:     false,
+						isLyric:         false,
 					}
 					result = append(result, lyricBlock, spokenBlock)
 					continue
@@ -1040,33 +1051,35 @@ func hasTwoSpeakers(lines []string) bool {
 // preserving the original text and order.
 const mergeSeparator = "   "
 
+// sideSpeakerEvidence returns the text and two-speaker evidence for one side of
+// a block. Only a role separated out of a mixed lyric cue is judged by its own
+// override text; any other override is source-preserving and keeps the source
+// cue's speaker evidence.
+func sideSpeakerEvidence(text *string, separated bool, cue Cue, hasCue bool) (string, bool) {
+	if separated && text != nil {
+		return *text, cueSpeakerLines(sourceLines(*text)) >= 2
+	}
+	if hasCue {
+		return cue.Plain, cue.MultiSpeaker
+	}
+	return "", false
+}
+
 // blockIsDialogue reports whether any source cue of the block carries two
 // speakers in one event.
 func blockIsDialogue(b block, en, zh map[int]Cue) bool {
-	if b.enText != nil || b.zhText != nil {
-		enMulti := false
-		if b.enText != nil {
-			enMulti = cueSpeakerLines(sourceLines(*b.enText)) >= 2
-		} else {
-			for _, cue := range cuesFor(en, b.enIDs) {
-				if cue.MultiSpeaker {
-					enMulti = true
-					break
-				}
-			}
-		}
-		zhMulti := false
-		if b.zhText != nil {
-			zhMulti = cueSpeakerLines(sourceLines(*b.zhText)) >= 2
-		} else {
-			for _, cue := range cuesFor(zh, b.zhIDs) {
-				if cue.MultiSpeaker {
-					zhMulti = true
-					break
-				}
-			}
-		}
-		return enMulti || zhMulti
+	enCue, hasEn := en[b.enIDs[0]]
+	if len(b.enIDs) != 1 {
+		hasEn = false
+	}
+	zhCue, hasZh := zh[b.zhIDs[0]]
+	if len(b.zhIDs) != 1 {
+		hasZh = false
+	}
+	_, enMulti := sideSpeakerEvidence(b.enText, b.enSeparatedRole, enCue, hasEn)
+	_, zhMulti := sideSpeakerEvidence(b.zhText, b.zhSeparatedRole, zhCue, hasZh)
+	if enMulti || zhMulti {
+		return true
 	}
 	for _, cue := range append(cuesFor(en, b.enIDs), cuesFor(zh, b.zhIDs)...) {
 		if cue.MultiSpeaker {
