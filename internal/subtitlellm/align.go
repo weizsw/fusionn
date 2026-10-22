@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -1105,12 +1106,32 @@ func reconcile(bundle Bundle, batches []batch, coreMS int) ([]Group, reconcileRe
 		window int
 	}
 
-	observations := map[string]bool{}
-	idObservations := map[[2]any][]windowObservation{}
 	batchMap := map[int]batch{}
-	var candidates []Group
 	for _, b := range batches {
 		batchMap[b.Index] = b
+	}
+
+	refinements := findCompatibleRefinements(batches, batchMap, tracks, coreMS)
+	refinedCoarseSigs := map[string]bool{}
+	var fineCandidates []Group
+	fineToCoarse := map[string]Group{}
+
+	for _, ref := range refinements {
+		cSig := signature(ref.coarseGroup)
+		refinedCoarseSigs[cSig] = true
+		for _, fg := range ref.fineGroups {
+			fg.Origin = OriginModel
+			fg.OwnerWindow = firstStart(tracks, fg) / coreMS
+			fg.ownerWindowSet = true
+			fineCandidates = append(fineCandidates, fg)
+			fineToCoarse[signature(fg)] = ref.coarseGroup
+		}
+	}
+
+	observations := map[string]bool{}
+	idObservations := map[[2]any][]windowObservation{}
+	var candidates []Group
+	for _, b := range batches {
 		for _, row := range b.Valid {
 			sig := signature(row)
 			if observations[sig] {
@@ -1125,6 +1146,9 @@ func reconcile(bundle Bundle, batches []batch, coreMS int) ([]Group, reconcileRe
 				}
 			}
 			if firstStart(tracks, row)/coreMS == b.Index {
+				if refinedCoarseSigs[sig] {
+					continue
+				}
 				row.Origin = OriginModel
 				row.OwnerWindow = b.Index
 				row.ownerWindowSet = true
@@ -1132,6 +1156,21 @@ func reconcile(bundle Bundle, batches []batch, coreMS int) ([]Group, reconcileRe
 			}
 		}
 	}
+
+	seenCandidateSigs := map[string]bool{}
+	for _, c := range candidates {
+		seenCandidateSigs[signature(c)] = true
+	}
+	for _, fg := range fineCandidates {
+		fgSig := signature(fg)
+		if !seenCandidateSigs[fgSig] {
+			seenCandidateSigs[fgSig] = true
+			candidates = append(candidates, fg)
+		}
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return firstStart(tracks, candidates[i]) < firstStart(tracks, candidates[j])
+	})
 
 	used := map[[2]any]bool{}
 	accepted := make([]Group, 0, len(candidates))
@@ -1160,6 +1199,11 @@ func reconcile(bundle Bundle, batches []batch, coreMS int) ([]Group, reconcileRe
 						obsSig := signature(obs.row)
 						if obsSig == rowSig {
 							continue
+						}
+						if cg, ok := fineToCoarse[rowSig]; ok {
+							if reflect.DeepEqual(obs.row.ENIDs, cg.ENIDs) && reflect.DeepEqual(obs.row.ZHIDs, cg.ZHIDs) {
+								continue
+							}
 						}
 						obsKey := fmt.Sprintf("%d:%s", obs.window, obsSig)
 						if seenObs[obsKey] {
@@ -1356,4 +1400,274 @@ func sortedKeys(set map[string]bool) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+type compatibleRefinement struct {
+	coarseGroup Group
+	fineGroups  []Group
+}
+
+func windowReceivedAll(b batch, g Group) bool {
+	if b.ENInput == nil || b.ZHInput == nil {
+		return false
+	}
+	enMap := make(map[int]bool, len(b.ENInput))
+	for _, id := range b.ENInput {
+		enMap[id] = true
+	}
+	for _, id := range g.ENIDs {
+		if !enMap[id] {
+			return false
+		}
+	}
+	zhMap := make(map[int]bool, len(b.ZHInput))
+	for _, id := range b.ZHInput {
+		zhMap[id] = true
+	}
+	for _, id := range g.ZHIDs {
+		if !zhMap[id] {
+			return false
+		}
+	}
+	return true
+}
+
+func sharesAnyCue(a, b Group) bool {
+	for _, idA := range a.ENIDs {
+		for _, idB := range b.ENIDs {
+			if idA == idB {
+				return true
+			}
+		}
+	}
+	for _, idA := range a.ZHIDs {
+		for _, idB := range b.ZHIDs {
+			if idA == idB {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isExactProjection(obs, target Group, b batch) bool {
+	if obs.Layer != target.Layer {
+		return false
+	}
+	if obs.Kind != "" && target.Kind != "" && obs.Kind != target.Kind {
+		return false
+	}
+	enInW := make(map[int]bool, len(b.ENInput))
+	for _, id := range b.ENInput {
+		enInW[id] = true
+	}
+	projEN := make([]int, 0, len(target.ENIDs))
+	for _, id := range target.ENIDs {
+		if enInW[id] {
+			projEN = append(projEN, id)
+		}
+	}
+	if len(obs.ENIDs) != len(projEN) {
+		return false
+	}
+	for i, id := range projEN {
+		if obs.ENIDs[i] != id {
+			return false
+		}
+	}
+	zhInW := make(map[int]bool, len(b.ZHInput))
+	for _, id := range b.ZHInput {
+		zhInW[id] = true
+	}
+	projZH := make([]int, 0, len(target.ZHIDs))
+	for _, id := range target.ZHIDs {
+		if zhInW[id] {
+			projZH = append(projZH, id)
+		}
+	}
+	if len(obs.ZHIDs) != len(projZH) {
+		return false
+	}
+	for i, id := range projZH {
+		if obs.ZHIDs[i] != id {
+			return false
+		}
+	}
+	return true
+}
+
+// findCompatibleRefinements identifies verified complete responses where a fine
+// partition of bilingual groups compatibly refines a coarse group across windows.
+func findCompatibleRefinements(batches []batch, batchMap map[int]batch, tracks map[string]map[int]Cue, coreMS int) []compatibleRefinement {
+	var refinements []compatibleRefinement
+	seenCoarse := map[string]bool{}
+
+	for _, bCoarse := range batches {
+		if bCoarse.ENInput == nil || bCoarse.ZHInput == nil {
+			continue
+		}
+		for _, cGroup := range bCoarse.Valid {
+			if len(cGroup.ENIDs) == 0 || len(cGroup.ZHIDs) == 0 {
+				continue
+			}
+			if len(cGroup.ENIDs) < 2 && len(cGroup.ZHIDs) < 2 {
+				continue
+			}
+			cSig := signature(cGroup)
+			if seenCoarse[cSig] {
+				continue
+			}
+			if !windowReceivedAll(bCoarse, cGroup) {
+				continue
+			}
+
+			for _, bFine := range batches {
+				if bFine.Index == bCoarse.Index {
+					continue
+				}
+				if bFine.ENInput == nil || bFine.ZHInput == nil {
+					continue
+				}
+				if !windowReceivedAll(bFine, cGroup) {
+					continue
+				}
+
+				var touching []Group
+				for _, g := range bFine.Valid {
+					if sharesAnyCue(g, cGroup) {
+						touching = append(touching, g)
+					}
+				}
+				if len(touching) < 2 {
+					continue
+				}
+
+				allBilingual := true
+				for _, g := range touching {
+					if len(g.ENIDs) == 0 || len(g.ZHIDs) == 0 {
+						allBilingual = false
+						break
+					}
+				}
+				if !allBilingual {
+					continue
+				}
+
+				sort.SliceStable(touching, func(i, j int) bool {
+					return firstStart(tracks, touching[i]) < firstStart(tracks, touching[j])
+				})
+
+				var flatEN, flatZH []int
+				for _, g := range touching {
+					flatEN = append(flatEN, g.ENIDs...)
+					flatZH = append(flatZH, g.ZHIDs...)
+				}
+				if !reflect.DeepEqual(flatEN, cGroup.ENIDs) || !reflect.DeepEqual(flatZH, cGroup.ZHIDs) {
+					continue
+				}
+
+				metaOK := true
+				for _, g := range touching {
+					if g.Layer != cGroup.Layer {
+						metaOK = false
+						break
+					}
+					if g.Kind != "" && cGroup.Kind != "" && g.Kind != cGroup.Kind {
+						metaOK = false
+						break
+					}
+				}
+				if !metaOK {
+					continue
+				}
+
+				ownersOK := true
+				for _, g := range touching {
+					owner := firstStart(tracks, g) / coreMS
+					bOwner, ok := batchMap[owner]
+					if !ok || !windowReceivedAll(bOwner, g) {
+						ownersOK = false
+						break
+					}
+					hasCoverage := false
+					for _, og := range bOwner.Valid {
+						if reflect.DeepEqual(og.ENIDs, g.ENIDs) && reflect.DeepEqual(og.ZHIDs, g.ZHIDs) && og.Layer == g.Layer {
+							hasCoverage = true
+							break
+						}
+						if reflect.DeepEqual(og.ENIDs, cGroup.ENIDs) && reflect.DeepEqual(og.ZHIDs, cGroup.ZHIDs) && og.Layer == cGroup.Layer {
+							hasCoverage = true
+							break
+						}
+					}
+					if !hasCoverage {
+						ownersOK = false
+						break
+					}
+				}
+				if !ownersOK {
+					continue
+				}
+
+				allObsOK := true
+				for _, bObs := range batches {
+					for _, r := range bObs.Valid {
+						if !sharesAnyCue(r, cGroup) {
+							continue
+						}
+						isFine := false
+						for _, g := range touching {
+							if reflect.DeepEqual(r.ENIDs, g.ENIDs) && reflect.DeepEqual(r.ZHIDs, g.ZHIDs) &&
+								r.Layer == g.Layer && (r.Kind == "" || g.Kind == "" || r.Kind == g.Kind) {
+								isFine = true
+								break
+							}
+						}
+						if isFine {
+							continue
+						}
+
+						if reflect.DeepEqual(r.ENIDs, cGroup.ENIDs) && reflect.DeepEqual(r.ZHIDs, cGroup.ZHIDs) &&
+							r.Layer == cGroup.Layer && (r.Kind == "" || cGroup.Kind == "" || r.Kind == cGroup.Kind) &&
+							windowReceivedAll(bObs, cGroup) {
+							continue
+						}
+
+						if bObs.ENInput != nil && bObs.ZHInput != nil && !windowReceivedAll(bObs, cGroup) {
+							if isExactProjection(r, cGroup, bObs) {
+								continue
+							}
+							projFine := false
+							for _, g := range touching {
+								if isExactProjection(r, g, bObs) {
+									projFine = true
+									break
+								}
+							}
+							if projFine {
+								continue
+							}
+						}
+
+						allObsOK = false
+						break
+					}
+					if !allObsOK {
+						break
+					}
+				}
+				if !allObsOK {
+					continue
+				}
+
+				refinements = append(refinements, compatibleRefinement{
+					coarseGroup: cGroup,
+					fineGroups:  touching,
+				})
+				seenCoarse[cSig] = true
+				break
+			}
+		}
+	}
+	return refinements
 }
