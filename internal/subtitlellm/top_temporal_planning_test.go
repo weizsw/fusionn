@@ -445,6 +445,149 @@ func TestTopTemporal_SourceBreaksVsWrapping(t *testing.T) {
 	})
 }
 
+// TestTopTemporal_SharedCutsBoundaries locks the sharedCuts contract that the
+// gapped-source fix relies on.
+func TestTopTemporal_SharedCutsBoundaries(t *testing.T) {
+	pc := func(start, end int) textPiece { return textPiece{start: start, end: end, text: "x"} }
+
+	t.Run("contiguous_english_requires_matching_outer_bounds", func(t *testing.T) {
+		eng := []textPiece{pc(1000, 2000), pc(2000, 3000)}
+		if cuts := sharedCuts(eng, 2, 1000, 3000); len(cuts) != 1 || cuts[0] != 2000 {
+			t.Fatalf("matching outer bounds: cuts = %v, want [2000]", cuts)
+		}
+		if cuts := sharedCuts(eng, 2, 900, 3000); cuts != nil {
+			t.Fatalf("mismatched start bound must be rejected, got %v", cuts)
+		}
+		if cuts := sharedCuts(eng, 2, 1000, 3100); cuts != nil {
+			t.Fatalf("mismatched end bound must be rejected, got %v", cuts)
+		}
+	})
+
+	t.Run("real_gap_allows_existing_source_boundary", func(t *testing.T) {
+		eng := []textPiece{pc(1000, 2000), pc(2500, 3500)}
+		if cuts := sharedCuts(eng, 2, 900, 3500); len(cuts) != 1 || cuts[0] != 2500 {
+			t.Fatalf("gapped slices: cuts = %v, want [2500]", cuts)
+		}
+	})
+
+	t.Run("overlap_is_rejected", func(t *testing.T) {
+		eng := []textPiece{pc(1000, 2600), pc(2500, 3500)}
+		if cuts := sharedCuts(eng, 2, 1000, 3500); cuts != nil {
+			t.Fatalf("overlapping slices must be rejected, got %v", cuts)
+		}
+	})
+
+	t.Run("count_mismatch_is_rejected", func(t *testing.T) {
+		eng := []textPiece{pc(1000, 2000), pc(2500, 3500)}
+		if cuts := sharedCuts(eng, 3, 1000, 3500); cuts != nil {
+			t.Fatalf("count mismatch must be rejected, got %v", cuts)
+		}
+	})
+
+	t.Run("cut_outside_plan_range_is_rejected", func(t *testing.T) {
+		eng := []textPiece{pc(1000, 2000), pc(2500, 3500)}
+		if cuts := sharedCuts(eng, 2, 2600, 3500); cuts != nil {
+			t.Fatalf("cut before plan start must be rejected, got %v", cuts)
+		}
+		if cuts := sharedCuts(eng, 2, 1000, 2400); cuts != nil {
+			t.Fatalf("cut after plan end must be rejected, got %v", cuts)
+		}
+	})
+}
+
+// TestTopTemporal_TwoEnglishOneChineseSharedGap reproduces the real group-119
+// source cues separated by a real gap, and one Chinese cue whose Plain has two
+// source lines that merge over the configured limit while each line fits.
+//
+// The Chinese planning must reuse the existing ordered, non-overlapping English
+// source boundaries (including across a real gap) so each Chinese source line
+// follows its English counterpart, and the first line must NOT replay inside the
+// second English window.
+func TestTopTemporal_TwoEnglishOneChineseSharedGap(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.EnChars = 65
+	cfg.ZhChars = 20
+
+	// Two English cues with a 1084ms real source gap, mirroring EN133/EN134.
+	const (
+		en1Start, en1End = 559476, 561395
+		en2Start, en2End = 562479, 565106
+		zhStart, zhEnd   = 559434, 564355
+	)
+	// Two Chinese source lines: 14 + 7 runes, merged 22 > ZhChars(20),
+	// each line fits the limit.
+	bundle := makeBundle(
+		[]Cue{
+			{ID: 1, Start: en1Start, End: en1End, Display: "Not going home at 1700. He is home.", Plain: "Not going home at 1700. He is home.", Top: true, Alignment: 8},
+			{ID: 2, Start: en2Start, End: en2End, Display: "He only cares about the cause.", Plain: "He only cares about the cause.", Top: true, Alignment: 8},
+		},
+		[]Cue{{ID: 1, Start: zhStart, End: zhEnd, Display: "不在乎17点回家 他四处为家 他只关心大业”", Plain: "不在乎17点回家 他四处为家\n他只关心大业”", Top: true, Alignment: 8}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerTop, Origin: OriginModel, Kind: KindDialogue}})
+
+	out, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(out))
+
+	// The first Chinese source line must never be displayed inside the second
+	// English window. Enumerate every event that carries the first line's glyphs.
+	const firstLine = "不在乎17点回家 他四处为家"
+	const secondLine = "他只关心大业”"
+	var firstLineEvents, secondLineEvents []dialogue
+	for _, e := range events {
+		if e.style != "TopDefault" {
+			continue
+		}
+		if strings.Contains(e.text, firstLine) {
+			firstLineEvents = append(firstLineEvents, e)
+		}
+		if strings.Contains(e.text, secondLine) {
+			secondLineEvents = append(secondLineEvents, e)
+		}
+	}
+
+	for i, e := range firstLineEvents {
+		if e.start >= en2Start {
+			t.Errorf("first Chinese line replays inside the second English window: ev[%d] [%d..%d] %s",
+				i, e.start, e.end, e.text)
+		}
+	}
+	for i, e := range secondLineEvents {
+		if e.end <= en1End {
+			t.Errorf("second Chinese line appears before its English counterpart: ev[%d] [%d..%d] %s",
+				i, e.start, e.end, e.text)
+		}
+	}
+
+	// Each Chinese source line must be continuously visible for at least the
+	// fallback floor, with no unexplained flash.
+	firstTotal, secondTotal := 0, 0
+	for _, e := range firstLineEvents {
+		firstTotal += e.end - e.start
+	}
+	for _, e := range secondLineEvents {
+		secondTotal += e.end - e.start
+	}
+	if firstTotal < minFallbackFragmentMS {
+		t.Errorf("first Chinese line total visibility %dms < floor %dms", firstTotal, minFallbackFragmentMS)
+	}
+	if secondTotal < minFallbackFragmentMS {
+		t.Errorf("second Chinese line total visibility %dms < floor %dms", secondTotal, minFallbackFragmentMS)
+	}
+
+	// The English source gap must stay empty: no top event may claim it.
+	for _, e := range events {
+		if e.style != "TopDefault" {
+			continue
+		}
+		if e.start >= en1End && e.end <= en2Start {
+			t.Errorf("top event fills the real English source gap: [%d..%d] %s", e.start, e.end, e.text)
+		}
+	}
+}
+
 // TestTopTemporal_WordTimingPriorityAndFallback verifies that word timing is
 // prioritized for Top cues when valid, and falls back to natural proportional cut
 // when word timings are missing or invalid.
@@ -953,8 +1096,12 @@ func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
 			groupIndex:  119, // 0-based 119: EN [133, 134], ZH [108], Top
 			expectStyle: "TopDefault",
 			checkFunc: func(t *testing.T, del, ren []dialogue, g Group) {
-				if len(ren) != 3 {
-					t.Fatalf("group 119: want 3 events, got %d", len(ren))
+				// The real English source cues carry a 1084ms gap (EN133 ends 561395,
+				// EN134 starts 562479). Each Chinese source line must follow its own
+				// English counterpart, so there are exactly two 1:1 events and no
+				// replay of the first line inside EN134's window.
+				if len(ren) != 2 {
+					t.Fatalf("group 119: want 2 events (one per Chinese source line), got %d", len(ren))
 				}
 				for i, e := range ren {
 					if e.style != "TopDefault" {
@@ -964,15 +1111,18 @@ func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
 				if ren[0].start != 559480 || ren[0].end != 561400 {
 					t.Errorf("group 119 ev[0] time = [%d..%d], want [559480..561400]", ren[0].start, ren[0].end)
 				}
-				if ren[1].start != 562480 || ren[1].end != 563230 {
-					t.Errorf("group 119 ev[1] time = [%d..%d], want [562480..563230]", ren[1].start, ren[1].end)
-				}
-				if ren[2].start != 563230 || ren[2].end != 565110 {
-					t.Errorf("group 119 ev[2] time = [%d..%d], want [563230..565110]", ren[2].start, ren[2].end)
+				if ren[1].start != 562480 || ren[1].end != 565110 {
+					t.Errorf("group 119 ev[1] time = [%d..%d], want [562480..565110]", ren[1].start, ren[1].end)
 				}
 				assertGlyphs(t, ren[0].text, "不在乎17点回家 他四处为家Not going home at 1700. He is home.")
-				assertGlyphs(t, ren[1].text, "不在乎17点回家 他四处为家He only cares about the cause.")
-				assertGlyphs(t, ren[2].text, "他只关心大业”He only cares about the cause.")
+				assertGlyphs(t, ren[1].text, "他只关心大业”He only cares about the cause.")
+				// The first Chinese line must never appear in the second English window.
+				for i, e := range ren {
+					if strings.Contains(e.text, "他四处为家") && e.start >= 562479 {
+						t.Errorf("group 119 ev[%d] replays the first Chinese line inside EN134: [%d..%d] %s",
+							i, e.start, e.end, e.text)
+					}
+				}
 			},
 		},
 		{
@@ -1119,7 +1269,7 @@ func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
 	wantPerWindow := [][2]int{
 		{6, 8},
 		{4, 5},
-		{2, 3},
+		{2, 2},
 		{2, 2},
 		{2, 2},
 		{1, 2},
@@ -1241,8 +1391,8 @@ func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
 	if deliveredDiffCount != 17 {
 		t.Errorf("delivered events in diff clusters = %d, want 17", deliveredDiffCount)
 	}
-	if newDiffCount != 22 {
-		t.Errorf("new events in diff clusters = %d, want 22", newDiffCount)
+	if newDiffCount != 21 {
+		t.Errorf("new events in diff clusters = %d, want 21", newDiffCount)
 	}
 	for i := range permittedWindows {
 		if deliveredPerWindow[i] != wantPerWindow[i][0] {
