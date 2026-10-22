@@ -221,12 +221,14 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 	// 3. Per-language display order, checked against the source expected text.
 	//
 	// For one group and language the expected display is the concatenation of
-	// its source cues' text in source order. The emitted side must reproduce that
-	// exact sequence: consecutive identical emissions collapse to one (a hold
-	// across the counterpart's slices), and everything else must match in order.
+	// its source cues' text in source order. Each emission either advances through
+	// that expected sequence or repeats the exact previous emission (same
+	// language-internal source identities and same full text), which is a hold
+	// across the counterpart's slices. An emission whose text changed must advance;
+	// matching only a suffix of the consumed expectation is not a hold.
 	// This accepts truthful repetition that already exists in the source
-	// (Alpha/Beta/Alpha, Yes/No/Yes) while rejecting reversal and any extra
-	// replay that the source never contained.
+	// (Alpha/Beta/Alpha, Yes/No/Yes) while rejecting reversal, suffix replay and
+	// any extra replay that the source never contained.
 	expectedText := func(ids []int, index map[int]Cue) string {
 		var parts []string
 		for _, id := range ids {
