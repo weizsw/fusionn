@@ -793,6 +793,8 @@ func (e *Engine) requestWindow(ctx context.Context, client *http.Client, endpoin
 // validateResponse enforces the strict ID-only schema and quarantines unsafe
 // rows. A malformed top-level object is an error; individual bad rows are
 // returned as rejections and never guessed.
+//
+//nolint:unparam // maxDistance is parameterized for tests and future custom tolerance configuration.
 func validateResponse(content json.RawMessage, w window, maxDistance int) ([]Group, []RejectedRow, error) {
 	if err := rejectDuplicateJSONKeys(content); err != nil {
 		return nil, nil, fmt.Errorf("invalid alignment JSON: %w", err)
@@ -971,8 +973,8 @@ func rowIDs(row Group, lang string) []int {
 	return row.ZHIDs
 }
 
-// validateRowValues applies range, duplicate, native-position, distance, and
-// span checks. Reasons match the prototype's rejection vocabulary.
+// validateRowValues applies range, duplicate, distance, and span checks.
+// Source top/bottom placement is layout metadata and must not veto semantic pairing.
 func validateRowValues(row Group, tracks map[string]map[int]Cue, maxDistance int) string {
 	for _, lang := range []string{"en", "zh"} {
 		ids := rowIDs(row, lang)
@@ -998,15 +1000,6 @@ func validateRowValues(row Group, tracks map[string]map[int]Cue, maxDistance int
 	zhCues := make([]Cue, len(row.ZHIDs))
 	for i, id := range row.ZHIDs {
 		zhCues[i] = tracks["zh"][id]
-	}
-	all := append(append([]Cue{}, enCues...), zhCues...)
-	if len(all) >= 2 {
-		top := all[0].Top
-		for _, cue := range all[1:] {
-			if cue.Top != top {
-				return "native_position_conflict"
-			}
-		}
 	}
 	if len(enCues) > 0 && len(zhCues) > 0 {
 		for _, pair := range [][2][]Cue{{enCues, zhCues}, {zhCues, enCues}} {
