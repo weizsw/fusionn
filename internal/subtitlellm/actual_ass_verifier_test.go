@@ -279,7 +279,13 @@ func TestVerifyDeliveredASSAgainstExpected_WordTimingEvidence_Gap3(t *testing.T)
 			len(actualDialogues), len(withoutWordsDialogues))
 	}
 
-	// Assert that word timing split boundary (2600ms) genuinely differs from proportional split
+	// Assert that word timing split boundary explicitly equals 2600ms and differs from proportional split (3920ms)
+	if actualDialogues[0].End != 2600 {
+		t.Fatalf("expected word-timed split end to explicitly equal 2600 ms, got %d ms", actualDialogues[0].End)
+	}
+	if withoutWordsDialogues[0].End != 3920 {
+		t.Fatalf("expected proportional split end to explicitly equal 3920 ms, got %d ms", withoutWordsDialogues[0].End)
+	}
 	if actualDialogues[0].End == withoutWordsDialogues[0].End {
 		t.Fatalf("precondition failed: expected word-timed split end (%d ms) to differ from proportional split end (%d ms)",
 			actualDialogues[0].End, withoutWordsDialogues[0].End)
