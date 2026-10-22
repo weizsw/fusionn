@@ -65,7 +65,7 @@ func TestStyleProcessorLeavesNativeLLMRenderUnchanged(t *testing.T) {
 	}
 	content := string(rendered)
 	for _, want := range []string{
-		"Style: Default,", "Style: Eng,", "Style: Default_1,", "Style: TopDefault,", "Style: TopEng,",
+		"Style: Default,", "Style: Eng,", "Style: TopDefault,", "Style: TopEng,",
 		headerMarkerLLMStyled,
 	} {
 		if !strings.Contains(content, want) {

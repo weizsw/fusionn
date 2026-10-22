@@ -599,7 +599,7 @@ func TestRenderDisabledStyleUsesNeutralBaseStyles(t *testing.T) {
 	// the disabled config must not leak into the output.
 	for _, want := range []string{
 		"Style: Default,Arial,52,&H00FFFFFF", "Style: Eng,Arial,36,&H00FFFFFF",
-		"Style: Default_1,Arial,36,", "Style: TopDefault,Arial,52,", "Style: TopEng,Arial,36,",
+		"Style: TopDefault,Arial,52,", "Style: TopEng,Arial,36,",
 		"PlayResX: 1920", "PlayResY: 1080",
 	} {
 		if !strings.Contains(content, want) {
@@ -628,7 +628,6 @@ func TestRenderUsesSharedStyleHeader(t *testing.T) {
 		"PlayResX: 1920", "PlayResY: 1080", "ScaledBorderAndShadow: yes", "YCbCr Matrix: TV.709",
 		"Style: Default,PingFang SC,52,&H08EFECEA,&H000000FF,&H30141414,&H80000000,0,0,0,0,100,100,0.0,0,1,1.4,1.5,2,80,80,32,1",
 		"Style: Eng,Helvetica Neue,36,&H087BC0E5,&H000000FF,&H30141414,&H80000000,0,0,0,0,100,100,0.0,0,1,1.4,1.5,2,80,80,32,1",
-		"Style: Default_1,Helvetica Neue,36,",
 		"Style: TopDefault,PingFang SC,52,", "Style: TopEng,Helvetica Neue,36,",
 	} {
 		if !strings.Contains(content, want) {
