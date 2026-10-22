@@ -71,6 +71,7 @@ type textPiece struct {
 type displayPlan struct {
 	group      int
 	ids        []int
+	top        bool
 	start, end int
 	text       string
 	plain      string
@@ -79,8 +80,8 @@ type displayPlan struct {
 	pieces     []textPiece
 }
 
-func displayKey(group int, ids []int) string {
-	return fmt.Sprintf("%d:%v", group, ids)
+func displayKey(group int, ids []int, top bool) string {
+	return fmt.Sprintf("%d:%v:%t", group, ids, top)
 }
 
 // sourceLines splits source text into meaningful trimmed lines, ignoring
@@ -187,9 +188,6 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 	plans := func(index map[int]Cue, english bool) map[string]*displayPlan {
 		result := map[string]*displayPlan{}
 		for _, b := range remaining {
-			if b.enText != nil || b.zhText != nil {
-				continue
-			}
 			ids, separator := b.zhIDs, "　"
 			if english {
 				ids, separator = b.enIDs, " "
@@ -197,18 +195,36 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 			if len(ids) == 0 {
 				continue
 			}
-			key := displayKey(b.group, ids)
+			key := displayKey(b.group, ids, b.top)
 			p := result[key]
 			if p == nil {
 				text := joinCues(index, ids, separator)
+				if english && b.enText != nil {
+					text = *b.enText
+				} else if !english && b.zhText != nil {
+					text = *b.zhText
+				}
 				isProtected := b.top
+				isRoleFragment := (english && b.enText != nil) || (!english && b.zhText != nil)
 				for _, cue := range cuesFor(index, ids) {
 					if cue.MultiSpeaker {
+						if isRoleFragment {
+							lines := sourceLines(text)
+							dashCount := 0
+							for _, l := range lines {
+								if startsWithDash(l) {
+									dashCount++
+								}
+							}
+							if dashCount < 2 {
+								continue
+							}
+						}
 						isProtected = true
 						break
 					}
 				}
-				if b.strategy == strategyOneToOne && len(b.enIDs) == 1 && len(b.zhIDs) == 1 {
+				if b.strategy == strategyOneToOne && len(b.enIDs) == 1 && len(b.zhIDs) == 1 && !isRoleFragment {
 					enCue, zhCue := en[b.enIDs[0]], zh[b.zhIDs[0]]
 					if !enCue.MultiSpeaker && !zhCue.MultiSpeaker && !b.top {
 						enLines := sourceLines(enCue.Plain)
@@ -228,8 +244,10 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 						}
 					}
 				}
-				p = &displayPlan{group: b.group, ids: ids, start: b.start, end: b.end, text: text, protected: isProtected}
-				if len(ids) == 1 {
+				p = &displayPlan{group: b.group, ids: ids, top: b.top, start: b.start, end: b.end, text: text, protected: isProtected}
+				if isRoleFragment {
+					p.plain = text
+				} else if len(ids) == 1 {
 					p.plain = index[ids[0]].Plain
 				}
 				result[key] = p
@@ -254,7 +272,7 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 	for _, p := range zhPlans {
 		var english []textPiece
 		for _, e := range enPlans {
-			if e.group == p.group {
+			if e.group == p.group && e.top == p.top {
 				english = append(english, e.pieces...)
 			}
 		}
@@ -265,11 +283,7 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 	var result []block
 	result = append(result, syncSplitResult...)
 	for _, b := range remaining {
-		if b.enText != nil || b.zhText != nil {
-			result = append(result, b)
-			continue
-		}
-		ep, zp := enPlans[displayKey(b.group, b.enIDs)], zhPlans[displayKey(b.group, b.zhIDs)]
+		ep, zp := enPlans[displayKey(b.group, b.enIDs, b.top)], zhPlans[displayKey(b.group, b.zhIDs, b.top)]
 		if (ep == nil || len(ep.pieces) == 1) && (zp == nil || len(zp.pieces) == 1) {
 			result = append(result, b)
 			continue
