@@ -883,23 +883,31 @@ func atoiOrNeg(s string) int {
 	return n
 }
 
-// checkSerializedASS proves the audits describe the delivered file itself.
-func checkSerializedASS(t *testing.T, content string, events []renderedEvent) {
-	t.Helper()
+// verifySerializedASS checks that the delivered ASS matches the audit events.
+func verifySerializedASS(content string, events []renderedEvent) error {
 	serialized := parseSerializedASS(content)
 	if len(serialized) != len(events) {
-		t.Fatalf("delivered ASS has %d dialogue events but audits describe %d", len(serialized), len(events))
+		return fmt.Errorf("delivered ASS has %d dialogue events but audits describe %d", len(serialized), len(events))
 	}
 	for i := range events {
 		if serialized[i].start != events[i].assStart || serialized[i].end != events[i].assEnd {
-			t.Fatalf("event %d time mismatch: ASS %d-%d vs audit %d-%d",
+			return fmt.Errorf("event %d time mismatch: ASS %d-%d vs audit %d-%d",
 				i, serialized[i].start, serialized[i].end, events[i].assStart, events[i].assEnd)
 		}
 		want := normText(serialized[i].text)
 		got := normText(events[i].zhText + events[i].enText)
 		if want != got {
-			t.Fatalf("event %d text mismatch:\nASS   %q\naudit %q", i, want, got)
+			return fmt.Errorf("event %d text mismatch:\nASS   %q\naudit %q", i, want, got)
 		}
+	}
+	return nil
+}
+
+// checkSerializedASS proves the audits describe the delivered file itself.
+func checkSerializedASS(t *testing.T, content string, events []renderedEvent) {
+	t.Helper()
+	if err := verifySerializedASS(content, events); err != nil {
+		t.Fatal(err)
 	}
 }
 
