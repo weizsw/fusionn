@@ -407,8 +407,8 @@ func TestVerifyDeliveredASSAgainstExpected_WordTimingEvidence_Gap3(t *testing.T)
 }
 
 // TestCountVisibleLines_Equivalence_TDD verifies that countVisibleLines treats real LF (\n),
-// real CRLF (\r\n), ASS hard newline (\N), and ASS soft newline (\n) as equivalent line separators,
-// and correctly reports multi-line dialogue counts for known fixtures (e.g. EN 396 and ZH 125).
+// real CRLF (\r\n), and ASS hard newline (\N) as equivalent line separators, preserves literal ASS
+// soft wrap (\n) within line, and correctly reports multi-line dialogue counts for known fixtures.
 func TestCountVisibleLines_Equivalence_TDD(t *testing.T) {
 	t.Run("Equivalence of newline representations", func(t *testing.T) {
 		line1 := "First line of dialogue"
@@ -433,8 +433,8 @@ func TestCountVisibleLines_Equivalence_TDD(t *testing.T) {
 		if countASSHard != 2 {
 			t.Errorf("expected countASSHard == 2, got %d", countASSHard)
 		}
-		if countASSSoft != 2 {
-			t.Errorf("expected countASSSoft == 2, got %d", countASSSoft)
+		if countASSSoft != 1 {
+			t.Errorf("expected countASSSoft == 1, got %d", countASSSoft)
 		}
 	})
 
@@ -500,116 +500,47 @@ func TestValidateSampleArtifacts(t *testing.T) {
 		Width  int `json:"width"`
 		Height int `json:"height"`
 		LLM    struct {
-			EnChars   int `json:"en_chars"`
-			ZhChars   int `json:"zh_chars"`
-			EnGapMS   int `json:"en_gap_ms"`
-			ZhGapMS   int `json:"zh_gap_ms"`
-			SpanMS    int `json:"span_ms"`
-			FillGapMS int `json:"fill_gap_ms"`
+			EnChars   *int `json:"en_chars"`
+			ZhChars   *int `json:"zh_chars"`
+			EnGapMS   *int `json:"en_gap_ms"`
+			ZhGapMS   *int `json:"zh_gap_ms"`
+			SpanMS    *int `json:"span_ms"`
+			FillGapMS *int `json:"fill_gap_ms"`
 		} `json:"llm"`
-		Style struct {
-			Enabled         bool    `json:"enabled"`
-			PlayResX        int     `json:"play_res_x"`
-			PlayResY        int     `json:"play_res_y"`
-			PrimaryFont     string  `json:"primary_font"`
-			PrimarySize     int     `json:"primary_size"`
-			PrimaryColor    string  `json:"primary_color"`
-			SecondaryFont   string  `json:"secondary_font"`
-			SecondarySize   int     `json:"secondary_size"`
-			SecondaryColor  string  `json:"secondary_color"`
-			Bold            bool    `json:"bold"`
-			Outline         float64 `json:"outline"`
-			OutlineColor    string  `json:"outline_color"`
-			Shadow          float64 `json:"shadow"`
-			BackColor       string  `json:"back_color"`
-			MarginV         int     `json:"margin_v"`
-			MarginLeft      int     `json:"margin_left"`
-			MarginRight     int     `json:"margin_right"`
-			Alignment       int     `json:"alignment"`
-			BorderStyle     int     `json:"border_style"`
-			WrapStyle       string  `json:"wrap_style"`
-			ScaleX          int     `json:"scale_x"`
-			Spacing         float64 `json:"spacing"`
-			LineHeightRatio float64 `json:"line_height_ratio"`
-			BlockPadding    int     `json:"block_padding"`
-			CollisionGap    int     `json:"collision_gap"`
-		} `json:"style"`
 	}
 	if err := json.Unmarshal(rawSettings, &settings); err != nil {
 		t.Fatalf("unmarshal render-settings.json: %v", err)
 	}
 
-	llmCfg := config.LLMConfig{
-		EnChars:   settings.LLM.EnChars,
-		ZhChars:   settings.LLM.ZhChars,
-		EnGapMS:   settings.LLM.EnGapMS,
-		ZhGapMS:   settings.LLM.ZhGapMS,
-		SpanMS:    settings.LLM.SpanMS,
-		FillGapMS: settings.LLM.FillGapMS,
+	if settings.Width <= 0 || settings.Height <= 0 {
+		t.Fatalf("render-settings.json: missing or invalid width/height (%dx%d)", settings.Width, settings.Height)
 	}
-	if llmCfg.EnChars <= 0 {
-		llmCfg.EnChars = 65
-	}
-	if llmCfg.ZhChars <= 0 {
-		llmCfg.ZhChars = 20
-	}
-	if llmCfg.SpanMS <= 0 {
-		llmCfg.SpanMS = 5500
-	}
-	if llmCfg.EnGapMS <= 0 {
-		llmCfg.EnGapMS = 400
-	}
-	if llmCfg.ZhGapMS <= 0 {
-		llmCfg.ZhGapMS = 500
-	}
-	if llmCfg.FillGapMS <= 0 {
-		llmCfg.FillGapMS = 500
+	if settings.LLM.EnChars == nil || settings.LLM.ZhChars == nil ||
+		settings.LLM.EnGapMS == nil || settings.LLM.ZhGapMS == nil ||
+		settings.LLM.SpanMS == nil || settings.LLM.FillGapMS == nil {
+		t.Fatalf("render-settings.json: missing required LLM layout fields (en_chars, zh_chars, en_gap_ms, zh_gap_ms, span_ms, fill_gap_ms)")
 	}
 
-	style := config.ASSStyleConfig{
-		Enabled:         settings.Style.Enabled,
-		PlayResX:        settings.Style.PlayResX,
-		PlayResY:        settings.Style.PlayResY,
-		PrimaryFont:     settings.Style.PrimaryFont,
-		PrimarySize:     settings.Style.PrimarySize,
-		PrimaryColor:    settings.Style.PrimaryColor,
-		SecondaryFont:   settings.Style.SecondaryFont,
-		SecondarySize:   settings.Style.SecondarySize,
-		SecondaryColor:  settings.Style.SecondaryColor,
-		Bold:            settings.Style.Bold,
-		Outline:         settings.Style.Outline,
-		OutlineColor:    settings.Style.OutlineColor,
-		Shadow:          settings.Style.Shadow,
-		BackColor:       settings.Style.BackColor,
-		MarginV:         settings.Style.MarginV,
-		MarginLeft:      settings.Style.MarginLeft,
-		MarginRight:     settings.Style.MarginRight,
-		Alignment:       settings.Style.Alignment,
-		BorderStyle:     settings.Style.BorderStyle,
-		WrapStyle:       settings.Style.WrapStyle,
-		ScaleX:          settings.Style.ScaleX,
-		Spacing:         settings.Style.Spacing,
-		LineHeightRatio: settings.Style.LineHeightRatio,
-		BlockPadding:    settings.Style.BlockPadding,
-		CollisionGap:    settings.Style.CollisionGap,
+	llmCfg := config.LLMConfig{
+		EnChars:   *settings.LLM.EnChars,
+		ZhChars:   *settings.LLM.ZhChars,
+		EnGapMS:   *settings.LLM.EnGapMS,
+		ZhGapMS:   *settings.LLM.ZhGapMS,
+		SpanMS:    *settings.LLM.SpanMS,
+		FillGapMS: *settings.LLM.FillGapMS,
 	}
-	if style.PlayResX <= 0 {
-		style.PlayResX = 1920
+
+	stylePath := filepath.Join(sampleDir, "delivered-style.json")
+	rawStyle, err := os.ReadFile(stylePath)
+	if err != nil {
+		t.Fatalf("read delivered-style.json from %s: %v", sampleDir, err)
 	}
-	if style.PlayResY <= 0 {
-		style.PlayResY = 1080
+	var style config.ASSStyleConfig
+	if err := json.Unmarshal(rawStyle, &style); err != nil {
+		t.Fatalf("unmarshal delivered-style.json: %v", err)
 	}
-	if style.PrimarySize <= 0 {
-		style.PrimarySize = 80
-	}
-	if style.SecondarySize <= 0 {
-		style.SecondarySize = 49
-	}
-	if style.PrimaryFont == "" {
-		style.PrimaryFont = "PingFang SC"
-	}
-	if style.SecondaryFont == "" {
-		style.SecondaryFont = "Helvetica Neue"
+	if style.PlayResX <= 0 || style.PlayResY <= 0 {
+		t.Fatalf("delivered-style.json: missing or invalid PlayResX/PlayResY (%dx%d)", style.PlayResX, style.PlayResY)
 	}
 
 	rawBundle, err := os.ReadFile(filepath.Join(sampleDir, "sources.json"))

@@ -288,15 +288,16 @@ func countVisibleLines(part string) int {
 	if strings.TrimSpace(clean) == "" {
 		return 0
 	}
-	// Normalize all newline representations (real CRLF, real LF, real CR, literal \N, literal \n) to LF
+	// Normalize real CRLF, real LF, real CR, and literal ASS hard break \N to LF
+	// Literal ASS soft-break \n is preserved as within-line soft wrap (stripped below)
 	norm := strings.ReplaceAll(clean, "\r\n", "\n")
 	norm = strings.ReplaceAll(norm, "\r", "\n")
 	norm = strings.ReplaceAll(norm, `\N`, "\n")
-	norm = strings.ReplaceAll(norm, `\n`, "\n")
 	lines := strings.Split(norm, "\n")
 	count := 0
 	for _, l := range lines {
-		lClean := strings.ReplaceAll(l, `\h`, "")
+		lClean := strings.ReplaceAll(l, `\n`, "")
+		lClean = strings.ReplaceAll(lClean, `\h`, "")
 		if strings.TrimSpace(lClean) != "" {
 			count++
 		}

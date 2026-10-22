@@ -199,11 +199,17 @@ func TestLedgerValidation_PositiveSynthetic(t *testing.T) {
 	}
 }
 
-// Positive Test 2: Real live sample validation if available.
+// Positive Test 2: Real live sample validation if opted in via environment variable.
 func TestLedgerValidation_PositiveRealSample(t *testing.T) {
-	sampleDir := "/Users/maverick/Desktop/fusionn-subtitle-split-test/terminal-list-s02e01-resume-live-87c95"
+	sampleDir := os.Getenv("FUSIONN_VERIFY_SAMPLE_DIR")
+	if sampleDir == "" {
+		sampleDir = os.Getenv("FUSIONN_TEST_SAMPLE_DIR")
+	}
+	if sampleDir == "" {
+		t.Skip("skipping real sample test: opt in via FUSIONN_VERIFY_SAMPLE_DIR or FUSIONN_TEST_SAMPLE_DIR")
+	}
 	if _, err := os.Stat(filepath.Join(sampleDir, "sources.json")); err != nil {
-		t.Skip("sample directory not present, skipping real sample test")
+		t.Skipf("sample directory %s not present or missing sources.json, skipping", sampleDir)
 	}
 
 	rawBundle, err := os.ReadFile(filepath.Join(sampleDir, "sources.json"))
