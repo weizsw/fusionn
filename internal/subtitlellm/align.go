@@ -131,6 +131,8 @@ type batch struct {
 	Valid    []Group
 	Rejected []RejectedRow
 	Missing  WindowMissing
+	ENInput  []int
+	ZHInput  []int
 }
 
 type fetchedWindow struct {
@@ -211,12 +213,22 @@ func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig)
 		}
 		w := windows[position]
 		index := w.Index
+		enInput := make([]int, len(w.EN))
+		for i, cue := range w.EN {
+			enInput[i] = cue.ID
+		}
+		zhInput := make([]int, len(w.ZH))
+		for i, cue := range w.ZH {
+			zhInput[i] = cue.ID
+		}
 		if result.err != nil || result.record == nil || len(result.record.Response) == 0 {
 			failed = append(failed, index)
 			batches = append(batches, batch{
 				Index:    index,
 				Rejected: []RejectedRow{{Window: index, Reason: "request_failed"}},
 				Missing:  missingWindow(w, nil),
+				ENInput:  enInput,
+				ZHInput:  zhInput,
 			})
 			continue
 		}
@@ -230,6 +242,8 @@ func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig)
 				Index:    index,
 				Rejected: append(rejected, RejectedRow{Window: index, Reason: "invalid_response"}),
 				Missing:  missingWindow(w, nil),
+				ENInput:  enInput,
+				ZHInput:  zhInput,
 			})
 			continue
 		}
@@ -238,6 +252,8 @@ func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig)
 			Valid:    valid,
 			Rejected: rejected,
 			Missing:  missingWindow(w, valid),
+			ENInput:  enInput,
+			ZHInput:  zhInput,
 		})
 	}
 
@@ -1070,8 +1086,10 @@ type reconcileResult struct {
 }
 
 // reconcile attributes each valid group to the window owning its first cue,
-// quarantines groups whose IDs are observed with different members or layers,
-// and restores every unused cue one-sided.
+// quarantines groups whose IDs are observed with contradictory members or layers,
+// and restores every unused cue one-sided. A differing observation from an
+// overlapping window does NOT veto a complete owner candidate if it is proved to
+// be merely an exact projection under input truncation.
 func reconcile(bundle Bundle, batches []batch, coreMS int) ([]Group, reconcileResult) {
 	result := reconcileResult{Conflicts: []Group{}, Restored: map[string][]int{"en": {}, "zh": {}}}
 	tracks := map[string]map[int]Cue{"en": {}, "zh": {}}
@@ -1082,16 +1100,25 @@ func reconcile(bundle Bundle, batches []batch, coreMS int) ([]Group, reconcileRe
 		tracks["zh"][cue.ID] = cue
 	}
 
+	type windowObservation struct {
+		row    Group
+		window int
+	}
+
 	observations := map[string]bool{}
 	idSignatures := map[[2]any]map[string]bool{}
+	idObservations := map[[2]any][]windowObservation{}
+	batchMap := map[int]batch{}
 	var candidates []Group
 	for _, b := range batches {
+		batchMap[b.Index] = b
 		for _, row := range b.Valid {
 			sig := signature(row)
 			if observations[sig] {
 				result.ContextDuplicates++
 			}
 			observations[sig] = true
+			obs := windowObservation{row: row, window: b.Index}
 			for _, lang := range []string{"en", "zh"} {
 				for _, id := range rowIDs(row, lang) {
 					key := [2]any{lang, id}
@@ -1099,6 +1126,7 @@ func reconcile(bundle Bundle, batches []batch, coreMS int) ([]Group, reconcileRe
 						idSignatures[key] = map[string]bool{}
 					}
 					idSignatures[key][sig] = true
+					idObservations[key] = append(idObservations[key], obs)
 				}
 			}
 			if firstStart(tracks, row)/coreMS == b.Index {
@@ -1117,11 +1145,47 @@ func reconcile(bundle Bundle, batches []batch, coreMS int) ([]Group, reconcileRe
 		for _, lang := range []string{"en", "zh"} {
 			for _, id := range rowIDs(row, lang) {
 				key := [2]any{lang, id}
-				if len(idSignatures[key]) > 1 || used[key] {
+				if used[key] {
 					conflict = true
+					break
+				}
+			}
+			if conflict {
+				break
+			}
+		}
+
+		if !conflict {
+			rowSig := signature(row)
+			seenObs := map[string]bool{}
+			for _, lang := range []string{"en", "zh"} {
+				for _, id := range rowIDs(row, lang) {
+					key := [2]any{lang, id}
+					for _, obs := range idObservations[key] {
+						obsSig := signature(obs.row)
+						if obsSig == rowSig {
+							continue
+						}
+						obsKey := fmt.Sprintf("%d:%s", obs.window, obsSig)
+						if seenObs[obsKey] {
+							continue
+						}
+						seenObs[obsKey] = true
+						if !isIgnorableContextObservation(row, obs.row, obs.window, batchMap, tracks, coreMS) {
+							conflict = true
+							break
+						}
+					}
+					if conflict {
+						break
+					}
+				}
+				if conflict {
+					break
 				}
 			}
 		}
+
 		if conflict {
 			result.Conflicts = append(result.Conflicts, row)
 			continue
@@ -1157,6 +1221,110 @@ func reconcile(bundle Bundle, batches []batch, coreMS int) ([]Group, reconcileRe
 		return firstStart(tracks, accepted[i]) < firstStart(tracks, accepted[j])
 	})
 	return accepted, result
+}
+
+// isIgnorableContextObservation evaluates whether a differing observation r
+// from window w can be ignored as a challenge to full owner candidate g.
+// r is ignored ONLY if all five conditions of the approved minimal policy hold:
+//  1. Actual request input membership for w is known separately for EN and ZH.
+//  2. w did not receive every member of g (proved from request input, not output).
+//  3. r is a non-owner context observation (not a rival owner candidate).
+//  4. r's language-qualified ID arrays equal the complete projection of g onto
+//     w's actual input, preserving member order, with no extra or missing IDs.
+//  5. Layer/signature metadata is consistent (r.Layer == g.Layer, Kind consistent).
+func isIgnorableContextObservation(g, r Group, w int, batchMap map[int]batch, tracks map[string]map[int]Cue, coreMS int) bool {
+	// Only complete bilingual owner candidates are preserved; one-sided groups
+	// preserve old conservative conflict protection.
+	if len(g.ENIDs) == 0 || len(g.ZHIDs) == 0 {
+		return false
+	}
+
+	b, ok := batchMap[w]
+	if !ok {
+		return false
+	}
+
+	// 1. Actual request input membership for w is known separately for EN and ZH.
+	if b.ENInput == nil || b.ZHInput == nil {
+		return false
+	}
+
+	enInW := make(map[int]bool, len(b.ENInput))
+	for _, id := range b.ENInput {
+		enInW[id] = true
+	}
+	zhInW := make(map[int]bool, len(b.ZHInput))
+	for _, id := range b.ZHInput {
+		zhInW[id] = true
+	}
+
+	// 2. w did not receive every member of g.
+	allGReceived := true
+	for _, id := range g.ENIDs {
+		if !enInW[id] {
+			allGReceived = false
+			break
+		}
+	}
+	if allGReceived {
+		for _, id := range g.ZHIDs {
+			if !zhInW[id] {
+				allGReceived = false
+				break
+			}
+		}
+	}
+	if allGReceived {
+		// w saw every member of g; disagreement is a real full-context conflict.
+		return false
+	}
+
+	// 3. r is a non-owner context observation. Do not suppress a rival owner candidate.
+	if firstStart(tracks, r)/coreMS == w {
+		return false
+	}
+
+	// 4. r's language-qualified ID arrays equal the complete projection of g onto w's actual input.
+	// Keep existing member order; add no unrelated ID and omit no visible member.
+	projEN := make([]int, 0, len(g.ENIDs))
+	for _, id := range g.ENIDs {
+		if enInW[id] {
+			projEN = append(projEN, id)
+		}
+	}
+	if len(r.ENIDs) != len(projEN) {
+		return false
+	}
+	for i, id := range projEN {
+		if r.ENIDs[i] != id {
+			return false
+		}
+	}
+
+	projZH := make([]int, 0, len(g.ZHIDs))
+	for _, id := range g.ZHIDs {
+		if zhInW[id] {
+			projZH = append(projZH, id)
+		}
+	}
+	if len(r.ZHIDs) != len(projZH) {
+		return false
+	}
+	for i, id := range projZH {
+		if r.ZHIDs[i] != id {
+			return false
+		}
+	}
+
+	// 5. Layer/signature metadata is consistent. Missing g input must not erase real metadata conflict.
+	if r.Layer != g.Layer {
+		return false
+	}
+	if r.Kind != "" && g.Kind != "" && r.Kind != g.Kind {
+		return false
+	}
+
+	return true
 }
 
 func trackOrder(bundle Bundle, lang string) []int {
