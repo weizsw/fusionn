@@ -1106,7 +1106,6 @@ func reconcile(bundle Bundle, batches []batch, coreMS int) ([]Group, reconcileRe
 	}
 
 	observations := map[string]bool{}
-	idSignatures := map[[2]any]map[string]bool{}
 	idObservations := map[[2]any][]windowObservation{}
 	batchMap := map[int]batch{}
 	var candidates []Group
@@ -1122,10 +1121,6 @@ func reconcile(bundle Bundle, batches []batch, coreMS int) ([]Group, reconcileRe
 			for _, lang := range []string{"en", "zh"} {
 				for _, id := range rowIDs(row, lang) {
 					key := [2]any{lang, id}
-					if idSignatures[key] == nil {
-						idSignatures[key] = map[string]bool{}
-					}
-					idSignatures[key][sig] = true
 					idObservations[key] = append(idObservations[key], obs)
 				}
 			}
