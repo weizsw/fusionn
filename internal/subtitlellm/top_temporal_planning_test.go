@@ -1000,7 +1000,6 @@ func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
 			groupIndex:  128, // 0-based 128: EN [143, 144], ZH [118], Top
 			expectStyle: "TopDefault",
 			checkFunc: func(t *testing.T, del, ren []dialogue, g Group) {
-				// Group 128 has 2 top dialogue events plus 1 concurrent on-screen text [567800..569590]
 				var topEvs []dialogue
 				for _, e := range ren {
 					if e.style == "TopDefault" {
@@ -1021,27 +1020,44 @@ func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
 			},
 		},
 		{
-			groupIndex:  305, // 0-based 305: EN [335, 336], ZH [301, 302], Bottom
+			groupIndex:  300, // 0-based 300: EN [332], ZH [296], Bottom (clean bottom control)
 			expectStyle: "Default",
 			checkFunc: func(t *testing.T, del, ren []dialogue, g Group) {
-				if len(ren) != 4 {
-					t.Fatalf("group 305: want 4 events, got %d", len(ren))
+				if len(ren) != 1 {
+					t.Fatalf("group 300: want 1 event, got %d", len(ren))
+				}
+				if ren[0].style != "Default" {
+					t.Errorf("group 300: style = %q, want Default", ren[0].style)
+				}
+				if len(del) != 1 {
+					t.Fatalf("group 300 delivered: want 1 event, got %d", len(del))
+				}
+				if ren[0].start != del[0].start || ren[0].end != del[0].end || ren[0].text != del[0].text {
+					t.Errorf("group 300 mismatch:\n  del: [%d..%d] %s\n  ren: [%d..%d] %s",
+						del[0].start, del[0].end, del[0].text, ren[0].start, ren[0].end, ren[0].text)
+				}
+			},
+		},
+		{
+			groupIndex:  323, // 0-based 323: EN [], ZH [322], Top on_screen_text
+			expectStyle: "TopDefault",
+			checkFunc: func(t *testing.T, del, ren []dialogue, g Group) {
+				if len(ren) != 2 {
+					t.Fatalf("group 323: want 2 events from split, got %d", len(ren))
 				}
 				for i, e := range ren {
-					if e.style != "Default" {
-						t.Errorf("group 305 ev[%d]: style = %q, want Default", i, e.style)
+					if e.style != "TopDefault" {
+						t.Errorf("group 323 ev[%d]: style = %q, want TopDefault", i, e.style)
 					}
 				}
-				// Must equal delivered events exactly
-				if len(del) != len(ren) {
-					t.Fatalf("group 305: delivered count %d != rendered count %d", len(del), len(ren))
+				if ren[0].start != 2047710 || ren[0].end != 2049270 {
+					t.Errorf("group 323 ev[0] time = [%d..%d], want [2047710..2049270]", ren[0].start, ren[0].end)
 				}
-				for i := range ren {
-					if ren[i].start != del[i].start || ren[i].end != del[i].end || ren[i].text != del[i].text {
-						t.Errorf("group 305 ev[%d] mismatch:\n  del: [%d..%d] %s\n  ren: [%d..%d] %s",
-							i, del[i].start, del[i].end, del[i].text, ren[i].start, ren[i].end, ren[i].text)
-					}
+				if ren[1].start != 2049270 || ren[1].end != 2051550 {
+					t.Errorf("group 323 ev[1] time = [%d..%d], want [2049270..2051550]", ren[1].start, ren[1].end)
 				}
+				assertGlyphs(t, ren[0].text, "（詹姆斯里斯信息/下落线索")
+				assertGlyphs(t, ren[1].text, "请用标签“詹姆斯里斯在哪里”联系我们）")
 			},
 		},
 	}
@@ -1081,32 +1097,98 @@ func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
 	}
 
 	// Global parity assertion:
-	// Verify that exactly 23 diff records exist between Delivered (664) and New (669),
-	// and that all other 641 events in the episode match delivered bilingual.ass exactly.
-	diffPoints := 0
+	// Verify that all changes strictly fall within the permitted windows of the decoupled top groups:
+	// Cluster 1: [484570..500330] -> Groups 101, 102, 103
+	// Cluster 2: [506550..518060] -> Groups 106, 107
+	// Cluster 3: [559480..565110] -> Group 119
+	// Cluster 4: [565110..568400] -> Group 121
+	// Cluster 5: [584000..589670] -> Group 128
+	// Cluster 6: [2047710..2051550] -> Group 323
+	permittedWindows := [][2]int{
+		{484570, 500330},
+		{506550, 518060},
+		{559480, 565110},
+		{565110, 568400},
+		{584000, 589670},
+		{2047710, 2051550},
+	}
+	isPermitted := func(start, end int) bool {
+		for _, w := range permittedWindows {
+			if start >= w[0]-100 && end <= w[1]+100 {
+				return true
+			}
+		}
+		return false
+	}
+
 	dI, nI := 0, 0
+	matchedCount := 0
+	deliveredDiffCount := 0
+	newDiffCount := 0
+
 	for dI < len(deliveredEvents) || nI < len(newEvents) {
 		if dI < len(deliveredEvents) && nI < len(newEvents) {
 			d := deliveredEvents[dI]
 			n := newEvents[nI]
 			if d.start == n.start && d.end == n.end && d.style == n.style && d.text == n.text {
+				matchedCount++
 				dI++
 				nI++
 				continue
 			}
 		}
-		diffPoints++
-		if dI < len(deliveredEvents) && (nI >= len(newEvents) || deliveredEvents[dI].start < newEvents[nI].start) {
+
+		dTime := 1 << 60
+		if dI < len(deliveredEvents) {
+			dTime = deliveredEvents[dI].start
+		}
+		nTime := 1 << 60
+		if nI < len(newEvents) {
+			nTime = newEvents[nI].start
+		}
+
+		if dTime < nTime {
+			d := deliveredEvents[dI]
+			if !isPermitted(d.start, d.end) {
+				t.Fatalf("unpermitted change in delivered event at [%d..%d] %s: %s",
+					d.start, d.end, d.style, d.text)
+			}
+			deliveredDiffCount++
 			dI++
-		} else if nI < len(newEvents) && (dI >= len(deliveredEvents) || newEvents[nI].start < deliveredEvents[dI].start) {
+		} else if nTime < dTime {
+			n := newEvents[nI]
+			if !isPermitted(n.start, n.end) {
+				t.Fatalf("unpermitted change in new event at [%d..%d] %s: %s",
+					n.start, n.end, n.style, n.text)
+			}
+			newDiffCount++
 			nI++
 		} else {
+			d := deliveredEvents[dI]
+			n := newEvents[nI]
+			if !isPermitted(d.start, d.end) {
+				t.Fatalf("unpermitted change in delivered event at [%d..%d] %s: %s",
+					d.start, d.end, d.style, d.text)
+			}
+			if !isPermitted(n.start, n.end) {
+				t.Fatalf("unpermitted change in new event at [%d..%d] %s: %s",
+					n.start, n.end, n.style, n.text)
+			}
+			deliveredDiffCount++
+			newDiffCount++
 			dI++
 			nI++
 		}
 	}
-	if diffPoints != 23 {
-		t.Errorf("expected exactly 23 diff points against delivered bilingual.ass, got %d", diffPoints)
+
+	if matchedCount != 647 {
+		t.Errorf("matched identical events = %d, want 647", matchedCount)
+	}
+	if deliveredDiffCount != 17 {
+		t.Errorf("delivered events in diff clusters = %d, want 17", deliveredDiffCount)
+	}
+	if newDiffCount != 22 {
+		t.Errorf("new events in diff clusters = %d, want 22", newDiffCount)
 	}
 }
 
