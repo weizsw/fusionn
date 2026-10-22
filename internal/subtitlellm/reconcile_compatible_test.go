@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1176,6 +1177,970 @@ func TestRecordedE01_CompatibleRefinement(t *testing.T) {
 		_, negAudit := reconcile(bundle, mutatedBatches, 210000)
 		if len(negAudit.Conflicts) == 0 {
 			t.Fatal("negative mutation should have triggered conflict, but got 0 conflicts")
+		}
+	})
+}
+
+// TestEngine_KindGuard_R1_PublicEngineTruncationCounterexample implements R1:
+// A real 3-window scenario via public Engine.Align where Window 2 observes
+// a truncated context projection with an explicit conflicting kind ("on_screen_text"),
+// while Window 1 (coarse group) omitted kind ("").
+// Under unpatched a7, findCompatibleRefinements erroneously treats Window 1's missing kind
+// as a wildcard bridge, swallowing the explicit kind conflict and resulting in 0 conflicts.
+// The expected behavior is that the explicit kind conflict is preserved:
+// refinement is rejected, component cues are restored single-sided, and cue 9 is preserved.
+func TestEngine_KindGuard_R1_PublicEngineTruncationCounterexample(t *testing.T) {
+	cue := func(id, start, end int, text string) Cue {
+		return Cue{
+			ID:            id,
+			Start:         start,
+			End:           end,
+			OriginalStart: start,
+			OriginalEnd:   end,
+			Raw:           text,
+			Plain:         text,
+			Display:       text,
+			Alignment:     2,
+			Style:         "Default",
+			Changes:       []string{},
+		}
+	}
+
+	en := []Cue{
+		cue(1, 138000, 139000, "One."),
+		cue(2, 139000, 140000, "Two."),
+		cue(3, 141000, 161000, "Three."),
+		cue(4, 250000, 251000, "Nine."),
+	}
+	zh := []Cue{
+		cue(1, 138000, 140000, "一二。"),
+		cue(2, 141000, 161000, "三。"),
+		cue(3, 250000, 251000, "九。"),
+	}
+	bundle := testBundle(t, en, zh)
+
+	type windowCall struct {
+		coreMS []int
+		enIDs  []int
+		zhIDs  []int
+	}
+	var (
+		mu    sync.Mutex
+		calls []windowCall
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var p requestPayload
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			t.Errorf("decode request: %v", err)
+			w.WriteHeader(500)
+			return
+		}
+		var view windowView
+		if err := json.Unmarshal([]byte(p.Messages[1].Content), &view); err != nil {
+			t.Errorf("unmarshal source view: %v", err)
+			w.WriteHeader(500)
+			return
+		}
+
+		var call windowCall
+		call.coreMS = view.CoreMS
+		for _, c := range view.EN {
+			call.enIDs = append(call.enIDs, c.ID)
+		}
+		for _, c := range view.ZH {
+			call.zhIDs = append(call.zhIDs, c.ID)
+		}
+
+		mu.Lock()
+		calls = append(calls, call)
+		mu.Unlock()
+
+		var content string
+		switch view.CoreMS[0] {
+		case 0:
+			// Window 0: receives EN[1,2,3], ZH[1,2]
+			if !reflect.DeepEqual(call.enIDs, []int{1, 2, 3}) || !reflect.DeepEqual(call.zhIDs, []int{1, 2}) {
+				t.Errorf("window 0 input mismatch: EN=%v, ZH=%v", call.enIDs, call.zhIDs)
+			}
+			content = `{"alignments":[{"en_ids":[1,2],"zh_ids":[1],"layer":"bottom","kind":"dialogue"},{"en_ids":[3],"zh_ids":[2],"layer":"bottom","kind":"dialogue"}]}`
+		case 100000:
+			// Window 1: receives EN[1,2,3], ZH[1,2]
+			if !reflect.DeepEqual(call.enIDs, []int{1, 2, 3}) || !reflect.DeepEqual(call.zhIDs, []int{1, 2}) {
+				t.Errorf("window 1 input mismatch: EN=%v, ZH=%v", call.enIDs, call.zhIDs)
+			}
+			// Omitting kind
+			content = `{"alignments":[{"en_ids":[1,2,3],"zh_ids":[1,2],"layer":"bottom"}]}`
+		case 200000:
+			// Window 2: receives EN[3,4], ZH[2,3]
+			if !reflect.DeepEqual(call.enIDs, []int{3, 4}) || !reflect.DeepEqual(call.zhIDs, []int{2, 3}) {
+				t.Errorf("window 2 input mismatch: EN=%v, ZH=%v", call.enIDs, call.zhIDs)
+			}
+			content = `{"alignments":[{"en_ids":[3],"zh_ids":[2],"layer":"bottom","kind":"on_screen_text"},{"en_ids":[4],"zh_ids":[3],"layer":"bottom","kind":"dialogue"}]}`
+		default:
+			t.Errorf("unexpected window CoreMS: %v", view.CoreMS)
+		}
+
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"model": "mock",
+			"choices": []any{
+				map[string]any{"finish_reason": "stop", "message": map[string]any{"content": content}},
+			},
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	cfg := testConfig(t, server.URL+"/v1")
+	cfg.WindowSeconds = 100
+	cfg.OverlapSeconds = 90
+	cfg.Retries = 0
+	engine := NewEngine()
+
+	mapping, audit, err := engine.Align(context.Background(), bundle, cfg)
+	if err != nil {
+		t.Fatalf("Align failed: %v", err)
+	}
+
+	// Verify that all 3 windows actually ran and saw expected inputs
+	if len(calls) != 3 {
+		t.Fatalf("expected 3 window calls, got %d", len(calls))
+	}
+
+	// Under R1 requirement:
+	// A conflicting explicit observation on [3]:[2] ("on_screen_text" vs "dialogue")
+	// must NOT be swallowed by Window 1's omitted kind.
+	// Therefore, refinement must be rejected:
+	// - audit.Conflicts must be non-empty (coarse group [1,2,3]<->[1,2] conflicted).
+	// - Cues 1, 2, 3 in EN and 1, 2 in ZH must be restored single-sided.
+	// - Independent cue (EN 4, ZH 3) must remain cleanly paired [4]<->[3].
+	if len(audit.Conflicts) == 0 {
+		t.Fatalf("RED EXPECTED: expected conflict for explicit kind mismatch on [3]:[2], but got 0 conflicts (swallowed by missing kind). Audit: %+v, Groups: %+v", audit, mapping.Groups)
+	}
+
+	restoredEN, restoredZH := map[int]bool{}, map[int]bool{}
+	for _, id := range audit.Restored["en"] {
+		restoredEN[id] = true
+	}
+	for _, id := range audit.Restored["zh"] {
+		restoredZH[id] = true
+	}
+	for _, id := range []int{1, 2, 3} {
+		if !restoredEN[id] {
+			t.Errorf("expected EN %d restored single-sided, but was not in audit.Restored", id)
+		}
+	}
+	for _, id := range []int{1, 2} {
+		if !restoredZH[id] {
+			t.Errorf("expected ZH %d restored single-sided, but was not in audit.Restored", id)
+		}
+	}
+
+	// Verify independent cue (EN 4, ZH 3) is accepted normally as bilingual
+	independentAccepted := false
+	for _, g := range mapping.Groups {
+		if reflect.DeepEqual(g.ENIDs, []int{4}) && reflect.DeepEqual(g.ZHIDs, []int{3}) {
+			independentAccepted = true
+			if g.Origin != OriginModel {
+				t.Errorf("independent cue origin = %s, want model", g.Origin)
+			}
+		}
+		// Fine group [1, 2]:[1] must not be accepted
+		if reflect.DeepEqual(g.ENIDs, []int{1, 2}) {
+			t.Errorf("fine group [1, 2] should not be accepted when [3]:[2] has kind conflict: %+v", g)
+		}
+	}
+	if !independentAccepted {
+		t.Errorf("independent cue was not accepted in mapping: %+v", mapping.Groups)
+	}
+}
+
+// TestEngine_KindGuard_R2_PreserveValidDefault verifies R2:
+//   - Part A: When the third observation in Window 2 is also "dialogue" (matching fine group),
+//     the refinement is accepted, preserving 2 fine groups, logical owner=1, 0 conflicts, 0 restored.
+//   - Part B: Time-shifted across later cores verifies stability and source fingerprint preservation.
+//   - Part C: Reverse kind direction (fine groups are "on_screen_text", third observation is "dialogue")
+//     must also be rejected, proving the guard works bidirectionally and does not simply reject all 3-window cases.
+func TestEngine_KindGuard_R2_PreserveValidDefault(t *testing.T) {
+	cue := func(id, start, end int, text string) Cue {
+		return Cue{
+			ID:            id,
+			Start:         start,
+			End:           end,
+			OriginalStart: start,
+			OriginalEnd:   end,
+			Raw:           text,
+			Plain:         text,
+			Display:       text,
+			Alignment:     2,
+			Style:         "Default",
+			Changes:       []string{},
+		}
+	}
+
+	t.Run("ThirdObservationDialoguePreservesRefinement", func(t *testing.T) {
+		en := []Cue{
+			cue(1, 138000, 139000, "One."),
+			cue(2, 139000, 140000, "Two."),
+			cue(3, 141000, 161000, "Three."),
+			cue(4, 250000, 251000, "Nine."),
+		}
+		zh := []Cue{
+			cue(1, 138000, 140000, "一二。"),
+			cue(2, 141000, 161000, "三。"),
+			cue(3, 250000, 251000, "九。"),
+		}
+		bundle := testBundle(t, en, zh)
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var p requestPayload
+			if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+				t.Errorf("decode request: %v", err)
+				w.WriteHeader(500)
+				return
+			}
+			var view windowView
+			if err := json.Unmarshal([]byte(p.Messages[1].Content), &view); err != nil {
+				t.Errorf("unmarshal source view: %v", err)
+				w.WriteHeader(500)
+				return
+			}
+
+			var content string
+			switch view.CoreMS[0] {
+			case 0:
+				content = `{"alignments":[{"en_ids":[1,2],"zh_ids":[1],"layer":"bottom","kind":"dialogue"},{"en_ids":[3],"zh_ids":[2],"layer":"bottom","kind":"dialogue"}]}`
+			case 100000:
+				content = `{"alignments":[{"en_ids":[1,2,3],"zh_ids":[1,2],"layer":"bottom"}]}`
+			case 200000:
+				// Window 2: also "dialogue"
+				content = `{"alignments":[{"en_ids":[3],"zh_ids":[2],"layer":"bottom","kind":"dialogue"},{"en_ids":[4],"zh_ids":[3],"layer":"bottom","kind":"dialogue"}]}`
+			default:
+				t.Errorf("unexpected window CoreMS: %v", view.CoreMS)
+			}
+
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"model": "mock",
+				"choices": []any{
+					map[string]any{"finish_reason": "stop", "message": map[string]any{"content": content}},
+				},
+			}); err != nil {
+				t.Errorf("encode response: %v", err)
+			}
+		}))
+		defer server.Close()
+
+		cfg := testConfig(t, server.URL+"/v1")
+		cfg.WindowSeconds = 100
+		cfg.OverlapSeconds = 90
+		cfg.Retries = 0
+		engine := NewEngine()
+
+		mapping, audit, err := engine.Align(context.Background(), bundle, cfg)
+		if err != nil {
+			t.Fatalf("Align failed: %v", err)
+		}
+
+		if len(audit.Conflicts) != 0 {
+			t.Fatalf("expected 0 conflicts when third observation is compatible dialogue, got %d: %+v", len(audit.Conflicts), audit.Conflicts)
+		}
+		if len(audit.Restored["en"]) != 0 || len(audit.Restored["zh"]) != 0 {
+			t.Fatalf("expected 0 restored cues, got EN=%v ZH=%v", audit.Restored["en"], audit.Restored["zh"])
+		}
+
+		// Verify 2 fine groups preserved with OwnerWindow = 1
+		groupMap := map[string]Group{}
+		for _, g := range mapping.Groups {
+			groupMap[pairKey(g.ENIDs, g.ZHIDs)] = g
+		}
+
+		g1, ok1 := groupMap[pairKey([]int{1, 2}, []int{1})]
+		if !ok1 {
+			t.Fatalf("missing fine group [1, 2] <-> [1]")
+		}
+		if g1.OwnerWindow != 1 {
+			t.Errorf("g1 OwnerWindow = %d, want 1", g1.OwnerWindow)
+		}
+		if g1.Kind != KindDialogue {
+			t.Errorf("g1 Kind = %s, want dialogue", g1.Kind)
+		}
+
+		g2, ok2 := groupMap[pairKey([]int{3}, []int{2})]
+		if !ok2 {
+			t.Fatalf("missing fine group [3] <-> [2]")
+		}
+		if g2.OwnerWindow != 1 {
+			t.Errorf("g2 OwnerWindow = %d, want 1", g2.OwnerWindow)
+		}
+		if g2.Kind != KindDialogue {
+			t.Errorf("g2 Kind = %s, want dialogue", g2.Kind)
+		}
+
+		g3, ok3 := groupMap[pairKey([]int{4}, []int{3})]
+		if !ok3 {
+			t.Fatalf("missing independent group [4] <-> [3]")
+		}
+		if g3.OwnerWindow != 2 {
+			t.Errorf("g3 OwnerWindow = %d, want 2", g3.OwnerWindow)
+		}
+	})
+
+	t.Run("TimeShiftedAcrossLaterCoresVerification", func(t *testing.T) {
+		// Shift all timestamps by +100000ms:
+		// Window 0 is empty of these cues.
+		// Window 1: [100s, 200s), context [55s, 245s) -> receives component EN[1,2,3], ZH[1,2] (start 238s < 245s)
+		// Window 2: [200s, 300s), context [155s, 345s) -> receives component EN[1,2,3], ZH[1,2]
+		// Window 3: [300s, 400s), context [255s, 445s) -> receives EN[3,4], ZH[2,3] (start 350s)
+		shift := 100000
+		en := []Cue{
+			cue(1, 138000+shift, 139000+shift, "One shifted."),
+			cue(2, 139000+shift, 140000+shift, "Two shifted."),
+			cue(3, 141000+shift, 161000+shift, "Three shifted."),
+			cue(4, 250000+shift, 251000+shift, "Nine shifted."),
+		}
+		zh := []Cue{
+			cue(1, 138000+shift, 140000+shift, "一二平移。"),
+			cue(2, 141000+shift, 161000+shift, "三平移。"),
+			cue(3, 250000+shift, 251000+shift, "九平移。"),
+		}
+		bundle := testBundle(t, en, zh)
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var p requestPayload
+			if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+				t.Errorf("decode request: %v", err)
+				w.WriteHeader(500)
+				return
+			}
+			var view windowView
+			if err := json.Unmarshal([]byte(p.Messages[1].Content), &view); err != nil {
+				t.Errorf("unmarshal source view: %v", err)
+				w.WriteHeader(500)
+				return
+			}
+
+			var content string
+			switch view.CoreMS[0] {
+			case 0:
+				// No cues in window 0
+				content = `{"alignments":[]}`
+			case 100000:
+				content = `{"alignments":[{"en_ids":[1,2],"zh_ids":[1],"layer":"bottom","kind":"dialogue"},{"en_ids":[3],"zh_ids":[2],"layer":"bottom","kind":"dialogue"}]}`
+			case 200000:
+				content = `{"alignments":[{"en_ids":[1,2,3],"zh_ids":[1,2],"layer":"bottom"}]}`
+			case 300000:
+				content = `{"alignments":[{"en_ids":[3],"zh_ids":[2],"layer":"bottom","kind":"dialogue"},{"en_ids":[4],"zh_ids":[3],"layer":"bottom","kind":"dialogue"}]}`
+			default:
+				t.Errorf("unexpected window CoreMS: %v", view.CoreMS)
+			}
+
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"model": "mock",
+				"choices": []any{
+					map[string]any{"finish_reason": "stop", "message": map[string]any{"content": content}},
+				},
+			}); err != nil {
+				t.Errorf("encode response: %v", err)
+			}
+		}))
+		defer server.Close()
+
+		cfg := testConfig(t, server.URL+"/v1")
+		cfg.WindowSeconds = 100
+		cfg.OverlapSeconds = 90
+		cfg.Retries = 0
+		engine := NewEngine()
+
+		mapping, audit, err := engine.Align(context.Background(), bundle, cfg)
+		if err != nil {
+			t.Fatalf("Align failed: %v", err)
+		}
+
+		if len(audit.Conflicts) != 0 {
+			t.Fatalf("expected 0 conflicts for shifted time compatible refinement, got %d", len(audit.Conflicts))
+		}
+		if len(audit.Restored["en"]) != 0 || len(audit.Restored["zh"]) != 0 {
+			t.Fatalf("expected 0 restored cues, got EN=%v ZH=%v", audit.Restored["en"], audit.Restored["zh"])
+		}
+
+		groupMap := map[string]Group{}
+		for _, g := range mapping.Groups {
+			groupMap[pairKey(g.ENIDs, g.ZHIDs)] = g
+		}
+		g1, ok1 := groupMap[pairKey([]int{1, 2}, []int{1})]
+		if !ok1 || g1.OwnerWindow != 2 {
+			t.Errorf("g1 missing or owner = %d, want 2", g1.OwnerWindow)
+		}
+		g2, ok2 := groupMap[pairKey([]int{3}, []int{2})]
+		if !ok2 || g2.OwnerWindow != 2 {
+			t.Errorf("g2 missing or owner = %d, want 2", g2.OwnerWindow)
+		}
+	})
+
+	t.Run("PrefixShiftedIDsVerification", func(t *testing.T) {
+		// Prepend an independent bilingual cue at 10000ms:
+		// EN 1 (10s), EN 2 (138s), EN 3 (139s), EN 4 (141s), EN 5 (250s)
+		// ZH 1 (10s), ZH 2 (138s), ZH 3 (141s), ZH 4 (250s)
+		// This shifts the component IDs to EN[2, 3, 4] and ZH[2, 3], while strictly obeying ID == i+1.
+		en := []Cue{
+			cue(1, 10000, 11000, "Prefix cue."),
+			cue(2, 138000, 139000, "One."),
+			cue(3, 139000, 140000, "Two."),
+			cue(4, 141000, 161000, "Three."),
+			cue(5, 250000, 251000, "Nine."),
+		}
+		zh := []Cue{
+			cue(1, 10000, 11000, "前置独立句。"),
+			cue(2, 138000, 140000, "一二。"),
+			cue(3, 141000, 161000, "三。"),
+			cue(4, 250000, 251000, "九。"),
+		}
+		bundle := testBundle(t, en, zh)
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var p requestPayload
+			if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+				t.Errorf("decode request: %v", err)
+				w.WriteHeader(500)
+				return
+			}
+			var view windowView
+			if err := json.Unmarshal([]byte(p.Messages[1].Content), &view); err != nil {
+				t.Errorf("unmarshal source view: %v", err)
+				w.WriteHeader(500)
+				return
+			}
+
+			var content string
+			switch view.CoreMS[0] {
+			case 0:
+				// Window 0 receives EN[1, 2, 3, 4], ZH[1, 2, 3]
+				content = `{"alignments":[{"en_ids":[1],"zh_ids":[1],"layer":"bottom","kind":"dialogue"},{"en_ids":[2,3],"zh_ids":[2],"layer":"bottom","kind":"dialogue"},{"en_ids":[4],"zh_ids":[3],"layer":"bottom","kind":"dialogue"}]}`
+			case 100000:
+				// Window 1 context is [55s, 245s), so cue 1 (10s) is outside!
+				// Window 1 receives EN[2, 3, 4], ZH[2, 3]
+				content = `{"alignments":[{"en_ids":[2,3,4],"zh_ids":[2,3],"layer":"bottom"}]}`
+			case 200000:
+				// Window 2 receives EN[4, 5], ZH[3, 4]
+				content = `{"alignments":[{"en_ids":[4],"zh_ids":[3],"layer":"bottom","kind":"dialogue"},{"en_ids":[5],"zh_ids":[4],"layer":"bottom","kind":"dialogue"}]}`
+			default:
+				t.Errorf("unexpected window CoreMS: %v", view.CoreMS)
+			}
+
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"model": "mock",
+				"choices": []any{
+					map[string]any{"finish_reason": "stop", "message": map[string]any{"content": content}},
+				},
+			}); err != nil {
+				t.Errorf("encode response: %v", err)
+			}
+		}))
+		defer server.Close()
+
+		cfg := testConfig(t, server.URL+"/v1")
+		cfg.WindowSeconds = 100
+		cfg.OverlapSeconds = 90
+		cfg.Retries = 0
+		engine := NewEngine()
+
+		mapping, audit, err := engine.Align(context.Background(), bundle, cfg)
+		if err != nil {
+			t.Fatalf("Align failed: %v", err)
+		}
+
+		if len(audit.Conflicts) != 0 {
+			t.Fatalf("expected 0 conflicts with shifted IDs, got %d: %+v", len(audit.Conflicts), audit.Conflicts)
+		}
+		if len(audit.Restored["en"]) != 0 || len(audit.Restored["zh"]) != 0 {
+			t.Fatalf("expected 0 restored cues, got EN=%v ZH=%v", audit.Restored["en"], audit.Restored["zh"])
+		}
+
+		groupMap := map[string]Group{}
+		for _, g := range mapping.Groups {
+			groupMap[pairKey(g.ENIDs, g.ZHIDs)] = g
+		}
+
+		gPrefix, okPrefix := groupMap[pairKey([]int{1}, []int{1})]
+		if !okPrefix || gPrefix.OwnerWindow != 0 {
+			t.Errorf("prefix cue missing or owner = %d, want 0", gPrefix.OwnerWindow)
+		}
+		g1, ok1 := groupMap[pairKey([]int{2, 3}, []int{2})]
+		if !ok1 || g1.OwnerWindow != 1 {
+			t.Errorf("g1 [2, 3]<->[2] missing or owner = %d, want 1", g1.OwnerWindow)
+		}
+		g2, ok2 := groupMap[pairKey([]int{4}, []int{3})]
+		if !ok2 || g2.OwnerWindow != 1 {
+			t.Errorf("g2 [4]<->[3] missing or owner = %d, want 1", g2.OwnerWindow)
+		}
+		g3, ok3 := groupMap[pairKey([]int{5}, []int{4})]
+		if !ok3 || g3.OwnerWindow != 2 {
+			t.Errorf("g3 [5]<->[4] missing or owner = %d, want 2", g3.OwnerWindow)
+		}
+	})
+
+	t.Run("ReverseKindDirectionMustReject", func(t *testing.T) {
+		// Window 0: fine partition with kind="on_screen_text"
+		// Window 1: coarse group omitting kind
+		// Window 2: truncated observation on [3]:[2] with kind="dialogue"
+		// Must also be rejected!
+		en := []Cue{
+			cue(1, 138000, 139000, "One."),
+			cue(2, 139000, 140000, "Two."),
+			cue(3, 141000, 161000, "Three."),
+			cue(4, 250000, 251000, "Nine."),
+		}
+		zh := []Cue{
+			cue(1, 138000, 140000, "一二。"),
+			cue(2, 141000, 161000, "三。"),
+			cue(3, 250000, 251000, "九。"),
+		}
+		bundle := testBundle(t, en, zh)
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var p requestPayload
+			if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+				t.Errorf("decode request: %v", err)
+				w.WriteHeader(500)
+				return
+			}
+			var view windowView
+			if err := json.Unmarshal([]byte(p.Messages[1].Content), &view); err != nil {
+				t.Errorf("unmarshal source view: %v", err)
+				w.WriteHeader(500)
+				return
+			}
+
+			var content string
+			switch view.CoreMS[0] {
+			case 0:
+				// Window 0 specifies "on_screen_text"
+				content = `{"alignments":[{"en_ids":[1,2],"zh_ids":[1],"layer":"bottom","kind":"on_screen_text"},{"en_ids":[3],"zh_ids":[2],"layer":"bottom","kind":"on_screen_text"}]}`
+			case 100000:
+				content = `{"alignments":[{"en_ids":[1,2,3],"zh_ids":[1,2],"layer":"bottom"}]}`
+			case 200000:
+				// Window 2 specifies "dialogue" on [3]:[2]
+				content = `{"alignments":[{"en_ids":[3],"zh_ids":[2],"layer":"bottom","kind":"dialogue"},{"en_ids":[4],"zh_ids":[3],"layer":"bottom","kind":"dialogue"}]}`
+			default:
+				t.Errorf("unexpected window CoreMS: %v", view.CoreMS)
+			}
+
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"model": "mock",
+				"choices": []any{
+					map[string]any{"finish_reason": "stop", "message": map[string]any{"content": content}},
+				},
+			}); err != nil {
+				t.Errorf("encode response: %v", err)
+			}
+		}))
+		defer server.Close()
+
+		cfg := testConfig(t, server.URL+"/v1")
+		cfg.WindowSeconds = 100
+		cfg.OverlapSeconds = 90
+		cfg.Retries = 0
+		engine := NewEngine()
+
+		mapping, audit, err := engine.Align(context.Background(), bundle, cfg)
+		if err != nil {
+			t.Fatalf("Align failed: %v", err)
+		}
+
+		if len(audit.Conflicts) == 0 {
+			t.Fatal("expected conflict for reversed kind direction on [3]:[2], got 0 conflicts")
+		}
+		if len(audit.Restored["en"]) != 3 || len(audit.Restored["zh"]) != 2 {
+			t.Errorf("expected 3 EN and 2 ZH cues restored single-sided, got EN=%v ZH=%v", audit.Restored["en"], audit.Restored["zh"])
+		}
+
+		// Independent cue [4]<->[3] must still be preserved
+		cue4Accepted := false
+		for _, g := range mapping.Groups {
+			if reflect.DeepEqual(g.ENIDs, []int{4}) && reflect.DeepEqual(g.ZHIDs, []int{3}) {
+				cue4Accepted = true
+			}
+		}
+		if !cue4Accepted {
+			t.Errorf("independent cue [4]<->[3] missing from mapping: %+v", mapping.Groups)
+		}
+	})
+}
+
+// TestEngine_KindGuard_R3_FineGroupScopeAndDisjointKinds verifies R3:
+//   - Two disjoint fine groups can have different kinds ("dialogue" and "on_screen_text")
+//     when coarse group omits kind, without forcing the entire component to one kind.
+//   - Third observation only affects the touched fine group.
+//   - Fine group omitting kind with two mutually conflicting observations must be rejected.
+//   - Fine group omitting kind with consistent/single observation is accepted.
+func TestEngine_KindGuard_R3_FineGroupScopeAndDisjointKinds(t *testing.T) {
+	cue := func(id, start, end int, text string) Cue {
+		return Cue{
+			ID:            id,
+			Start:         start,
+			End:           end,
+			OriginalStart: start,
+			OriginalEnd:   end,
+			Raw:           text,
+			Plain:         text,
+			Display:       text,
+			Alignment:     2,
+			Style:         "Default",
+			Changes:       []string{},
+		}
+	}
+
+	t.Run("DisjointFineGroupsDifferentKindsPreserved", func(t *testing.T) {
+		en := []Cue{
+			cue(1, 138000, 139000, "One."),
+			cue(2, 139000, 140000, "Two."),
+			cue(3, 141000, 161000, "Three."),
+			cue(4, 250000, 251000, "Nine."),
+		}
+		zh := []Cue{
+			cue(1, 138000, 140000, "一二。"),
+			cue(2, 141000, 161000, "三。"),
+			cue(3, 250000, 251000, "九。"),
+		}
+		bundle := testBundle(t, en, zh)
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var p requestPayload
+			if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+				t.Errorf("decode request: %v", err)
+				w.WriteHeader(500)
+				return
+			}
+			var view windowView
+			if err := json.Unmarshal([]byte(p.Messages[1].Content), &view); err != nil {
+				t.Errorf("unmarshal source view: %v", err)
+				w.WriteHeader(500)
+				return
+			}
+
+			var content string
+			switch view.CoreMS[0] {
+			case 0:
+				// Fine group 1 is dialogue, Fine group 2 is on_screen_text!
+				content = `{"alignments":[{"en_ids":[1,2],"zh_ids":[1],"layer":"bottom","kind":"dialogue"},{"en_ids":[3],"zh_ids":[2],"layer":"bottom","kind":"on_screen_text"}]}`
+			case 100000:
+				// Coarse group omits kind
+				content = `{"alignments":[{"en_ids":[1,2,3],"zh_ids":[1,2],"layer":"bottom"}]}`
+			case 200000:
+				// Window 2 agrees with Fine group 2 (on_screen_text)
+				content = `{"alignments":[{"en_ids":[3],"zh_ids":[2],"layer":"bottom","kind":"on_screen_text"},{"en_ids":[4],"zh_ids":[3],"layer":"bottom","kind":"dialogue"}]}`
+			default:
+				t.Errorf("unexpected window CoreMS: %v", view.CoreMS)
+			}
+
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"model": "mock",
+				"choices": []any{
+					map[string]any{"finish_reason": "stop", "message": map[string]any{"content": content}},
+				},
+			}); err != nil {
+				t.Errorf("encode response: %v", err)
+			}
+		}))
+		defer server.Close()
+
+		cfg := testConfig(t, server.URL+"/v1")
+		cfg.WindowSeconds = 100
+		cfg.OverlapSeconds = 90
+		cfg.Retries = 0
+		engine := NewEngine()
+
+		mapping, audit, err := engine.Align(context.Background(), bundle, cfg)
+		if err != nil {
+			t.Fatalf("Align failed: %v", err)
+		}
+
+		if len(audit.Conflicts) != 0 {
+			t.Fatalf("expected 0 conflicts for disjoint fine groups with different kinds, got %d", len(audit.Conflicts))
+		}
+		if len(audit.Restored["en"]) != 0 || len(audit.Restored["zh"]) != 0 {
+			t.Fatalf("expected 0 restored cues, got EN=%v ZH=%v", audit.Restored["en"], audit.Restored["zh"])
+		}
+
+		groupMap := map[string]Group{}
+		for _, g := range mapping.Groups {
+			groupMap[pairKey(g.ENIDs, g.ZHIDs)] = g
+		}
+
+		g1, ok1 := groupMap[pairKey([]int{1, 2}, []int{1})]
+		if !ok1 {
+			t.Fatal("missing fine group [1, 2] <-> [1]")
+		}
+		if g1.Kind != KindDialogue {
+			t.Errorf("g1 Kind = %s, want dialogue", g1.Kind)
+		}
+
+		g2, ok2 := groupMap[pairKey([]int{3}, []int{2})]
+		if !ok2 {
+			t.Fatal("missing fine group [3] <-> [2]")
+		}
+		if g2.Kind != KindOnScreenText {
+			t.Errorf("g2 Kind = %s, want on_screen_text", g2.Kind)
+		}
+	})
+
+	t.Run("FineDefaultWithTwoConflictingObservationsRejected", func(t *testing.T) {
+		// Both fine group 2 and coarse group omit kind.
+		// Window 2 observes [3]:[2] with "dialogue".
+		// Window 3 observes [3]:[2] with "on_screen_text".
+		// The two conflicting observations must reject the refinement!
+		en := []Cue{
+			cue(1, 1000, 2000, "One."),
+			cue(2, 2000, 3000, "Two."),
+			cue(3, 3000, 4000, "Three."),
+		}
+		zh := []Cue{
+			cue(1, 1000, 3000, "一二。"),
+			cue(2, 3000, 4000, "三。"),
+		}
+		bundle := testBundle(t, en, zh)
+
+		batches := []batch{
+			{
+				Index:   0,
+				ENInput: []int{1, 2, 3},
+				ZHInput: []int{1, 2},
+				Valid: []Group{
+					{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+					{ENIDs: []int{3}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: ""}, // fine group omits kind
+				},
+			},
+			{
+				Index:   1,
+				ENInput: []int{1, 2, 3},
+				ZHInput: []int{1, 2},
+				Valid: []Group{
+					{ENIDs: []int{1, 2, 3}, ZHIDs: []int{1, 2}, Layer: LayerBottom, Origin: OriginModel, Kind: ""}, // coarse group omits kind
+				},
+			},
+			{
+				Index:   2,
+				ENInput: []int{3},
+				ZHInput: []int{2},
+				Valid: []Group{
+					{ENIDs: []int{3}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+				},
+			},
+			{
+				Index:   3,
+				ENInput: []int{3},
+				ZHInput: []int{2},
+				Valid: []Group{
+					{ENIDs: []int{3}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindOnScreenText},
+				},
+			},
+		}
+
+		accepted, audit := reconcile(bundle, batches, 100000)
+		if len(audit.Conflicts) == 0 {
+			t.Fatal("expected conflict when fine group with omitted kind receives two conflicting observations, got 0")
+		}
+		for _, g := range accepted {
+			if g.Origin == OriginModel && reflect.DeepEqual(g.ENIDs, []int{1, 2}) {
+				t.Errorf("fine group [1, 2] should not be accepted when [3]:[2] has kind conflict: %+v", accepted)
+			}
+		}
+	})
+
+	t.Run("FineDefaultWithSingleObservationAccepted", func(t *testing.T) {
+		// Fine group 2 omits kind, coarse group omits kind.
+		// Only Window 2 observes [3]:[2] with "dialogue" (no conflicting observation).
+		// Must be accepted!
+		en := []Cue{
+			cue(1, 1000, 2000, "One."),
+			cue(2, 2000, 3000, "Two."),
+			cue(3, 3000, 4000, "Three."),
+		}
+		zh := []Cue{
+			cue(1, 1000, 3000, "一二。"),
+			cue(2, 3000, 4000, "三。"),
+		}
+		bundle := testBundle(t, en, zh)
+
+		batches := []batch{
+			{
+				Index:   0,
+				ENInput: []int{1, 2, 3},
+				ZHInput: []int{1, 2},
+				Valid: []Group{
+					{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+					{ENIDs: []int{3}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: ""}, // fine group omits kind
+				},
+			},
+			{
+				Index:   1,
+				ENInput: []int{1, 2, 3},
+				ZHInput: []int{1, 2},
+				Valid: []Group{
+					{ENIDs: []int{1, 2, 3}, ZHIDs: []int{1, 2}, Layer: LayerBottom, Origin: OriginModel, Kind: ""}, // coarse group omits kind
+				},
+			},
+			{
+				Index:   2,
+				ENInput: []int{3},
+				ZHInput: []int{2},
+				Valid: []Group{
+					{ENIDs: []int{3}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+				},
+			},
+		}
+
+		accepted, audit := reconcile(bundle, batches, 100000)
+		if len(audit.Conflicts) != 0 {
+			t.Fatalf("expected 0 conflicts when single observation is compatible, got %d: %+v", len(audit.Conflicts), audit.Conflicts)
+		}
+		if len(audit.Restored["en"]) != 0 || len(audit.Restored["zh"]) != 0 {
+			t.Fatalf("expected 0 restored cues, got EN=%v ZH=%v", audit.Restored["en"], audit.Restored["zh"])
+		}
+
+		fine1Found, fine2Found := false, false
+		for _, g := range accepted {
+			if reflect.DeepEqual(g.ENIDs, []int{1, 2}) && reflect.DeepEqual(g.ZHIDs, []int{1}) {
+				fine1Found = true
+			}
+			if reflect.DeepEqual(g.ENIDs, []int{3}) && reflect.DeepEqual(g.ZHIDs, []int{2}) {
+				fine2Found = true
+			}
+		}
+		if !fine1Found || !fine2Found {
+			t.Errorf("expected both fine groups accepted, got %+v", accepted)
+		}
+	})
+
+	t.Run("UnknownOrMissingKindDoesNotEraseTwoKnownConflicts", func(t *testing.T) {
+		// Window 0: fine partition [1, 2] dialogue, [3] unknown
+		// Window 1: coarse group [1, 2, 3] unknown
+		// Window 2: [3] dialogue
+		// Window 3: [3] on_screen_text
+		// The presence of unknown or missing kinds cannot erase the conflict between dialogue and on_screen_text!
+		en := []Cue{
+			cue(1, 1000, 2000, "One."),
+			cue(2, 2000, 3000, "Two."),
+			cue(3, 3000, 4000, "Three."),
+		}
+		zh := []Cue{
+			cue(1, 1000, 3000, "一二。"),
+			cue(2, 3000, 4000, "三。"),
+		}
+		bundle := testBundle(t, en, zh)
+
+		batches := []batch{
+			{
+				Index:   0,
+				ENInput: []int{1, 2, 3},
+				ZHInput: []int{1, 2},
+				Valid: []Group{
+					{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+					{ENIDs: []int{3}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindUnknown},
+				},
+			},
+			{
+				Index:   1,
+				ENInput: []int{1, 2, 3},
+				ZHInput: []int{1, 2},
+				Valid: []Group{
+					{ENIDs: []int{1, 2, 3}, ZHIDs: []int{1, 2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindUnknown},
+				},
+			},
+			{
+				Index:   2,
+				ENInput: []int{3},
+				ZHInput: []int{2},
+				Valid: []Group{
+					{ENIDs: []int{3}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+				},
+			},
+			{
+				Index:   3,
+				ENInput: []int{3},
+				ZHInput: []int{2},
+				Valid: []Group{
+					{ENIDs: []int{3}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindOnScreenText},
+				},
+			},
+		}
+
+		accepted, audit := reconcile(bundle, batches, 100000)
+		if len(audit.Conflicts) == 0 {
+			t.Fatal("expected conflict when both dialogue and on_screen_text are present alongside unknown, got 0")
+		}
+		for _, g := range accepted {
+			if g.Origin == OriginModel && reflect.DeepEqual(g.ENIDs, []int{1, 2}) {
+				t.Errorf("fine group [1, 2] should not be accepted when [3]:[2] has known kind conflict: %+v", accepted)
+			}
+		}
+	})
+
+	t.Run("SingleKnownKindWithUnknownObservationPreservesCompatibility", func(t *testing.T) {
+		// Window 0: fine partition [1, 2] dialogue, [3] "" (omitted kind)
+		// Window 1: coarse group [1, 2, 3] "" (omitted kind)
+		// Window 2: [3] dialogue
+		// Window 3: [3] unknown
+		// No second known kind (on_screen_text) is present.
+		// The presence of unknown does not invent a known conflict between dialogue and on_screen_text,
+		// preserving the original compatible refinement outcome.
+		en := []Cue{
+			cue(1, 1000, 2000, "One."),
+			cue(2, 2000, 3000, "Two."),
+			cue(3, 3000, 4000, "Three."),
+		}
+		zh := []Cue{
+			cue(1, 1000, 3000, "一二。"),
+			cue(2, 3000, 4000, "三。"),
+		}
+		bundle := testBundle(t, en, zh)
+
+		batches := []batch{
+			{
+				Index:   0,
+				ENInput: []int{1, 2, 3},
+				ZHInput: []int{1, 2},
+				Valid: []Group{
+					{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+					{ENIDs: []int{3}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: ""},
+				},
+			},
+			{
+				Index:   1,
+				ENInput: []int{1, 2, 3},
+				ZHInput: []int{1, 2},
+				Valid: []Group{
+					{ENIDs: []int{1, 2, 3}, ZHIDs: []int{1, 2}, Layer: LayerBottom, Origin: OriginModel, Kind: ""},
+				},
+			},
+			{
+				Index:   2,
+				ENInput: []int{3},
+				ZHInput: []int{2},
+				Valid: []Group{
+					{ENIDs: []int{3}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+				},
+			},
+			{
+				Index:   3,
+				ENInput: []int{3},
+				ZHInput: []int{2},
+				Valid: []Group{
+					{ENIDs: []int{3}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindUnknown},
+				},
+			},
+		}
+
+		accepted, audit := reconcile(bundle, batches, 100000)
+		if len(audit.Conflicts) != 0 {
+			t.Fatalf("expected 0 conflicts when no opposing known kind exists, got %d: %+v", len(audit.Conflicts), audit.Conflicts)
+		}
+		if len(audit.Restored["en"]) != 0 || len(audit.Restored["zh"]) != 0 {
+			t.Fatalf("expected 0 restored cues, got EN=%v ZH=%v", audit.Restored["en"], audit.Restored["zh"])
+		}
+		if len(accepted) != 2 {
+			t.Fatalf("expected 2 fine groups accepted, got %d", len(accepted))
 		}
 	})
 }

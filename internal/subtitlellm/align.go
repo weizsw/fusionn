@@ -1581,6 +1581,36 @@ func findCompatibleRefinements(batches []batch, batchMap map[int]batch, tracks m
 					continue
 				}
 
+				kindConflict := false
+				for _, g := range touching {
+					hasDialogue := false
+					hasOnScreenText := false
+					checkKind := func(k string) {
+						switch k {
+						case KindDialogue:
+							hasDialogue = true
+						case KindOnScreenText:
+							hasOnScreenText = true
+						}
+					}
+					checkKind(g.Kind)
+					checkKind(cGroup.Kind)
+					for _, bObs := range batches {
+						for _, r := range bObs.Valid {
+							if sharesAnyCue(r, g) {
+								checkKind(r.Kind)
+							}
+						}
+					}
+					if hasDialogue && hasOnScreenText {
+						kindConflict = true
+						break
+					}
+				}
+				if kindConflict {
+					continue
+				}
+
 				ownersOK := true
 				for _, g := range touching {
 					owner := firstStart(tracks, g) / coreMS
