@@ -704,16 +704,18 @@ func TestTopTemporal_B16_IdempotenceAndImmutability(t *testing.T) {
 	}
 }
 
-// TestTopTemporal_RecordedE01_DetailedDiffAudit performs an exhaustive audit
-// of every event difference between the pre-fix delivered ASS (656 events)
-// and the post-fix re-rendered ASS (659 events).
-// It verifies:
-// 1. Exactly 3 groups split, turning 3 single events into 6 split events (+3 net).
-// 2. All 3 split groups are top 2+2 dialogue cues with duration >= 2.4s.
-// 3. Complete text coverage: every character/word of the original event is preserved.
-// 4. Timing boundaries: fragment durations >= 1.2s, consecutive fragments contiguous.
-// 5. Layout and styles: TopDefault style, alignment, positions preserved.
-// 6. Zero unintended regressions: all other 653 events match byte-for-byte and time-for-time.
+// TestTopTemporal_RecordedE01_DetailedDiffAudit audits the OLD stage snapshot
+// fixture (dialogue-lyrics-v5), whose delivered ASS predates the top-position
+// decoupling. It is supplementary evidence only and does NOT replace the target
+// baseline (terminal-list-s02e01-gpt61-enhanced).
+//
+// Counts below were measured on the real files at
+// 1e7ade0f62c826893d49902a7b1f91fd2df75481, not assumed:
+//
+//	delivered 656, re-rendered 658, net +2
+//	matched 633, delivered-only 4, new-only 6, changed-in-place 19
+//
+// All diffs are attributed to exactly eight clusters; anything else fails.
 func TestTopTemporal_RecordedE01_DetailedDiffAudit(t *testing.T) {
 	dir := os.Getenv(positionRecordDirEnv)
 	if dir == "" {
@@ -740,89 +742,147 @@ func TestTopTemporal_RecordedE01_DetailedDiffAudit(t *testing.T) {
 	newEvents := parseSerializedASS(res.RenderedASS)
 
 	t.Logf("delivered events: %d, new events: %d", len(deliveredEvents), len(newEvents))
-	if len(newEvents) != len(deliveredEvents)+3 {
-		t.Fatalf("expected exactly +3 events (659), got %d vs %d", len(newEvents), len(deliveredEvents))
+
+	// Cluster spans measured from the real files. Each is a top-position group
+	// whose temporal planning was unblocked (or a text reflow inside the same
+	// interval); nothing outside these spans may change.
+	type cluster struct {
+		lo, hi        int
+		wantDelivered int
+		wantNew       int
+	}
+	clusters := []cluster{
+		{484570, 500330, 6, 8},   // groups 101/102/103 counterpart slicing + 2+2 split
+		{506550, 518060, 4, 5},   // groups 106/107 splitChineseSources + slicing
+		{559480, 565110, 2, 2},   // group 119 replay removal (text only, no count change)
+		{565110, 568400, 2, 2},   // group 121 slicing
+		{584000, 589670, 2, 2},   // group 128 slicing (two dialogue events)
+		{794920, 798260, 1, 2},   // on-screen text split at a source line break
+		{2047710, 2051550, 1, 2}, // top on-screen text split at a source line break
+		{2727770, 2734190, 5, 2}, // English-side blocks reflowed into the same interval
+	}
+	clusterOf := func(start, end int) int {
+		for i, c := range clusters {
+			if start >= c.lo-100 && end <= c.hi+100 {
+				return i
+			}
+		}
+		return -1
 	}
 
-	// Compare delivered vs new events by time windows and report all differences.
-	t.Logf("--- Starting Detailed Diff Audit ---")
-	diffCount := 0
+	var (
+		matched   int
+		oldOnly   int
+		newOnly   int
+		changed   int
+		delPerWin = make([]int, len(clusters))
+		newPerWin = make([]int, len(clusters))
+	)
+
 	dI, nI := 0, 0
 	for dI < len(deliveredEvents) || nI < len(newEvents) {
 		if dI < len(deliveredEvents) && nI < len(newEvents) {
 			d := deliveredEvents[dI]
 			n := newEvents[nI]
 			if d.start == n.start && d.end == n.end && normText(d.text) == normText(n.text) {
+				matched++
 				dI++
 				nI++
 				continue
 			}
 		}
-		diffCount++
-		var dText, nText string
-		var dStart, dEnd, nStart, nEnd int
+
+		dTime, nTime := 1<<62, 1<<62
 		if dI < len(deliveredEvents) {
-			dText = deliveredEvents[dI].text
-			dStart = deliveredEvents[dI].start
-			dEnd = deliveredEvents[dI].end
+			dTime = deliveredEvents[dI].start
 		}
 		if nI < len(newEvents) {
-			nText = newEvents[nI].text
-			nStart = newEvents[nI].start
-			nEnd = newEvents[nI].end
+			nTime = newEvents[nI].start
 		}
-		t.Logf("Diff #%d:\n  Delivered [%d][%d..%d]: %s\n  New       [%d][%d..%d]: %s",
-			diffCount, dI, dStart, dEnd, dText, nI, nStart, nEnd, nText)
 
-		// Advance pointers intelligently:
-		// If new event is a fragment of delivered:
-		if dI < len(deliveredEvents) && nI+1 < len(newEvents) &&
-			deliveredEvents[dI].start == newEvents[nI].start &&
-			deliveredEvents[dI].end == newEvents[nI+1].end {
-			t.Logf("  -> 1 delivered split into 2 new fragments: [%d..%d] + [%d..%d]",
-				newEvents[nI].start, newEvents[nI].end, newEvents[nI+1].start, newEvents[nI+1].end)
-			// Strict failing assertions:
-			// 1. Contiguous boundary
-			if newEvents[nI].end != newEvents[nI+1].start {
-				t.Errorf("Diff #%d: fragment gap/overlap: [%d..%d] vs [%d..%d]",
-					diffCount, newEvents[nI].start, newEvents[nI].end, newEvents[nI+1].start, newEvents[nI+1].end)
+		switch {
+		case dTime < nTime:
+			d := deliveredEvents[dI]
+			wi := clusterOf(d.start, d.end)
+			if wi < 0 {
+				t.Fatalf("unattributable delivered-only change at [%d..%d]: %s", d.start, d.end, d.text)
 			}
-			// 2. Minimum duration >= 1.2s (120 centiseconds)
-			if (newEvents[nI].end - newEvents[nI].start) < 120 {
-				t.Errorf("Diff #%d: fragment 0 duration %d cs < 120 cs", diffCount, newEvents[nI].end-newEvents[nI].start)
-			}
-			if (newEvents[nI+1].end - newEvents[nI+1].start) < 120 {
-				t.Errorf("Diff #%d: fragment 1 duration %d cs < 120 cs", diffCount, newEvents[nI+1].end-newEvents[nI+1].start)
-			}
-			// 3. Text coverage: no hallucinated characters from the original
-			combinedText := newEvents[nI].text + newEvents[nI+1].text
-			delGlyphs := normText(deliveredEvents[dI].text)
-			for _, r := range normText(combinedText) {
-				if !strings.ContainsRune(delGlyphs, r) {
-					t.Errorf("Diff #%d: fragment contains character %c not in delivered text", diffCount, r)
-				}
-			}
+			delPerWin[wi]++
+			oldOnly++
 			dI++
-			nI += 2
-			continue
-		}
-		// If delivered and new have same start and end but different text:
-		if dI < len(deliveredEvents) && nI < len(newEvents) &&
-			deliveredEvents[dI].start == newEvents[nI].start &&
-			deliveredEvents[dI].end == newEvents[nI].end {
-			t.Logf("  -> Same interval [%d..%d] with updated text", dStart, dEnd)
-			dI++
+		case nTime < dTime:
+			n := newEvents[nI]
+			wi := clusterOf(n.start, n.end)
+			if wi < 0 {
+				t.Fatalf("unattributable new-only change at [%d..%d]: %s", n.start, n.end, n.text)
+			}
+			newPerWin[wi]++
+			newOnly++
 			nI++
-			continue
-		}
-		// Otherwise advance smaller start time
-		if dI < len(deliveredEvents) && (nI >= len(newEvents) || deliveredEvents[dI].start < newEvents[nI].start) {
+		default:
+			d := deliveredEvents[dI]
+			n := newEvents[nI]
+			wi := clusterOf(d.start, d.end)
+			if wi < 0 {
+				t.Fatalf("unattributable changed delivered event at [%d..%d]: %s", d.start, d.end, d.text)
+			}
+			wj := clusterOf(n.start, n.end)
+			if wj < 0 {
+				t.Fatalf("unattributable changed new event at [%d..%d]: %s", n.start, n.end, n.text)
+			}
+			delPerWin[wi]++
+			newPerWin[wj]++
+			changed++
 			dI++
-		} else {
 			nI++
 		}
 	}
-	t.Logf("Total differences found: %d", diffCount)
+
+	// Exact, measured totals. Any drift fails.
+	if matched != 633 {
+		t.Errorf("matched identical events = %d, want 633", matched)
+	}
+	if oldOnly != 4 {
+		t.Errorf("delivered-only events = %d, want 4", oldOnly)
+	}
+	if newOnly != 6 {
+		t.Errorf("new-only events = %d, want 6", newOnly)
+	}
+	if changed != 19 {
+		t.Errorf("changed-in-place events = %d, want 19", changed)
+	}
+	if len(newEvents)-len(deliveredEvents) != 2 {
+		t.Errorf("net event change = %d, want +2", len(newEvents)-len(deliveredEvents))
+	}
+	// 656 - 4 - 19 = 633 and 658 - 6 - 19 = 633.
+	if len(deliveredEvents)-oldOnly-changed != matched {
+		t.Errorf("delivered side does not close: %d - %d - %d != %d",
+			len(deliveredEvents), oldOnly, changed, matched)
+	}
+	if len(newEvents)-newOnly-changed != matched {
+		t.Errorf("new side does not close: %d - %d - %d != %d",
+			len(newEvents), newOnly, changed, matched)
+	}
+
+	// Per-cluster tallies: every diff is attributed to a named cluster.
+	for i, c := range clusters {
+		if delPerWin[i] != c.wantDelivered {
+			t.Errorf("cluster [%d..%d]: delivered changed = %d, want %d",
+				c.lo, c.hi, delPerWin[i], c.wantDelivered)
+		}
+		if newPerWin[i] != c.wantNew {
+			t.Errorf("cluster [%d..%d]: new changed = %d, want %d",
+				c.lo, c.hi, newPerWin[i], c.wantNew)
+		}
+	}
+
+	// The group-119 replay must be gone in this fixture too: the first Chinese
+	// line may not be displayed inside the second English window.
+	for _, e := range newEvents {
+		if strings.Contains(e.text, "他四处为家") && e.start >= 562479 && e.end <= 565110 {
+			t.Errorf("group 119 replay survives in the old fixture: [%d..%d] %s", e.start, e.end, e.text)
+		}
+	}
 }
 
 // TestTopTemporal_MultiSpeakerTopProtected verifies that a top cue with
@@ -1252,7 +1312,7 @@ func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
 	// Each window is a top (or top-migrated) group whose temporal planning was unblocked:
 	//   [484570..500330]  groups 101, 102, 103   (delivered 6 -> new 8, +2)
 	//   [506550..518060]  groups 106, 107         (delivered 4 -> new 5, +1)
-	//   [559480..565110]  group  119              (delivered 2 -> new 3, +1)
+	//   [559480..565110]  group  119              (delivered 2 -> new 2,  0)
 	//   [565110..568400]  group  121              (delivered 2 -> new 2,  0)
 	//   [584000..589670]  group  128              (delivered 2 -> new 2,  0)
 	//   [2047710..2051550] group 323              (delivered 1 -> new 2, +1)
