@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/subtitlellm"
 )
 
@@ -29,24 +30,26 @@ type RenderedEvent struct {
 }
 
 type LedgerEntry struct {
-	GroupID        int           `json:"group_id"`
-	ENIDs          []int         `json:"en_ids"`
-	ZHIDs          []int         `json:"zh_ids"`
-	ENText         string        `json:"en_text"`
-	ZHText         string        `json:"zh_text"`
-	ENLines        int           `json:"en_lines"`
-	ZHLines        int           `json:"zh_lines"`
-	ENStartMS      int           `json:"en_start_ms"`
-	ENEndMS        int           `json:"en_end_ms"`
-	ZHStartMS      int           `json:"zh_start_ms"`
-	ZHEndMS        int           `json:"zh_end_ms"`
-	SourceUnionMS  [2]int        `json:"source_union_ms"`
-	NativeTop      bool          `json:"native_top"`
-	ModelKind      string        `json:"model_kind"`
-	ModelLayer     string        `json:"model_layer"`
-	Origin         string        `json:"origin"`
-	RenderedEvents []LedgerEvent `json:"rendered_events"`
-	CandidateFlags []string      `json:"candidate_flags"`
+	GroupID         int           `json:"group_id"`
+	ENIDs           []int         `json:"en_ids"`
+	ZHIDs           []int         `json:"zh_ids"`
+	ENText          string        `json:"en_text"`
+	ZHText          string        `json:"zh_text"`
+	ENLines         int           `json:"en_lines"`
+	ZHLines         int           `json:"zh_lines"`
+	ENStartMS       int           `json:"en_start_ms"`
+	ENEndMS         int           `json:"en_end_ms"`
+	ZHStartMS       int           `json:"zh_start_ms"`
+	ZHEndMS         int           `json:"zh_end_ms"`
+	SourceUnionMS   [2]int        `json:"source_union_ms"`
+	NativeTop       bool          `json:"native_top"`
+	ModelKind       string        `json:"model_kind"`
+	ModelLayer      string        `json:"model_layer"`
+	Origin          string        `json:"origin"`
+	RenderedEvents  []LedgerEvent `json:"rendered_events"`
+	CandidateFlags  []string      `json:"candidate_flags"`
+	SemanticVerdict string        `json:"semantic_verdict,omitempty"`
+	SemanticNote    string        `json:"semantic_note,omitempty"`
 }
 
 type LedgerEvent struct {
@@ -319,12 +322,15 @@ func ValidateAndBuildLedger(bundle subtitlellm.Bundle, mapping subtitlellm.Mappi
 
 func main() {
 	dir := flag.String("dir", "", "sample directory")
+	assPath := flag.String("ass", "", "custom path to bilingual.ass (defaults to <dir>/bilingual.ass)")
+	semanticFile := flag.String("semantic-file", "", "path to semantic review JSON file")
+	verifyExpected := flag.Bool("verify-expected", false, "render independent expected ASS and verify delivered bilingual.ass")
 	outMD := flag.String("out-md", "", "markdown ledger output path")
 	outJSON := flag.String("out-json", "", "json ledger output path")
 	flag.Parse()
 
 	if *dir == "" {
-		fmt.Fprintln(os.Stderr, "Usage: review-ledger -dir <sample-dir> [-out-md <path>] [-out-json <path>]")
+		fmt.Fprintln(os.Stderr, "Usage: review-ledger -dir <sample-dir> [-ass <path>] [-semantic-file <path>] [-verify-expected] [-out-md <path>] [-out-json <path>]")
 		os.Exit(1)
 	}
 
@@ -383,6 +389,20 @@ func main() {
 		if err := json.Unmarshal(rawVal, &valReport); err == nil {
 			events = valReport.EventAudit
 		}
+	} else {
+		// Fallback to parsing bilingual.ass directly
+		targetASS := *assPath
+		if targetASS == "" {
+			targetASS = filepath.Join(*dir, "bilingual.ass")
+		}
+		if rawASS, errASS := os.ReadFile(targetASS); errASS == nil {
+			parsedEvents, errParse := ParseDialogueEventsFromASS(string(rawASS), bundle, mapping)
+			if errParse != nil {
+				fmt.Fprintf(os.Stderr, "parse %s: %v\n", targetASS, errParse)
+				os.Exit(1)
+			}
+			events = parsedEvents
+		}
 	}
 
 	ledger, errs := ValidateAndBuildLedger(bundle, mapping, &audit, events)
@@ -392,6 +412,104 @@ func main() {
 			fmt.Fprintf(os.Stderr, "  - %s\n", e)
 		}
 		os.Exit(2)
+	}
+
+	if *semanticFile != "" {
+		var matchedFiles []string
+		for _, part := range strings.Split(*semanticFile, ",") {
+			part = strings.TrimSpace(part)
+			if strings.Contains(part, "*") {
+				matches, errGlob := filepath.Glob(part)
+				if errGlob == nil && len(matches) > 0 {
+					matchedFiles = append(matchedFiles, matches...)
+					continue
+				}
+			}
+			matchedFiles = append(matchedFiles, part)
+		}
+		stats, errSem := InheritSemanticReviews(ledger, bundle, matchedFiles)
+		if errSem != nil {
+			fmt.Fprintf(os.Stderr, "inherit semantic reviews: %v\n", errSem)
+		} else {
+			fmt.Printf("Semantic review inheritance: %d/%d inherited, %d unreviewed, %d flagged\n",
+				stats.InheritedCount, stats.TotalEntries, stats.UnreviewedCount, stats.FlaggedCount)
+		}
+	}
+
+	if *verifyExpected {
+		targetASS := *assPath
+		if targetASS == "" {
+			targetASS = filepath.Join(*dir, "bilingual.ass")
+		}
+		rawActualASS, errRead := os.ReadFile(targetASS)
+		if errRead != nil {
+			fmt.Fprintf(os.Stderr, "cannot read delivered ASS for expected verification: %v\n", errRead)
+			os.Exit(1)
+		}
+
+		var llmCfg config.LLMConfig
+		width, height := 1920, 1080
+		if rawSettings, err := os.ReadFile(filepath.Join(*dir, "render-settings.json")); err == nil {
+			var settings struct {
+				Width  int `json:"width"`
+				Height int `json:"height"`
+				LLM    struct {
+					EnChars   int `json:"en_chars"`
+					ZhChars   int `json:"zh_chars"`
+					EnGapMS   int `json:"en_gap_ms"`
+					ZhGapMS   int `json:"zh_gap_ms"`
+					SpanMS    int `json:"span_ms"`
+					FillGapMS int `json:"fill_gap_ms"`
+				} `json:"llm"`
+				config.LLMConfig
+			}
+			if err := json.Unmarshal(rawSettings, &settings); err == nil {
+				if settings.Width > 0 {
+					width = settings.Width
+				}
+				if settings.Height > 0 {
+					height = settings.Height
+				}
+				if settings.LLM.EnChars > 0 {
+					llmCfg = config.LLMConfig{
+						EnChars:   settings.LLM.EnChars,
+						ZhChars:   settings.LLM.ZhChars,
+						EnGapMS:   settings.LLM.EnGapMS,
+						ZhGapMS:   settings.LLM.ZhGapMS,
+						SpanMS:    settings.LLM.SpanMS,
+						FillGapMS: settings.LLM.FillGapMS,
+					}
+				} else {
+					llmCfg = settings.LLMConfig
+				}
+			}
+		}
+
+		var style config.ASSStyleConfig
+		if rawStyle, err := os.ReadFile(filepath.Join(*dir, "delivered-style.json")); err == nil {
+			_ = json.Unmarshal(rawStyle, &style)
+		}
+
+		var words subtitlellm.WordTimings
+		if rawWords, err := os.ReadFile(filepath.Join(*dir, "word-timings.json")); err == nil {
+			_ = json.Unmarshal(rawWords, &words)
+		}
+
+		expectedData, errRender := subtitlellm.RenderWithWordTimings(bundle, mapping, llmCfg, style, width, height, words)
+		if errRender != nil {
+			fmt.Fprintf(os.Stderr, "render expected ASS: %v\n", errRender)
+			os.Exit(1)
+		}
+
+		failures, errVer := VerifyActualASSAgainstExpected(rawActualASS, expectedData)
+		if errVer != nil || len(failures) > 0 {
+			fmt.Fprintf(os.Stderr, "Delivered ASS failed independent expected verification (%d failures):\n", len(failures))
+			for _, f := range failures {
+				fmt.Fprintf(os.Stderr, "  - %s\n", f)
+			}
+			os.Exit(3)
+		}
+		fmt.Printf("Delivered ASS verified successfully against independent expected render\n")
 	}
 
 	fmt.Printf("Ledger validation passed: %d groups, %d rendered events\n", len(ledger), len(events))
@@ -413,8 +531,8 @@ func main() {
 		var sb strings.Builder
 		sb.WriteString("# 逐组审查紧凑账目 (Review Ledger)\n\n")
 		sb.WriteString("注：本账目连接原始模型分类、映射组与实际 ASS 渲染事件，供独立全量语义审查；不作语义通过特判。\n\n")
-		sb.WriteString("| 组ID | 源EN:ZH | 原文(分行数) | 原时间并集 | 模型kind/layer | 实际输出事件(位置/样式) | 审查候选标记 |\n")
-		sb.WriteString("| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
+		sb.WriteString("| 组ID | 源EN:ZH | 原文(分行数) | 原时间并集 | 模型kind/layer | 实际输出事件(位置/样式) | 审查候选标记 | 语义状态 |\n")
+		sb.WriteString("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
 
 		for _, e := range ledger {
 			srcCues := fmt.Sprintf("EN%v : ZH%v", e.ENIDs, e.ZHIDs)
@@ -438,8 +556,15 @@ func main() {
 				flagsStr = "-"
 			}
 
-			fmt.Fprintf(&sb, "| %d | %s | %s | %s | %s | %s | %s |\n",
-				e.GroupID, srcCues, texts, timeRange, modelMeta, outStr, flagsStr)
+			semanticStr := e.SemanticVerdict
+			if semanticStr == "" {
+				semanticStr = "未审"
+			} else if e.SemanticNote != "" {
+				semanticStr = fmt.Sprintf("%s (%s)", semanticStr, e.SemanticNote)
+			}
+
+			fmt.Fprintf(&sb, "| %d | %s | %s | %s | %s | %s | %s | %s |\n",
+				e.GroupID, srcCues, texts, timeRange, modelMeta, outStr, flagsStr, semanticStr)
 		}
 
 		if err := os.WriteFile(*outMD, []byte(sb.String()), 0644); err != nil {
