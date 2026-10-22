@@ -712,7 +712,8 @@ func TestTopTemporal_MultiSpeakerTopProtected(t *testing.T) {
 
 // TestTopTemporal_EnhancedE01_DetailedAudit audits the real official baseline
 // fixture terminal-list-s02e01-gpt61-enhanced (506 groups, 3840x1632) in read-only
-// mode, explicitly checking 1-based groups 101, 102, 103, 106, 107, 119, 121, 128.
+// mode, explicitly checking 0-based groupIndex 101, 102, 103, 106, 107, 119,
+// 121, 128, plus the bottom control group 300 and top on-screen text group 323.
 //
 // This test runs only when FUSIONN_ENHANCED_RECORD_DIR is explicitly set.
 func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
@@ -1097,13 +1098,14 @@ func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
 	}
 
 	// Global parity assertion:
-	// Verify that all changes strictly fall within the permitted windows of the decoupled top groups:
-	// Cluster 1: [484570..500330] -> Groups 101, 102, 103
-	// Cluster 2: [506550..518060] -> Groups 106, 107
-	// Cluster 3: [559480..565110] -> Group 119
-	// Cluster 4: [565110..568400] -> Group 121
-	// Cluster 5: [584000..589670] -> Group 128
-	// Cluster 6: [2047710..2051550] -> Group 323
+	// All changes must fall inside the permitted windows of the decoupled top groups.
+	// Each window is a top (or top-migrated) group whose temporal planning was unblocked:
+	//   [484570..500330]  groups 101, 102, 103   (delivered 6 -> new 8, +2)
+	//   [506550..518060]  groups 106, 107         (delivered 4 -> new 5, +1)
+	//   [559480..565110]  group  119              (delivered 2 -> new 3, +1)
+	//   [565110..568400]  group  121              (delivered 2 -> new 2,  0)
+	//   [584000..589670]  group  128              (delivered 2 -> new 2,  0)
+	//   [2047710..2051550] group 323              (delivered 1 -> new 2, +1)
 	permittedWindows := [][2]int{
 		{484570, 500330},
 		{506550, 518060},
@@ -1112,19 +1114,63 @@ func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
 		{584000, 589670},
 		{2047710, 2051550},
 	}
-	isPermitted := func(start, end int) bool {
-		for _, w := range permittedWindows {
+	// Per-window expected (delivered, new) event tallies: every changed event must be
+	// attributed to one of these windows, and the tally must close exactly.
+	wantPerWindow := [][2]int{
+		{6, 8},
+		{4, 5},
+		{2, 3},
+		{2, 2},
+		{2, 2},
+		{1, 2},
+	}
+	windowOf := func(start, end int) int {
+		for i, w := range permittedWindows {
 			if start >= w[0]-100 && end <= w[1]+100 {
-				return true
+				return i
 			}
 		}
-		return false
+		return -1
+	}
+
+	// Group 331 is a bottom-layer model dialogue whose rendered placement is decided by
+	// the pre-existing bidirectional migration rule, not by this change. It must be
+	// untouched: assert that every delivered event in its span is reproduced byte-for-byte.
+	{
+		const g331Lo, g331Hi = 2106230, 2110441
+		var del331, new331 []dialogue
+		for _, e := range deliveredEvents {
+			if e.start >= g331Lo && e.end <= g331Hi {
+				del331 = append(del331, e)
+			}
+		}
+		for _, e := range newEvents {
+			if e.start >= g331Lo && e.end <= g331Hi {
+				new331 = append(new331, e)
+			}
+		}
+		if len(del331) == 0 {
+			t.Fatalf("group 331 span has no delivered events to compare")
+		}
+		if len(del331) != len(new331) {
+			t.Fatalf("group 331 span event count changed: %d -> %d", len(del331), len(new331))
+		}
+		for i := range del331 {
+			if del331[i].start != new331[i].start || del331[i].end != new331[i].end ||
+				del331[i].style != new331[i].style || del331[i].text != new331[i].text {
+				t.Errorf("group 331 span ev[%d] changed:\n  del: [%d..%d] %s\n  new: [%d..%d] %s",
+					i, del331[i].start, del331[i].end, del331[i].text,
+					new331[i].start, new331[i].end, new331[i].text)
+			}
+		}
 	}
 
 	dI, nI := 0, 0
 	matchedCount := 0
 	deliveredDiffCount := 0
 	newDiffCount := 0
+	deliveredPerWindow := make([]int, len(permittedWindows))
+	newPerWindow := make([]int, len(permittedWindows))
 
 	for dI < len(deliveredEvents) || nI < len(newEvents) {
 		if dI < len(deliveredEvents) && nI < len(newEvents) {
@@ -1149,31 +1195,39 @@ func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
 
 		if dTime < nTime {
 			d := deliveredEvents[dI]
-			if !isPermitted(d.start, d.end) {
-				t.Fatalf("unpermitted change in delivered event at [%d..%d] %s: %s",
+			wi := windowOf(d.start, d.end)
+			if wi < 0 {
+				t.Fatalf("unattributable change in delivered event at [%d..%d] %s: %s",
 					d.start, d.end, d.style, d.text)
 			}
+			deliveredPerWindow[wi]++
 			deliveredDiffCount++
 			dI++
 		} else if nTime < dTime {
 			n := newEvents[nI]
-			if !isPermitted(n.start, n.end) {
-				t.Fatalf("unpermitted change in new event at [%d..%d] %s: %s",
+			wi := windowOf(n.start, n.end)
+			if wi < 0 {
+				t.Fatalf("unattributable change in new event at [%d..%d] %s: %s",
 					n.start, n.end, n.style, n.text)
 			}
+			newPerWindow[wi]++
 			newDiffCount++
 			nI++
 		} else {
 			d := deliveredEvents[dI]
 			n := newEvents[nI]
-			if !isPermitted(d.start, d.end) {
-				t.Fatalf("unpermitted change in delivered event at [%d..%d] %s: %s",
+			wi := windowOf(d.start, d.end)
+			if wi < 0 {
+				t.Fatalf("unattributable change in delivered event at [%d..%d] %s: %s",
 					d.start, d.end, d.style, d.text)
 			}
-			if !isPermitted(n.start, n.end) {
-				t.Fatalf("unpermitted change in new event at [%d..%d] %s: %s",
+			wj := windowOf(n.start, n.end)
+			if wj < 0 {
+				t.Fatalf("unattributable change in new event at [%d..%d] %s: %s",
 					n.start, n.end, n.style, n.text)
 			}
+			deliveredPerWindow[wi]++
+			newPerWindow[wj]++
 			deliveredDiffCount++
 			newDiffCount++
 			dI++
@@ -1189,6 +1243,18 @@ func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
 	}
 	if newDiffCount != 22 {
 		t.Errorf("new events in diff clusters = %d, want 22", newDiffCount)
+	}
+	for i := range permittedWindows {
+		if deliveredPerWindow[i] != wantPerWindow[i][0] {
+			t.Errorf("window [%d..%d]: delivered changed events = %d, want %d",
+				permittedWindows[i][0], permittedWindows[i][1],
+				deliveredPerWindow[i], wantPerWindow[i][0])
+		}
+		if newPerWindow[i] != wantPerWindow[i][1] {
+			t.Errorf("window [%d..%d]: new changed events = %d, want %d",
+				permittedWindows[i][0], permittedWindows[i][1],
+				newPerWindow[i], wantPerWindow[i][1])
+		}
 	}
 }
 
