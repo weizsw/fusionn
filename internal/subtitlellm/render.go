@@ -52,6 +52,7 @@ type block struct {
 	zhText      *string
 	zhFlattened bool
 	enFlattened bool
+	isLyric     bool
 }
 
 // Render produces bilingual ASS from an immutable source bundle and ID mapping.
@@ -363,6 +364,64 @@ func verifySourceCoverage(blocks []block, en, zh map[int]Cue) error {
 	return nil
 }
 
+func hasMusicSymbol(text string) bool {
+	return strings.ContainsAny(text, "♪♫")
+}
+
+func cueAllLinesAreLyrics(cue Cue) bool {
+	lines := sourceLines(cue.Plain)
+	if len(lines) == 0 {
+		return false
+	}
+	hasAny := false
+	for _, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if trimmed == "" {
+			continue
+		}
+		if !hasMusicSymbol(trimmed) {
+			return false
+		}
+		hasAny = true
+	}
+	return hasAny
+}
+
+func cuesAreLyrics(cues []Cue) bool {
+	if len(cues) == 0 {
+		return false
+	}
+	for _, cue := range cues {
+		if !cueAllLinesAreLyrics(cue) {
+			return false
+		}
+	}
+	return true
+}
+
+func cueIsMixedLyric(cue Cue) (lyricLines, spokenLines []string, isMixed bool) {
+	lines := sourceLines(cue.Plain)
+	if len(lines) <= 1 {
+		return nil, nil, false
+	}
+	var lyrics, spoken []string
+	for _, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if trimmed == "" {
+			continue
+		}
+		if hasMusicSymbol(trimmed) {
+			lyrics = append(lyrics, l)
+		} else {
+			spoken = append(spoken, l)
+		}
+	}
+	if len(lyrics) > 0 && len(spoken) > 0 {
+		return lyrics, spoken, true
+	}
+	return nil, nil, false
+}
+
 // buildBlocks anchors groups to English timing. Short text can stay joined;
 // longer Chinese groups reuse source internal cuts instead of a full hold.
 func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []block {
@@ -386,6 +445,11 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 				top = true
 			}
 		}
+		groupIsLyric := false
+		if (len(es) > 0 && cuesAreLyrics(es)) || (len(zs) > 0 && cuesAreLyrics(zs)) {
+			groupIsLyric = true
+			top = true
+		}
 		native := anchor
 		for _, cue := range append(append([]Cue{}, es...), zs...) {
 			if cue.Position != nil || cue.Alignment != 2 {
@@ -404,16 +468,27 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 				enIDs: cueIDs(ee), zhIDs: cueIDs(zz), group: groupIndex,
 				strategy: strategy, top: top, sourceTop: sourceTop,
 				alignment: alignment, position: native.Position,
+				isLyric: groupIsLyric,
 			}
 		}
 		oneSided := func(cue Cue, isEN bool) block {
 			ee, zz := []Cue{}, []Cue{}
+			cueLyric := hasMusicSymbol(cue.Plain)
+			cueTop := top || cueLyric
+			cueAlign := alignment
+			if cueTop && cueAlign < 7 {
+				cueAlign = 8
+			}
 			if isEN {
 				ee = append(ee, cue)
 			} else {
 				zz = append(zz, cue)
 			}
-			return makeBlock(cue.Start, cue.End, ee, zz, strategyOneSided)
+			b := makeBlock(cue.Start, cue.End, ee, zz, strategyOneSided)
+			b.top = cueTop
+			b.alignment = cueAlign
+			b.isLyric = cueLyric
+			return b
 		}
 
 		if len(es) == 0 || len(zs) == 0 {
@@ -426,6 +501,86 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 			continue
 		}
 		if len(es) == 1 && len(zs) == 1 {
+			if lyrics, spoken, isMixed := cueIsMixedLyric(es[0]); isMixed && !hasMusicSymbol(zs[0].Plain) && zs[0].Start > es[0].Start {
+				lyricText := strings.Join(lyrics, "\n")
+				spokenText := strings.Join(spoken, "\n")
+				zhText := zs[0].Plain
+
+				lyricBlock := block{
+					start:       es[0].Start,
+					end:         es[0].End,
+					enIDs:       []int{es[0].ID},
+					zhIDs:       nil,
+					group:       groupIndex,
+					strategy:    strategyOneToOne,
+					top:         true,
+					sourceTop:   sourceTop,
+					alignment:   8,
+					position:    native.Position,
+					enText:      &lyricText,
+					enFlattened: true,
+					isLyric:     true,
+				}
+				spokenBlock := block{
+					start:       zs[0].Start,
+					end:         es[0].End,
+					enIDs:       []int{es[0].ID},
+					zhIDs:       []int{zs[0].ID},
+					group:       groupIndex,
+					strategy:    strategyOneToOne,
+					top:         false,
+					sourceTop:   sourceTop,
+					alignment:   2,
+					position:    native.Position,
+					enText:      &spokenText,
+					zhText:      &zhText,
+					enFlattened: true,
+					zhFlattened: true,
+					isLyric:     false,
+				}
+				result = append(result, lyricBlock, spokenBlock)
+				continue
+			}
+			if lyrics, spoken, isMixed := cueIsMixedLyric(zs[0]); isMixed && !hasMusicSymbol(es[0].Plain) && es[0].Start > zs[0].Start {
+				lyricText := strings.Join(lyrics, "\n")
+				spokenText := strings.Join(spoken, "\n")
+				enText := es[0].Plain
+
+				lyricBlock := block{
+					start:       zs[0].Start,
+					end:         zs[0].End,
+					enIDs:       nil,
+					zhIDs:       []int{zs[0].ID},
+					group:       groupIndex,
+					strategy:    strategyOneToOne,
+					top:         true,
+					sourceTop:   sourceTop,
+					alignment:   8,
+					position:    native.Position,
+					zhText:      &lyricText,
+					zhFlattened: true,
+					isLyric:     true,
+				}
+				spokenBlock := block{
+					start:       es[0].Start,
+					end:         zs[0].End,
+					enIDs:       []int{es[0].ID},
+					zhIDs:       []int{zs[0].ID},
+					group:       groupIndex,
+					strategy:    strategyOneToOne,
+					top:         false,
+					sourceTop:   sourceTop,
+					alignment:   2,
+					position:    native.Position,
+					enText:      &enText,
+					zhText:      &spokenText,
+					enFlattened: true,
+					zhFlattened: true,
+					isLyric:     false,
+				}
+				result = append(result, lyricBlock, spokenBlock)
+				continue
+			}
 			result = append(result, makeBlock(es[0].Start, es[0].End, es, zs, strategyOneToOne))
 			continue
 		}
@@ -434,6 +589,14 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 		zhJoinable := joinable(zs, cfg.ZhChars, cfg.ZhGapMS, 0)
 		if (len(es) == 1 || len(zs) == 1) && enJoinable && zhJoinable {
 			result = append(result, makeBlock(es[0].Start, maxEnd(es), es, zs, strategyShortJoin))
+			continue
+		}
+		if len(zs) == 1 && zs[0].MultiSpeaker && enJoinable {
+			result = append(result, makeBlock(es[0].Start, maxEnd(es), es, zs, strategyShortJoin))
+			continue
+		}
+		if len(es) == 1 && es[0].MultiSpeaker && zhJoinable {
+			result = append(result, makeBlock(es[0].Start, es[0].End, es, zs, strategyShortJoin))
 			continue
 		}
 		if len(es) == 1 {
@@ -479,9 +642,84 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 		if len(zs) > 1 && !zhJoinable && !top {
 			slices = splitChineseSources(slices, zs)
 		}
+		slices = mergeDialogueCounterpartSlices(slices, en, zh, cfg)
 		result = append(result, slices...)
 	}
 	return result
+}
+
+func mergeDialogueCounterpartSlices(slices []block, en, zh map[int]Cue, cfg config.LLMConfig) []block {
+	if len(slices) <= 1 {
+		return slices
+	}
+	var out []block
+	i := 0
+	for i < len(slices) {
+		b := slices[i]
+		if len(b.zhIDs) == 1 {
+			zcue := zh[b.zhIDs[0]]
+			if zcue.MultiSpeaker {
+				j := i + 1
+				candidateEN := cuesFor(en, b.enIDs)
+				for j < len(slices) {
+					next := slices[j]
+					if len(next.zhIDs) != 1 || next.zhIDs[0] != b.zhIDs[0] {
+						break
+					}
+					nextEN := cuesFor(en, next.enIDs)
+					combinedEN := append(append([]Cue(nil), candidateEN...), nextEN...)
+					if !joinable(combinedEN, cfg.EnChars, cfg.EnGapMS, cfg.SpanMS) {
+						break
+					}
+					candidateEN = combinedEN
+					j++
+				}
+				if j > i+1 {
+					merged := b
+					merged.start = candidateEN[0].Start
+					merged.end = candidateEN[len(candidateEN)-1].End
+					merged.enIDs = cueIDs(candidateEN)
+					merged.strategy = strategyShortJoin
+					out = append(out, merged)
+					i = j
+					continue
+				}
+			}
+		}
+		if len(b.enIDs) == 1 {
+			ecue := en[b.enIDs[0]]
+			if ecue.MultiSpeaker {
+				j := i + 1
+				candidateZH := cuesFor(zh, b.zhIDs)
+				for j < len(slices) {
+					next := slices[j]
+					if len(next.enIDs) != 1 || next.enIDs[0] != b.enIDs[0] {
+						break
+					}
+					nextZH := cuesFor(zh, next.zhIDs)
+					combinedZH := append(append([]Cue(nil), candidateZH...), nextZH...)
+					if !joinable(combinedZH, cfg.ZhChars, cfg.ZhGapMS, 0) {
+						break
+					}
+					candidateZH = combinedZH
+					j++
+				}
+				if j > i+1 {
+					merged := b
+					merged.start = candidateZH[0].Start
+					merged.end = candidateZH[len(candidateZH)-1].End
+					merged.zhIDs = cueIDs(candidateZH)
+					merged.strategy = strategyShortJoin
+					out = append(out, merged)
+					i = j
+					continue
+				}
+			}
+		}
+		out = append(out, b)
+		i++
+	}
+	return out
 }
 
 func cuesFor(index map[int]Cue, ids []int) []Cue {
@@ -536,7 +774,7 @@ func joinable(cues []Cue, limit, gap, span int) bool {
 			}
 		}
 		total += len([]rune(cue.Display))
-		if cue.MultiSpeaker {
+		if len(cues) > 1 && cue.MultiSpeaker {
 			return false
 		}
 	}
@@ -809,7 +1047,7 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 			bStart := roundCentiseconds(b.start)
 			bEnd := roundCentiseconds(b.end)
 			for _, other := range blocks {
-				if isOnScreenText(other) || other.top != nativeSide {
+				if isOnScreenText(other) || (other.isLyric && !other.sourceTop) || other.top != nativeSide {
 					continue
 				}
 				oStart := roundCentiseconds(other.start)
@@ -867,6 +1105,36 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 					blocks[idx].alignment = 2
 				}
 			}
+		}
+	}
+
+	// Pass 1.5: Lyric top collision avoidance.
+	for i := range blocks {
+		b := &blocks[i]
+		if !b.isLyric || b.sourceTop || !b.top {
+			continue
+		}
+		bStart := roundCentiseconds(b.start)
+		bEnd := roundCentiseconds(b.end)
+		topOccupied := false
+		for j := range blocks {
+			if i == j {
+				continue
+			}
+			other := blocks[j]
+			if !other.top || (other.isLyric && !other.sourceTop) {
+				continue
+			}
+			oStart := roundCentiseconds(other.start)
+			oEnd := roundCentiseconds(other.end)
+			if max(bStart, oStart) < min(bEnd, oEnd) {
+				topOccupied = true
+				break
+			}
+		}
+		if topOccupied {
+			b.top = false
+			b.alignment = 2
 		}
 	}
 

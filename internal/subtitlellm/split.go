@@ -187,6 +187,9 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 	plans := func(index map[int]Cue, english bool) map[string]*displayPlan {
 		result := map[string]*displayPlan{}
 		for _, b := range remaining {
+			if b.enText != nil || b.zhText != nil {
+				continue
+			}
 			ids, separator := b.zhIDs, "　"
 			if english {
 				ids, separator = b.enIDs, " "
@@ -262,6 +265,10 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 	var result []block
 	result = append(result, syncSplitResult...)
 	for _, b := range remaining {
+		if b.enText != nil || b.zhText != nil {
+			result = append(result, b)
+			continue
+		}
 		ep, zp := enPlans[displayKey(b.group, b.enIDs)], zhPlans[displayKey(b.group, b.zhIDs)]
 		if (ep == nil || len(ep.pieces) == 1) && (zp == nil || len(zp.pieces) == 1) {
 			result = append(result, b)
