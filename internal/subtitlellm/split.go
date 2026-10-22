@@ -184,14 +184,6 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 		remaining = append(remaining, b)
 	}
 
-	protected := map[int]bool{}
-	for _, b := range remaining {
-		for _, cue := range append(cuesFor(en, b.enIDs), cuesFor(zh, b.zhIDs)...) {
-			if cue.MultiSpeaker {
-				protected[b.group] = true
-			}
-		}
-	}
 	plans := func(index map[int]Cue, english bool) map[string]*displayPlan {
 		result := map[string]*displayPlan{}
 		for _, b := range remaining {
@@ -206,7 +198,13 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 			p := result[key]
 			if p == nil {
 				text := joinCues(index, ids, separator)
-				isProtected := protected[b.group] || b.top
+				isProtected := b.top
+				for _, cue := range cuesFor(index, ids) {
+					if cue.MultiSpeaker {
+						isProtected = true
+						break
+					}
+				}
 				if b.strategy == strategyOneToOne && len(b.enIDs) == 1 && len(b.zhIDs) == 1 {
 					enCue, zhCue := en[b.enIDs[0]], zh[b.zhIDs[0]]
 					if !enCue.MultiSpeaker && !zhCue.MultiSpeaker && !b.top {

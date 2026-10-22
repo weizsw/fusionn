@@ -476,11 +476,7 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 			}
 			slices = append(slices, makeBlock(cue.Start, end, []Cue{cue}, zs, strategy))
 		}
-		multi := false
-		for _, cue := range append(append([]Cue{}, es...), zs...) {
-			multi = multi || cue.MultiSpeaker
-		}
-		if len(zs) > 1 && !zhJoinable && !multi && !top {
+		if len(zs) > 1 && !zhJoinable && !top {
 			slices = splitChineseSources(slices, zs)
 		}
 		result = append(result, slices...)
