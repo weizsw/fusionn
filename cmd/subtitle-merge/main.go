@@ -122,6 +122,9 @@ func execute(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if len(audit.FailedWindows) > 0 {
+		fmt.Fprintf(os.Stderr, "Warning: LLM alignment partially failed (%d windows); fell back to native timing and cue order for failed windows\n", len(audit.FailedWindows))
+	}
 	words, wordErr := subtitlellm.AlignWords(ctx, *video, bundle, cfg.Subtitle.LLM)
 	if err := ctx.Err(); err != nil {
 		return err
@@ -152,6 +155,10 @@ func execute(ctx context.Context) error {
 			return err
 		}
 	}
-	fmt.Printf("ASS: %s (LLM HTTP requests: %d, cache hits: %d, word timing results: %d)\n", filepath.Join(*out, "bilingual.ass"), audit.HTTPAttempts, audit.CacheHits, len(words))
+	statusNote := ""
+	if len(audit.FailedWindows) > 0 {
+		statusNote = fmt.Sprintf(", fallback_windows: %d", len(audit.FailedWindows))
+	}
+	fmt.Printf("ASS: %s (LLM HTTP requests: %d, cache hits: %d, word timing results: %d%s)\n", filepath.Join(*out, "bilingual.ass"), audit.HTTPAttempts, audit.CacheHits, len(words), statusNote)
 	return nil
 }

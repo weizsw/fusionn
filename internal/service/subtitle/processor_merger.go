@@ -33,6 +33,10 @@ const (
 	MetadataLLMMappingPath = "llm_mapping_path"
 	MetadataLLMAuditPath   = "llm_audit_path"
 	MetadataLLMSourcesPath = "llm_sources_path"
+
+	MetadataLLMDegraded       = "llm_degraded"
+	MetadataLLMFailedWindows  = "llm_failed_windows"
+	MetadataLLMWindowFailures = "llm_window_failures"
 )
 
 // MergerProcessor merges English and Chinese subtitles with the configured
@@ -193,7 +197,9 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 		return err
 	}
 
-	p.persistLLMArtifacts(pctx, outputDir, bundle, mapping, audit)
+	if err := p.persistLLMArtifacts(pctx, outputDir, bundle, mapping, audit); err != nil {
+		return fmt.Errorf("persist alignment artifacts: %w", err)
+	}
 	p.logLLMAudit(audit)
 
 	if alignErr != nil {
@@ -201,6 +207,16 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 			return alignErr
 		}
 		return fmt.Errorf("llm alignment failed: %w", alignErr)
+	}
+	if len(audit.FailedWindows) > 0 {
+		log.Warnf("LLM alignment partially failed (%d windows); fell back to native timing and cue order for failed windows", len(audit.FailedWindows))
+		if pctx.Metadata != nil {
+			pctx.Metadata[MetadataLLMDegraded] = true
+			pctx.Metadata[MetadataLLMFailedWindows] = audit.FailedWindows
+			if len(audit.WindowFailures) > 0 {
+				pctx.Metadata[MetadataLLMWindowFailures] = audit.WindowFailures
+			}
+		}
 	}
 	// Context cancellation can race a fully cached alignment; never render
 	// after the caller has cancelled the job.
@@ -326,9 +342,9 @@ func (p *MergerProcessor) videoDimensions(ctx context.Context, videoPath string)
 // directly through subtitle.llm.mapping_path. A configured cache_dir is the
 // persistent, merge-isolation-safe location; without one the diagnostics go to
 // the isolated merge directory for this run.
-func (p *MergerProcessor) persistLLMArtifacts(pctx *ProcessingContext, outputDir string, bundle subtitlellm.Bundle, mapping subtitlellm.Mapping, audit subtitlellm.Audit) {
+func (p *MergerProcessor) persistLLMArtifacts(pctx *ProcessingContext, outputDir string, bundle subtitlellm.Bundle, mapping subtitlellm.Mapping, audit subtitlellm.Audit) error {
 	if !p.llmConfig.CacheEnabled || mapping.Fingerprint == "" {
-		return
+		return nil
 	}
 	log := logger.Indent()
 
@@ -350,8 +366,7 @@ func (p *MergerProcessor) persistLLMArtifacts(pctx *ProcessingContext, outputDir
 	}
 	for _, artifact := range paths {
 		if err := writeJSONFile(artifact.path, artifact.value); err != nil {
-			log.Warnf("Failed to save LLM %s artifact %s: %v", artifact.name, artifact.path, err)
-			continue
+			return fmt.Errorf("save LLM %s artifact %s: %w", artifact.name, artifact.path, err)
 		}
 		if pctx.Metadata == nil {
 			pctx.Metadata = make(map[string]interface{})
@@ -359,6 +374,7 @@ func (p *MergerProcessor) persistLLMArtifacts(pctx *ProcessingContext, outputDir
 		pctx.Metadata[artifact.key] = artifact.path
 	}
 	log.Infof("Saved LLM alignment artifacts to %s", artifactRoot)
+	return nil
 }
 
 // artifactID names one artifact directory. The suffix is deterministic from
@@ -408,6 +424,12 @@ func (p *MergerProcessor) logLLMAudit(audit subtitlellm.Audit) {
 	log.Infof("LLM alignment audit: rejected=%d conflicts=%d restored_en=%d restored_zh=%d context_duplicates=%d failed_windows=%d cache_hits=%d",
 		len(audit.Rejected), len(audit.Conflicts), len(audit.Restored["en"]), len(audit.Restored["zh"]),
 		audit.ContextDuplicates, len(audit.FailedWindows), audit.CacheHits)
+	if len(audit.FailedWindows) > 0 {
+		log.Warnf("LLM alignment degraded: native timing fallback used for %d windows", len(audit.FailedWindows))
+		for _, f := range audit.WindowFailures {
+			log.Warnf("LLM window %d failure reason: %s", f.Window, f.Reason)
+		}
+	}
 	if audit.Provenance != nil {
 		log.Infof("LLM mapping provenance: source=%s mapping_path=%s mapping_model=%s configured_model=%s model_mismatch=%v",
 			audit.Provenance.Source, audit.Provenance.MappingPath, audit.Provenance.MappingModel,
