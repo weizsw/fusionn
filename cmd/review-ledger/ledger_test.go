@@ -256,3 +256,153 @@ func TestLedgerValidation_PositiveRealSample(t *testing.T) {
 	}
 	t.Logf("real sample validated: %d groups, %d rendered events", len(ledger), len(valReport.EventAudit))
 }
+
+func TestParseDialogueEventsFromASS_TDD(t *testing.T) {
+	bundle := makeTestBundle()
+	mapping := makeTestMapping()
+
+	sampleASS := `[Script Info]
+Title: Test
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,PingFang SC,80,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,1.4,1.5,2,50,50,19,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.00,0:00:02.05,Default,,0,0,0,,{\an2}Hello world\N你好世界这是一段非常长的中文测试内容用于检查UTF8安全截断
+Dialogue: 0,0:00:02.50,0:00:03.50,Default,,0,0,0,,{\an2}Second line\nwith break\N第二行含有换行\n以及竖线|测试
+`
+
+	events, err := ParseDialogueEventsFromASS(sampleASS, bundle, mapping)
+	if err != nil {
+		t.Fatalf("ParseDialogueEventsFromASS failed: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 parsed events, got %d", len(events))
+	}
+
+	if events[0].GroupIndex != 0 || events[0].StartMS != 1000 || events[0].EndMS != 2050 || events[0].Alignment != 2 {
+		t.Errorf("unexpected event 0: %+v", events[0])
+	}
+	if len(events[0].ENIDs) != 1 || events[0].ENIDs[0] != 1 || len(events[0].ZHIDs) != 1 || events[0].ZHIDs[0] != 1 {
+		t.Errorf("unexpected IDs for event 0: EN=%v ZH=%v", events[0].ENIDs, events[0].ZHIDs)
+	}
+
+	if events[1].GroupIndex != 1 || events[1].StartMS != 2500 || events[1].EndMS != 3500 {
+		t.Errorf("unexpected event 1: %+v", events[1])
+	}
+
+	// ValidateAndBuildLedger should succeed with these events
+	ledger, errs := ValidateAndBuildLedger(bundle, mapping, nil, events)
+	if len(errs) != 0 {
+		t.Fatalf("ValidateAndBuildLedger with parsed ASS events failed: %v", errs)
+	}
+	if len(ledger) != 2 {
+		t.Fatalf("expected 2 ledger entries, got %d", len(ledger))
+	}
+}
+
+func TestSemanticInheritance_TDD(t *testing.T) {
+	bundle := makeTestBundle()
+	mapping := makeTestMapping()
+	events := makeTestEvents()
+
+	ledger, errs := ValidateAndBuildLedger(bundle, mapping, nil, events)
+	if len(errs) != 0 {
+		t.Fatalf("build ledger: %v", errs)
+	}
+
+	fingerprint := ComputeBundleFingerprint(bundle)
+	if fingerprint == "" {
+		t.Fatalf("ComputeBundleFingerprint returned empty")
+	}
+
+	// Create temporary review file
+	reviewData := []map[string]interface{}{
+		{
+			"fingerprint": fingerprint,
+			"en_ids":      []int{1},
+			"zh_ids":      []int{1},
+			"en_text":     "Hello world",
+			"zh_text":     "你好世界这是一段非常长的中文测试内容用于检查UTF8安全截断",
+			"verdict":     "acceptable",
+			"note":        "verified in prior baseline",
+		},
+		{
+			"fingerprint": fingerprint,
+			"en_ids":      []int{2},
+			"zh_ids":      []int{99}, // Mismatched ZH ID
+			"en_text":     "Second line\nwith break",
+			"zh_text":     "第二行含有换行\n以及竖线|测试",
+			"verdict":     "acceptable",
+		},
+	}
+	rawReview, err := json.Marshal(reviewData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpReviewFile := filepath.Join(t.TempDir(), "semantic-review.json")
+	if err := os.WriteFile(tmpReviewFile, rawReview, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := InheritSemanticReviews(ledger, bundle, []string{tmpReviewFile})
+	if err != nil {
+		t.Fatalf("InheritSemanticReviews failed: %v", err)
+	}
+
+	if stats.InheritedCount != 1 {
+		t.Errorf("expected 1 inherited review, got %d", stats.InheritedCount)
+	}
+	if stats.UnreviewedCount != 1 {
+		t.Errorf("expected 1 unreviewed, got %d", stats.UnreviewedCount)
+	}
+
+	if ledger[0].SemanticVerdict != "acceptable" {
+		t.Errorf("expected group 0 verdict 'acceptable', got %q", ledger[0].SemanticVerdict)
+	}
+	if ledger[1].SemanticVerdict != "unreviewed" {
+		t.Errorf("expected group 1 verdict 'unreviewed', got %q", ledger[1].SemanticVerdict)
+	}
+}
+
+func TestVerifyActualASSAgainstExpected_TDD(t *testing.T) {
+	sampleASS := `[Script Info]
+Title: Test
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,PingFang SC,80,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,1.4,1.5,2,50,50,19,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\an2}Line 1
+Dialogue: 0,0:00:02.50,0:00:03.50,Default,,0,0,0,,{\an2}Line 2
+`
+
+	// Exact match passes
+	failures, err := VerifyActualASSAgainstExpected([]byte(sampleASS), []byte(sampleASS))
+	if err != nil {
+		t.Fatalf("verify error: %v", err)
+	}
+	if len(failures) != 0 {
+		t.Errorf("expected 0 failures for exact match, got: %v", failures)
+	}
+
+	// Mismatched dialogue count fails
+	mismatchedASS := sampleASS + "Dialogue: 0,0:00:04.00,0:00:05.00,Default,,0,0,0,,{\\an2}Extra Line\n"
+	failuresMismatch, errM := VerifyActualASSAgainstExpected([]byte(sampleASS), []byte(mismatchedASS))
+	if errM != nil {
+		t.Fatalf("verify mismatch error: %v", errM)
+	}
+	if len(failuresMismatch) == 0 {
+		t.Errorf("expected failures for count mismatch, got 0")
+	}
+}
