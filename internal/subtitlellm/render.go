@@ -122,7 +122,7 @@ func renderWithAudits(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, s
 }
 
 // renderBaseStyle returns the style used to render events. The renderer always
-// writes the base style names (Default, Eng, Default_1, TopDefault, TopEng)
+// writes the base style names (Default, Eng, TopDefault, TopEng)
 // because events reference them, but custom styling is optional: with
 // ass_style.enabled=false it uses neutral structural defaults instead of the
 // configured fonts, colors and typography. The canvas still comes from the
@@ -1339,7 +1339,6 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 	}
 	writeStyle("Default", style.PrimaryFont, style.PrimarySize, style.PrimaryColor, alignment)
 	writeStyle("Eng", style.SecondaryFont, style.SecondarySize, style.SecondaryColor, alignment)
-	writeStyle("Default_1", style.SecondaryFont, style.SecondarySize, style.SecondaryColor, alignment)
 	writeStyle("TopDefault", style.PrimaryFont, style.PrimarySize, style.PrimaryColor, topAlignment)
 	writeStyle("TopEng", style.SecondaryFont, style.SecondarySize, style.SecondaryColor, topAlignment)
 	w.sb.WriteString("\n[Events]\n")
