@@ -406,13 +406,210 @@ func TestVerifyDeliveredASSAgainstExpected_WordTimingEvidence_Gap3(t *testing.T)
 	})
 }
 
-// TestValidateTerminalListGPT61EnhancedArtifacts loads the generated artifacts from
-// the live GPT-6.1 enhanced run, validates bilingual.ass against an independently
-// rendered expected ASS, and outputs validation.json for the review-ledger tool.
-func TestValidateTerminalListGPT61EnhancedArtifacts(t *testing.T) {
-	sampleDir := "/Users/maverick/Desktop/fusionn-subtitle-split-test/terminal-list-s02e01-gpt61-enhanced"
-	if _, err := os.Stat(filepath.Join(sampleDir, "bilingual.ass")); err != nil {
-		t.Skip("sample directory not present, skipping")
+// TestCountVisibleLines_Equivalence_TDD verifies that countVisibleLines treats real LF (\n),
+// real CRLF (\r\n), ASS hard newline (\N), and ASS soft newline (\n) as equivalent line separators,
+// and correctly reports multi-line dialogue counts for known fixtures (e.g. EN 396 and ZH 125).
+func TestCountVisibleLines_Equivalence_TDD(t *testing.T) {
+	t.Run("Equivalence of newline representations", func(t *testing.T) {
+		line1 := "First line of dialogue"
+		line2 := "Second line of dialogue"
+
+		textRealLF := line1 + "\n" + line2
+		textRealCRLF := line1 + "\r\n" + line2
+		textASSHard := line1 + `\N` + line2
+		textASSSoft := line1 + `\n` + line2
+
+		countLF := countVisibleLines(textRealLF)
+		countCRLF := countVisibleLines(textRealCRLF)
+		countASSHard := countVisibleLines(textASSHard)
+		countASSSoft := countVisibleLines(textASSSoft)
+
+		if countLF != 2 {
+			t.Errorf("expected countLF == 2, got %d", countLF)
+		}
+		if countCRLF != 2 {
+			t.Errorf("expected countCRLF == 2, got %d", countCRLF)
+		}
+		if countASSHard != 2 {
+			t.Errorf("expected countASSHard == 2, got %d", countASSHard)
+		}
+		if countASSSoft != 2 {
+			t.Errorf("expected countASSSoft == 2, got %d", countASSSoft)
+		}
+	})
+
+	t.Run("Known multi-line fixtures EN 396 and ZH 125", func(t *testing.T) {
+		// EN 396 two-person dialogue
+		en396Plain := "- Why is this time different?\n- The presence of General Alexander"
+		en396ASS := `- Why is this time different?\N- The presence of General Alexander`
+		if cnt := countVisibleLines(en396Plain); cnt != 2 {
+			t.Errorf("en396Plain: expected 2 lines, got %d", cnt)
+		}
+		if cnt := countVisibleLines(en396ASS); cnt != 2 {
+			t.Errorf("en396ASS: expected 2 lines, got %d", cnt)
+		}
+
+		// ZH 125 two-person dialogue
+		zh125Plain := "- 我们不太了解阿尔-纳瓦兹…\n- 不"
+		zh125ASS := `- 我们不太了解阿尔-纳瓦兹…\N- 不`
+		if cnt := countVisibleLines(zh125Plain); cnt != 2 {
+			t.Errorf("zh125Plain: expected 2 lines, got %d", cnt)
+		}
+		if cnt := countVisibleLines(zh125ASS); cnt != 2 {
+			t.Errorf("zh125ASS: expected 2 lines, got %d", cnt)
+		}
+	})
+
+	t.Run("Negative and edge cases", func(t *testing.T) {
+		if cnt := countVisibleLines(""); cnt != 0 {
+			t.Errorf("empty string: expected 0, got %d", cnt)
+		}
+		if cnt := countVisibleLines("   \t  \n  \r\n  "); cnt != 0 {
+			t.Errorf("whitespace only: expected 0, got %d", cnt)
+		}
+		if cnt := countVisibleLines(`{\an8}{\pos(100,200)}`); cnt != 0 {
+			t.Errorf("tags only: expected 0, got %d", cnt)
+		}
+		if cnt := countVisibleLines("Single line"); cnt != 1 {
+			t.Errorf("single line: expected 1, got %d", cnt)
+		}
+		if cnt := countVisibleLines("Line 1\n\n\nLine 2"); cnt != 2 {
+			t.Errorf("consecutive newlines: expected 2, got %d", cnt)
+		}
+	})
+}
+
+// TestValidateSampleArtifacts reproduces and verifies a delivered sample ASS against an
+// independently rendered expected ASS using a credential-free render-settings.json snapshot.
+// It is an explicit opt-in test triggered by the FUSIONN_VERIFY_SAMPLE_DIR environment variable.
+// By default (when FUSIONN_VERIFY_SAMPLE_DIR is unset), this test is skipped to prevent
+// coupling make test to external directory structures or temporary credential files.
+func TestValidateSampleArtifacts(t *testing.T) {
+	sampleDir := os.Getenv("FUSIONN_VERIFY_SAMPLE_DIR")
+	if sampleDir == "" {
+		t.Skip("skipping sample artifact validation: set FUSIONN_VERIFY_SAMPLE_DIR to opt in")
+	}
+
+	settingsPath := filepath.Join(sampleDir, "render-settings.json")
+	rawSettings, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read render-settings.json from %s: %v", sampleDir, err)
+	}
+
+	var settings struct {
+		Width  int `json:"width"`
+		Height int `json:"height"`
+		LLM    struct {
+			EnChars   int `json:"en_chars"`
+			ZhChars   int `json:"zh_chars"`
+			EnGapMS   int `json:"en_gap_ms"`
+			ZhGapMS   int `json:"zh_gap_ms"`
+			SpanMS    int `json:"span_ms"`
+			FillGapMS int `json:"fill_gap_ms"`
+		} `json:"llm"`
+		Style struct {
+			Enabled         bool    `json:"enabled"`
+			PlayResX        int     `json:"play_res_x"`
+			PlayResY        int     `json:"play_res_y"`
+			PrimaryFont     string  `json:"primary_font"`
+			PrimarySize     int     `json:"primary_size"`
+			PrimaryColor    string  `json:"primary_color"`
+			SecondaryFont   string  `json:"secondary_font"`
+			SecondarySize   int     `json:"secondary_size"`
+			SecondaryColor  string  `json:"secondary_color"`
+			Bold            bool    `json:"bold"`
+			Outline         float64 `json:"outline"`
+			OutlineColor    string  `json:"outline_color"`
+			Shadow          float64 `json:"shadow"`
+			BackColor       string  `json:"back_color"`
+			MarginV         int     `json:"margin_v"`
+			MarginLeft      int     `json:"margin_left"`
+			MarginRight     int     `json:"margin_right"`
+			Alignment       int     `json:"alignment"`
+			BorderStyle     int     `json:"border_style"`
+			WrapStyle       string  `json:"wrap_style"`
+			ScaleX          int     `json:"scale_x"`
+			Spacing         float64 `json:"spacing"`
+			LineHeightRatio float64 `json:"line_height_ratio"`
+			BlockPadding    int     `json:"block_padding"`
+			CollisionGap    int     `json:"collision_gap"`
+		} `json:"style"`
+	}
+	if err := json.Unmarshal(rawSettings, &settings); err != nil {
+		t.Fatalf("unmarshal render-settings.json: %v", err)
+	}
+
+	llmCfg := config.LLMConfig{
+		EnChars:   settings.LLM.EnChars,
+		ZhChars:   settings.LLM.ZhChars,
+		EnGapMS:   settings.LLM.EnGapMS,
+		ZhGapMS:   settings.LLM.ZhGapMS,
+		SpanMS:    settings.LLM.SpanMS,
+		FillGapMS: settings.LLM.FillGapMS,
+	}
+	if llmCfg.EnChars <= 0 {
+		llmCfg.EnChars = 65
+	}
+	if llmCfg.ZhChars <= 0 {
+		llmCfg.ZhChars = 20
+	}
+	if llmCfg.SpanMS <= 0 {
+		llmCfg.SpanMS = 5500
+	}
+	if llmCfg.EnGapMS <= 0 {
+		llmCfg.EnGapMS = 400
+	}
+	if llmCfg.ZhGapMS <= 0 {
+		llmCfg.ZhGapMS = 500
+	}
+	if llmCfg.FillGapMS <= 0 {
+		llmCfg.FillGapMS = 500
+	}
+
+	style := config.ASSStyleConfig{
+		Enabled:         settings.Style.Enabled,
+		PlayResX:        settings.Style.PlayResX,
+		PlayResY:        settings.Style.PlayResY,
+		PrimaryFont:     settings.Style.PrimaryFont,
+		PrimarySize:     settings.Style.PrimarySize,
+		PrimaryColor:    settings.Style.PrimaryColor,
+		SecondaryFont:   settings.Style.SecondaryFont,
+		SecondarySize:   settings.Style.SecondarySize,
+		SecondaryColor:  settings.Style.SecondaryColor,
+		Bold:            settings.Style.Bold,
+		Outline:         settings.Style.Outline,
+		OutlineColor:    settings.Style.OutlineColor,
+		Shadow:          settings.Style.Shadow,
+		BackColor:       settings.Style.BackColor,
+		MarginV:         settings.Style.MarginV,
+		MarginLeft:      settings.Style.MarginLeft,
+		MarginRight:     settings.Style.MarginRight,
+		Alignment:       settings.Style.Alignment,
+		BorderStyle:     settings.Style.BorderStyle,
+		WrapStyle:       settings.Style.WrapStyle,
+		ScaleX:          settings.Style.ScaleX,
+		Spacing:         settings.Style.Spacing,
+		LineHeightRatio: settings.Style.LineHeightRatio,
+		BlockPadding:    settings.Style.BlockPadding,
+		CollisionGap:    settings.Style.CollisionGap,
+	}
+	if style.PlayResX <= 0 {
+		style.PlayResX = 1920
+	}
+	if style.PlayResY <= 0 {
+		style.PlayResY = 1080
+	}
+	if style.PrimarySize <= 0 {
+		style.PrimarySize = 80
+	}
+	if style.SecondarySize <= 0 {
+		style.SecondarySize = 49
+	}
+	if style.PrimaryFont == "" {
+		style.PrimaryFont = "PingFang SC"
+	}
+	if style.SecondaryFont == "" {
+		style.SecondaryFont = "Helvetica Neue"
 	}
 
 	rawBundle, err := os.ReadFile(filepath.Join(sampleDir, "sources.json"))
@@ -433,28 +630,28 @@ func TestValidateTerminalListGPT61EnhancedArtifacts(t *testing.T) {
 		t.Fatalf("unmarshal mapping.json: %v", err)
 	}
 
-	rawWords, err := os.ReadFile(filepath.Join(sampleDir, "word-timings.json"))
-	if err != nil {
-		t.Fatalf("read word-timings.json: %v", err)
-	}
 	var words WordTimings
-	if err := json.Unmarshal(rawWords, &words); err != nil {
-		t.Fatalf("unmarshal word-timings.json: %v", err)
+	wordsPath := filepath.Join(sampleDir, "word-timings.json")
+	if rawWords, errW := os.ReadFile(wordsPath); errW == nil {
+		if err := json.Unmarshal(rawWords, &words); err != nil {
+			t.Fatalf("unmarshal word-timings.json: %v", err)
+		}
 	}
 
-	loadedCfg, err := config.Load("/tmp/fusionn-phase-b-gpt61.yaml")
-	if err != nil {
-		t.Fatalf("config.Load: %v", err)
+	width := settings.Width
+	if width == 0 {
+		width = 1920
 	}
-	cfg := loadedCfg.Subtitle.LLM
-	style := loadedCfg.Subtitle.ASSStyle
+	height := settings.Height
+	if height == 0 {
+		height = 1080
+	}
 
-	expectedData, events, err := renderWithAudits(bundle, mapping, cfg, style, 3840, 1632, words)
+	expectedData, _, err := renderWithAudits(bundle, mapping, llmCfg, style, width, height, words)
 	if err != nil {
 		t.Fatalf("renderWithAudits: %v", err)
 	}
 
-	// 1. Strict delivery verification using Phase A verifier
 	assPath := filepath.Join(sampleDir, "bilingual.ass")
 	report, err := VerifyDeliveredASSAgainstExpected(assPath, expectedData)
 	if err != nil {
@@ -463,53 +660,5 @@ func TestValidateTerminalListGPT61EnhancedArtifacts(t *testing.T) {
 	if !report.Passed {
 		t.Fatalf("bilingual.ass failed verification: %v", report.Failures)
 	}
-	t.Logf("bilingual.ass verified successfully: %d dialogues match expected reference", report.TotalActual)
-
-	// 2. Export validation.json for review-ledger tool
-	type eventAuditRecord struct {
-		GroupIndex int    `json:"group"`
-		Strategy   string `json:"strategy"`
-		ENIDs      []int  `json:"en_ids"`
-		ZHIDs      []int  `json:"zh_ids"`
-		StartMS    int    `json:"start_ms"`
-		EndMS      int    `json:"end_ms"`
-		Alignment  int    `json:"alignment"`
-		Top        bool   `json:"top"`
-		ENText     string `json:"en_text"`
-		ZHText     string `json:"zh_text"`
-		ENLines    int    `json:"en_lines"`
-		ZHLines    int    `json:"zh_lines"`
-		ZHMerged   bool   `json:"zh_merged"`
-		ENMerged   bool   `json:"en_merged"`
-	}
-	var eventAudits []eventAuditRecord
-	for _, ev := range events {
-		eventAudits = append(eventAudits, eventAuditRecord{
-			GroupIndex: ev.group,
-			Strategy:   ev.strategy,
-			ENIDs:      ev.enIDs,
-			ZHIDs:      ev.zhIDs,
-			StartMS:    ev.assStart,
-			EndMS:      ev.assEnd,
-			Alignment:  ev.alignment,
-			Top:        ev.alignment >= 7,
-			ENText:     ev.enText,
-			ZHText:     ev.zhText,
-			ENLines:    countVisibleLines(ev.enText),
-			ZHLines:    countVisibleLines(ev.zhText),
-			ZHMerged:   ev.zhMerged,
-			ENMerged:   ev.enMerged,
-		})
-	}
-	valObj := map[string]interface{}{
-		"event_audit": eventAudits,
-	}
-	valBytes, errVal := json.MarshalIndent(valObj, "", "  ")
-	if errVal != nil {
-		t.Fatalf("marshal validation.json: %v", errVal)
-	}
-	if err := os.WriteFile(filepath.Join(sampleDir, "validation.json"), valBytes, 0644); err != nil {
-		t.Fatalf("write validation.json: %v", err)
-	}
-	t.Logf("validation.json written with %d rendered events", len(eventAudits))
+	t.Logf("sample bilingual.ass at %s verified successfully against render-settings.json: %d dialogues match", sampleDir, report.TotalActual)
 }
