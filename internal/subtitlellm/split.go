@@ -35,12 +35,12 @@ func WordAlignmentCues(bundle Bundle, cfg config.LLMConfig) []Cue {
 	var result []Cue
 	zh2Lines := make(map[int]bool)
 	for _, z := range bundle.ZH {
-		if !z.MultiSpeaker && !z.Top && len(sourceLines(z.Plain)) == 2 {
+		if !z.MultiSpeaker && len(sourceLines(z.Plain)) == 2 {
 			zh2Lines[z.ID] = true
 		}
 	}
 	for _, cue := range bundle.EN {
-		if cue.MultiSpeaker || cue.Top || cue.End-cue.Start > 30000 {
+		if cue.MultiSpeaker || cue.End-cue.Start > 30000 {
 			continue
 		}
 		if roundCentiseconds(cue.End)-roundCentiseconds(cue.Start) >= 2*minFallbackFragmentMS && len(textOptions(cue.Display, cue.Plain, cfg.EnChars, "en")) > 0 {
@@ -117,7 +117,7 @@ func trySyncSplit(b block, enCue, zhCue Cue, words WordTimings) ([]block, bool) 
 		enDisplay = *b.enText
 	}
 	zhText, zhMulti := sideSpeakerEvidence(b.zhText, b.zhSeparatedRole, zhCue, true)
-	if enMulti || zhMulti || b.top {
+	if enMulti || zhMulti {
 		return nil, false
 	}
 	enLines := sourceLines(enText)
@@ -220,7 +220,7 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 				} else if !english && b.zhSeparatedRole && b.zhText != nil {
 					text = *b.zhText
 				}
-				isProtected := b.top
+				isProtected := false
 				isRoleFragment := (english && b.enSeparatedRole) || (!english && b.zhSeparatedRole)
 				for _, cue := range cuesFor(index, ids) {
 					if cue.MultiSpeaker {
@@ -239,7 +239,7 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 					enLines := sourceLines(enText)
 					zhText, zhMulti := sideSpeakerEvidence(b.zhText, b.zhSeparatedRole, zhCue, true)
 					zhLines := sourceLines(zhText)
-					if !enMulti && !zhMulti && !b.top {
+					if !enMulti && !zhMulti {
 						if len(enLines) == 2 && len(zhLines) == 2 {
 							enMerged := strings.Join(enLines, " ")
 							zhMerged := strings.Join(zhLines, "　")
