@@ -493,6 +493,30 @@ func TestTopTemporal_SharedCutsBoundaries(t *testing.T) {
 			t.Fatalf("cut after plan end must be rejected, got %v", cuts)
 		}
 	})
+
+	// A real gap waives the outer-bounds equality, so a gapped English span that
+	// is wider than the Chinese plan is accepted as long as every inner cut stays
+	// inside the plan. Lock that deliberately, and lock that the plan's own outer
+	// bounds are what the slices keep: no cut can fall outside [start, end).
+	t.Run("gapped_span_wider_than_plan_keeps_only_inner_cuts", func(t *testing.T) {
+		eng := []textPiece{pc(900, 2000), pc(2500, 3600)}
+		cuts := sharedCuts(eng, 2, 1000, 3000)
+		if len(cuts) != 1 || cuts[0] != 2500 {
+			t.Fatalf("wider gapped span: cuts = %v, want [2500]", cuts)
+		}
+		for _, c := range cuts {
+			if c <= 1000 || c >= 3000 {
+				t.Errorf("cut %d escapes the plan range [1000,3000)", c)
+			}
+		}
+	})
+
+	t.Run("gapped_span_entirely_outside_plan_is_rejected", func(t *testing.T) {
+		eng := []textPiece{pc(3100, 3800), pc(4200, 4900)}
+		if cuts := sharedCuts(eng, 2, 1000, 3000); cuts != nil {
+			t.Fatalf("cut outside plan range must be rejected, got %v", cuts)
+		}
+	})
 }
 
 // TestTopTemporal_TwoEnglishOneChineseSharedGap reproduces the real group-119
@@ -584,6 +608,35 @@ func TestTopTemporal_TwoEnglishOneChineseSharedGap(t *testing.T) {
 		}
 		if e.start >= en1End && e.end <= en2Start {
 			t.Errorf("top event fills the real English source gap: [%d..%d] %s", e.start, e.end, e.text)
+		}
+	}
+
+	// Position must change nothing but style/anchor: the same input at the bottom
+	// must produce the same cuts, times and text.
+	floor := makeBundle(
+		[]Cue{
+			{ID: 1, Start: en1Start, End: en1End, Display: "Not going home at 1700. He is home.", Plain: "Not going home at 1700. He is home.", Alignment: 2},
+			{ID: 2, Start: en2Start, End: en2End, Display: "He only cares about the cause.", Plain: "He only cares about the cause.", Alignment: 2},
+		},
+		[]Cue{{ID: 1, Start: zhStart, End: zhEnd, Display: "不在乎17点回家 他四处为家 他只关心大业”", Plain: "不在乎17点回家 他四处为家\n他只关心大业”", Alignment: 2}},
+	)
+	floorMapping := makeMapping(floor, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+	floorOut, err := Render(floor, floorMapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	floorEvents := parseDialogues(t, string(floorOut))
+	if len(floorEvents) != len(events) {
+		t.Fatalf("bottom counterpart produced %d events, top produced %d", len(floorEvents), len(events))
+	}
+	for i := range events {
+		if events[i].start != floorEvents[i].start || events[i].end != floorEvents[i].end {
+			t.Errorf("event %d: top timing [%d..%d] differs from bottom [%d..%d]",
+				i, events[i].start, events[i].end, floorEvents[i].start, floorEvents[i].end)
+		}
+		if normText(events[i].text) != normText(floorEvents[i].text) {
+			t.Errorf("event %d: top text differs from bottom:\n  top:    %s\n  bottom: %s",
+				i, normText(events[i].text), normText(floorEvents[i].text))
 		}
 	}
 }
@@ -1102,6 +1155,35 @@ func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
 				assertGlyphs(t, ren[1].text, "新基地组织的威胁 出现在詹姆斯里斯comes only six months after James Reece's")
 				assertGlyphs(t, ren[2].text, "新基地组织的威胁 出现在詹姆斯里斯attack on Defense Secretary Hartley's home,")
 				assertGlyphs(t, ren[3].text, "偷袭国防部长哈特利家六个月后attack on Defense Secretary Hartley's home,")
+
+				// The 880ms window is an event boundary, not a short display: the
+				// windows are contiguous, and every source text inside them stays
+				// on screen far longer than the 1.2s floor because the two tracks
+				// advance on their own source boundaries. Assert that directly so a
+				// real flash would still fail here.
+				for i := 1; i < len(ren); i++ {
+					if ren[i-1].end != ren[i].start {
+						t.Errorf("group 103 windows are not contiguous: ev[%d] ends %d, ev[%d] starts %d",
+							i-1, ren[i-1].end, i, ren[i].start)
+					}
+				}
+				for _, want := range []struct{ label, glyphs string }{
+					{"ZH line 1", "新基地组织的威胁 出现在詹姆斯里斯"},
+					{"ZH line 2", "偷袭国防部长哈特利家六个月后"},
+					{"EN cue 1", "The threat of this new al-Qaeda"},
+					{"EN cue 2", "comes only six months after James Reece's"},
+					{"EN cue 3", "attack on Defense Secretary Hartley's home,"},
+				} {
+					total := 0
+					for _, e := range ren {
+						if strings.Contains(glyphs(e.text), glyphs(want.glyphs)) {
+							total += e.end - e.start
+						}
+					}
+					if total < minSyncFragmentMS {
+						t.Errorf("group 103 %s total visibility %dms < floor %dms", want.label, total, minSyncFragmentMS)
+					}
+				}
 			},
 		},
 		{
@@ -1632,6 +1714,138 @@ func TestTopTemporal_CompareTopVsBottomTemporalEquivalence(t *testing.T) {
 				t.Errorf("Group %d event %d text mismatch:\n  top: %s\n  bot: %s",
 					gIdx, i, topGlyphs, botGlyphs)
 			}
+		}
+	}
+}
+
+// TestTopTemporal_WholeEpisodeTopBottomFlipEquivalence is the closest available
+// proof that position no longer affects temporal planning. It takes the real
+// read-only enhanced baseline, renders it as delivered (Top groups on top), then
+// flips every source Top flag and every Top mapping layer to bottom and renders
+// again. Only the style/anchor may differ: the event count, every interval, and
+// every text fragment must be identical, so no top-specific cut, floor, or
+// fallback branch can survive.
+//
+// This test runs only when FUSIONN_ENHANCED_RECORD_DIR is explicitly set.
+func TestTopTemporal_WholeEpisodeTopBottomFlipEquivalence(t *testing.T) {
+	dir := os.Getenv("FUSIONN_ENHANCED_RECORD_DIR")
+	if dir == "" {
+		t.Skip("skipping whole-episode flip equivalence: set FUSIONN_ENHANCED_RECORD_DIR to run")
+	}
+
+	sourcesBytes, err := os.ReadFile(filepath.Join(dir, "sources.json"))
+	if err != nil {
+		t.Fatalf("read sources.json: %v", err)
+	}
+	var bundle Bundle
+	if err := json.Unmarshal(sourcesBytes, &bundle); err != nil {
+		t.Fatalf("unmarshal sources: %v", err)
+	}
+
+	mappingBytes, err := os.ReadFile(filepath.Join(dir, "alignment", "mapping.json"))
+	if err != nil {
+		t.Fatalf("read alignment/mapping.json: %v", err)
+	}
+	var mapping Mapping
+	if err := json.Unmarshal(mappingBytes, &mapping); err != nil {
+		t.Fatalf("unmarshal mapping: %v", err)
+	}
+
+	styleBytes, err := os.ReadFile(filepath.Join(dir, "delivered-style.json"))
+	if err != nil {
+		t.Fatalf("read delivered-style.json: %v", err)
+	}
+	var style config.ASSStyleConfig
+	if err := json.Unmarshal(styleBytes, &style); err != nil {
+		t.Fatalf("unmarshal style: %v", err)
+	}
+
+	wordsBytes, err := os.ReadFile(filepath.Join(dir, "word-timings.json"))
+	if err != nil {
+		t.Fatalf("read word-timings.json: %v", err)
+	}
+	var words WordTimings
+	if err := json.Unmarshal(wordsBytes, &words); err != nil {
+		t.Fatalf("unmarshal words: %v", err)
+	}
+
+	settingsBytes, err := os.ReadFile(filepath.Join(dir, "render-settings.json"))
+	if err != nil {
+		t.Fatalf("read render-settings.json: %v", err)
+	}
+	var settings struct {
+		Width  int `json:"width"`
+		Height int `json:"height"`
+		LLM    struct {
+			EnChars   int `json:"en_chars"`
+			ZhChars   int `json:"zh_chars"`
+			EnGapMS   int `json:"en_gap_ms"`
+			ZhGapMS   int `json:"zh_gap_ms"`
+			SpanMS    int `json:"span_ms"`
+			FillGapMS int `json:"fill_gap_ms"`
+		} `json:"llm"`
+	}
+	if err := json.Unmarshal(settingsBytes, &settings); err != nil {
+		t.Fatalf("unmarshal settings: %v", err)
+	}
+	llmCfg := config.LLMConfig{
+		EnChars:   settings.LLM.EnChars,
+		ZhChars:   settings.LLM.ZhChars,
+		EnGapMS:   settings.LLM.EnGapMS,
+		ZhGapMS:   settings.LLM.ZhGapMS,
+		SpanMS:    settings.LLM.SpanMS,
+		FillGapMS: settings.LLM.FillGapMS,
+	}
+
+	topOut, err := RenderWithWordTimings(bundle, mapping, llmCfg, style, settings.Width, settings.Height, words)
+	if err != nil {
+		t.Fatalf("render delivered top: %v", err)
+	}
+
+	// Deep-copy the inputs, then drop every Top flag and every Top layer. This is
+	// the same episode with position alone changed.
+	flippedBytes, err := json.Marshal(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var flipped Bundle
+	if err := json.Unmarshal(flippedBytes, &flipped); err != nil {
+		t.Fatal(err)
+	}
+	for i := range flipped.EN {
+		flipped.EN[i].Top = false
+	}
+	for i := range flipped.ZH {
+		flipped.ZH[i].Top = false
+	}
+	flippedMapping := mapping
+	for i := range flippedMapping.Groups {
+		if flippedMapping.Groups[i].Layer == LayerTop {
+			flippedMapping.Groups[i].Layer = LayerBottom
+		}
+	}
+
+	bottomOut, err := RenderWithWordTimings(flipped, flippedMapping, llmCfg, style, settings.Width, settings.Height, words)
+	if err != nil {
+		t.Fatalf("render flipped bottom: %v", err)
+	}
+
+	topEvents := parseDialogues(t, string(topOut))
+	bottomEvents := parseDialogues(t, string(bottomOut))
+	t.Logf("delivered top events: %d, flipped-to-bottom events: %d", len(topEvents), len(bottomEvents))
+
+	if len(topEvents) != len(bottomEvents) {
+		t.Fatalf("event count changed with position alone: top=%d bottom=%d",
+			len(topEvents), len(bottomEvents))
+	}
+	for i := range topEvents {
+		if topEvents[i].start != bottomEvents[i].start || topEvents[i].end != bottomEvents[i].end {
+			t.Errorf("event %d: interval changed with position alone: top [%d..%d] vs bottom [%d..%d]",
+				i, topEvents[i].start, topEvents[i].end, bottomEvents[i].start, bottomEvents[i].end)
+		}
+		if normText(topEvents[i].text) != normText(bottomEvents[i].text) {
+			t.Errorf("event %d: text changed with position alone:\n  top:    %s\n  bottom: %s",
+				i, normText(topEvents[i].text), normText(bottomEvents[i].text))
 		}
 	}
 }
