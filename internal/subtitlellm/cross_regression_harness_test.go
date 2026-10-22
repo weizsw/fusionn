@@ -284,22 +284,22 @@ func countVisibleLines(part string) int {
 	if strings.TrimSpace(part) == "" {
 		return 0
 	}
-	// Replace ASS markup
 	clean := stripASSTags(part)
 	if strings.TrimSpace(clean) == "" {
 		return 0
 	}
-	lines := strings.Split(clean, `\N`)
+	// Normalize all newline representations (real CRLF, real LF, real CR, literal \N, literal \n) to LF
+	norm := strings.ReplaceAll(clean, "\r\n", "\n")
+	norm = strings.ReplaceAll(norm, "\r", "\n")
+	norm = strings.ReplaceAll(norm, `\N`, "\n")
+	norm = strings.ReplaceAll(norm, `\n`, "\n")
+	lines := strings.Split(norm, "\n")
 	count := 0
 	for _, l := range lines {
-		lClean := strings.ReplaceAll(l, `\n`, "")
-		lClean = strings.ReplaceAll(lClean, `\h`, "")
+		lClean := strings.ReplaceAll(l, `\h`, "")
 		if strings.TrimSpace(lClean) != "" {
 			count++
 		}
-	}
-	if count == 0 && len(clean) > 0 {
-		return 1
 	}
 	return count
 }
