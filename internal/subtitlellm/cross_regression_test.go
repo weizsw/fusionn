@@ -931,5 +931,3 @@ func TestCrossRegression_GenerateAndVerifyArtifacts(t *testing.T) {
 		result.Report.RenderStats.MaxBottomLines,
 	)
 }
-
-
