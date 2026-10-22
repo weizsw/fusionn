@@ -1,6 +1,8 @@
 package subtitlellm
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -260,34 +262,70 @@ func TestTopTemporal_ChineseTwoEnglishOne(t *testing.T) {
 }
 
 // TestTopTemporal_PreservesNativePosAndAnchor verifies that if a top cue has
-// native \pos(x, y), temporal splitting preserves the exact position coordinates
-// across all split fragments.
+// native \pos(x, y) and alignment, temporal splitting preserves the exact
+// position coordinates and alignment tags across all split fragments.
 func TestTopTemporal_PreservesNativePosAndAnchor(t *testing.T) {
-	cfg := renderTestConfig()
-	cfg.EnChars = 65
-	cfg.ZhChars = 25
-	pos := [2]float64{960, 120}
-	bundle := makeBundle(
-		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "First line of speech and second line of speech.", Plain: "First line of speech\nand second line of speech.", Top: true, Alignment: 8, Position: &pos}},
-		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "第一句对白 第二句对白", Plain: "第一句对白\n第二句对白", Top: true, Alignment: 8, Position: &pos}},
-	)
-	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerTop, Origin: OriginModel, Kind: KindDialogue}})
-	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
-	if err != nil {
-		t.Fatal(err)
-	}
-	events := parseDialogues(t, string(output))
-	if len(events) != 2 {
-		t.Fatalf("expected 2 synchronized events, got %d", len(events))
-	}
-	for i, e := range events {
-		if !e.hasPos {
-			t.Errorf("event %d missing \\pos tag: %s", i, e.text)
+	t.Run("an8_default_top_with_pos", func(t *testing.T) {
+		cfg := renderTestConfig()
+		cfg.EnChars = 65
+		cfg.ZhChars = 25
+		pos := [2]float64{960, 120}
+		bundle := makeBundle(
+			[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "First line of speech and second line of speech.", Plain: "First line of speech\nand second line of speech.", Top: true, Alignment: 8, Position: &pos}},
+			[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "第一句对白 第二句对白", Plain: "第一句对白\n第二句对白", Top: true, Alignment: 8, Position: &pos}},
+		)
+		mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerTop, Origin: OriginModel, Kind: KindDialogue}})
+		output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if e.posX != 960 || e.posY != 120 {
-			t.Errorf("event %d position = (%.1f, %.1f), want (960, 120)", i, e.posX, e.posY)
+		events := parseDialogues(t, string(output))
+		if len(events) != 2 {
+			t.Fatalf("expected 2 synchronized events, got %d", len(events))
 		}
-	}
+		for i, e := range events {
+			if e.style != "TopDefault" {
+				t.Errorf("event %d style = %q, want TopDefault", i, e.style)
+			}
+			if !e.hasPos {
+				t.Errorf("event %d missing \\pos tag: %s", i, e.text)
+			}
+			if e.posX != 960 || e.posY != 120 {
+				t.Errorf("event %d position = (%.1f, %.1f), want (960, 120)", i, e.posX, e.posY)
+			}
+		}
+	})
+
+	t.Run("an7_top_left_with_pos_and_an_tag", func(t *testing.T) {
+		cfg := renderTestConfig()
+		cfg.EnChars = 65
+		cfg.ZhChars = 25
+		pos := [2]float64{200, 100}
+		bundle := makeBundle(
+			[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "First line of speech and second line of speech.", Plain: "First line of speech\nand second line of speech.", Top: true, Alignment: 7, Position: &pos}},
+			[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "第一句对白 第二句对白", Plain: "第一句对白\n第二句对白", Top: true, Alignment: 7, Position: &pos}},
+		)
+		mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerTop, Origin: OriginModel, Kind: KindDialogue}})
+		output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+		if err != nil {
+			t.Fatal(err)
+		}
+		events := parseDialogues(t, string(output))
+		if len(events) != 2 {
+			t.Fatalf("expected 2 synchronized events, got %d", len(events))
+		}
+		for i, e := range events {
+			if !e.hasPos {
+				t.Errorf("event %d missing \\pos tag: %s", i, e.text)
+			}
+			if e.posX != 200 || e.posY != 100 {
+				t.Errorf("event %d position = (%.1f, %.1f), want (200, 100)", i, e.posX, e.posY)
+			}
+			if e.an != 7 {
+				t.Errorf("event %d an = %d, want 7 (\\an7)", i, e.an)
+			}
+		}
+	})
 }
 
 // TestTopTemporal_SyncAndFallbackFloorBoundaries tests the 1.2s sync floor and
@@ -474,7 +512,7 @@ func TestTopTemporal_WordTimingPriorityAndFallback(t *testing.T) {
 
 // TestTopTemporal_B16_IdempotenceAndImmutability verifies rule B16:
 // Rendering twice with top cues produces byte-for-byte identical ASS,
-// and the input bundle and mapping are never mutated.
+// and the input bundle and mapping are never mutated (verified via deep JSON comparison).
 func TestTopTemporal_B16_IdempotenceAndImmutability(t *testing.T) {
 	bundle := makeBundle(
 		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "First line of speech and second line of speech.", Plain: "First line of speech\nand second line of speech.", Top: true, Alignment: 8}},
@@ -483,6 +521,15 @@ func TestTopTemporal_B16_IdempotenceAndImmutability(t *testing.T) {
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerTop, Origin: OriginModel, Kind: KindDialogue}})
 	cfg := renderTestConfig()
 	style := renderTestStyle()
+
+	beforeBundleJSON, err := json.Marshal(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeMappingJSON, err := json.Marshal(mapping)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	first, err := Render(bundle, mapping, cfg, style, 1920, 1080)
 	if err != nil {
@@ -497,11 +544,20 @@ func TestTopTemporal_B16_IdempotenceAndImmutability(t *testing.T) {
 		t.Fatal("subsequent render with top cues produced different ASS output")
 	}
 
-	if !bundle.EN[0].Top || bundle.EN[0].Alignment != 8 {
-		t.Fatal("render mutated bundle EN top/alignment flags")
+	afterBundleJSON, err := json.Marshal(bundle)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !bundle.ZH[0].Top || bundle.ZH[0].Alignment != 8 {
-		t.Fatal("render mutated bundle ZH top/alignment flags")
+	afterMappingJSON, err := json.Marshal(mapping)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(beforeBundleJSON) != string(afterBundleJSON) {
+		t.Fatalf("render mutated input Bundle:\n  before: %s\n  after:  %s", beforeBundleJSON, afterBundleJSON)
+	}
+	if string(beforeMappingJSON) != string(afterMappingJSON) {
+		t.Fatalf("render mutated input Mapping:\n  before: %s\n  after:  %s", beforeMappingJSON, afterMappingJSON)
 	}
 }
 
@@ -518,13 +574,7 @@ func TestTopTemporal_B16_IdempotenceAndImmutability(t *testing.T) {
 func TestTopTemporal_RecordedE01_DetailedDiffAudit(t *testing.T) {
 	dir := os.Getenv(positionRecordDirEnv)
 	if dir == "" {
-		cand := "/Users/maverick/Desktop/fusionn-subtitle-split-test/terminal-list-s02e01-dialogue-lyrics-v5"
-		if _, err := os.Stat(cand); err == nil {
-			dir = cand
-		}
-	}
-	if dir == "" {
-		t.Skip("skipping E01 recorded replay audit: fixture directory not found")
+		t.Skip("skipping E01 recorded replay audit: set FUSIONN_POSITION_RECORD_DIR to run")
 	}
 
 	cfg := replayConfig{
@@ -588,6 +638,27 @@ func TestTopTemporal_RecordedE01_DetailedDiffAudit(t *testing.T) {
 			deliveredEvents[dI].end == newEvents[nI+1].end {
 			t.Logf("  -> 1 delivered split into 2 new fragments: [%d..%d] + [%d..%d]",
 				newEvents[nI].start, newEvents[nI].end, newEvents[nI+1].start, newEvents[nI+1].end)
+			// Strict failing assertions:
+			// 1. Contiguous boundary
+			if newEvents[nI].end != newEvents[nI+1].start {
+				t.Errorf("Diff #%d: fragment gap/overlap: [%d..%d] vs [%d..%d]",
+					diffCount, newEvents[nI].start, newEvents[nI].end, newEvents[nI+1].start, newEvents[nI+1].end)
+			}
+			// 2. Minimum duration >= 1.2s (120 centiseconds)
+			if (newEvents[nI].end - newEvents[nI].start) < 120 {
+				t.Errorf("Diff #%d: fragment 0 duration %d cs < 120 cs", diffCount, newEvents[nI].end-newEvents[nI].start)
+			}
+			if (newEvents[nI+1].end - newEvents[nI+1].start) < 120 {
+				t.Errorf("Diff #%d: fragment 1 duration %d cs < 120 cs", diffCount, newEvents[nI+1].end-newEvents[nI+1].start)
+			}
+			// 3. Text coverage: no hallucinated characters from the original
+			combinedText := newEvents[nI].text + newEvents[nI+1].text
+			delGlyphs := normText(deliveredEvents[dI].text)
+			for _, r := range normText(combinedText) {
+				if !strings.ContainsRune(delGlyphs, r) {
+					t.Errorf("Diff #%d: fragment contains character %c not in delivered text", diffCount, r)
+				}
+			}
 			dI++
 			nI += 2
 			continue
@@ -639,20 +710,416 @@ func TestTopTemporal_MultiSpeakerTopProtected(t *testing.T) {
 	assertGlyphs(t, events[0].text, "- 第一位说话人- 第二位说话人- First speaker- Second speaker")
 }
 
+// TestTopTemporal_EnhancedE01_DetailedAudit audits the real official baseline
+// fixture terminal-list-s02e01-gpt61-enhanced (506 groups, 3840x1632) in read-only
+// mode, explicitly checking 1-based groups 101, 102, 103, 106, 107, 119, 121, 128.
+//
+// This test runs only when FUSIONN_ENHANCED_RECORD_DIR is explicitly set.
+func TestTopTemporal_EnhancedE01_DetailedAudit(t *testing.T) {
+	dir := os.Getenv("FUSIONN_ENHANCED_RECORD_DIR")
+	if dir == "" {
+		t.Skip("skipping enhanced E01 audit: set FUSIONN_ENHANCED_RECORD_DIR to run")
+	}
+
+	sourcesBytes, err := os.ReadFile(filepath.Join(dir, "sources.json"))
+	if err != nil {
+		t.Fatalf("read sources.json: %v", err)
+	}
+	var bundle Bundle
+	if err := json.Unmarshal(sourcesBytes, &bundle); err != nil {
+		t.Fatalf("unmarshal sources: %v", err)
+	}
+
+	mappingBytes, err := os.ReadFile(filepath.Join(dir, "alignment", "mapping.json"))
+	if err != nil {
+		t.Fatalf("read alignment/mapping.json: %v", err)
+	}
+	var mapping Mapping
+	if err := json.Unmarshal(mappingBytes, &mapping); err != nil {
+		t.Fatalf("unmarshal mapping: %v", err)
+	}
+
+	styleBytes, err := os.ReadFile(filepath.Join(dir, "delivered-style.json"))
+	if err != nil {
+		t.Fatalf("read delivered-style.json: %v", err)
+	}
+	var style config.ASSStyleConfig
+	if err := json.Unmarshal(styleBytes, &style); err != nil {
+		t.Fatalf("unmarshal style: %v", err)
+	}
+
+	wordsBytes, err := os.ReadFile(filepath.Join(dir, "word-timings.json"))
+	if err != nil {
+		t.Fatalf("read word-timings.json: %v", err)
+	}
+	var words WordTimings
+	if err := json.Unmarshal(wordsBytes, &words); err != nil {
+		t.Fatalf("unmarshal words: %v", err)
+	}
+
+	settingsBytes, err := os.ReadFile(filepath.Join(dir, "render-settings.json"))
+	if err != nil {
+		t.Fatalf("read render-settings.json: %v", err)
+	}
+	var settings struct {
+		Width  int `json:"width"`
+		Height int `json:"height"`
+		LLM    struct {
+			EnChars   int `json:"en_chars"`
+			ZhChars   int `json:"zh_chars"`
+			EnGapMS   int `json:"en_gap_ms"`
+			ZhGapMS   int `json:"zh_gap_ms"`
+			SpanMS    int `json:"span_ms"`
+			FillGapMS int `json:"fill_gap_ms"`
+		} `json:"llm"`
+	}
+	if err := json.Unmarshal(settingsBytes, &settings); err != nil {
+		t.Fatalf("unmarshal settings: %v", err)
+	}
+	llmCfg := config.LLMConfig{
+		EnChars:   settings.LLM.EnChars,
+		ZhChars:   settings.LLM.ZhChars,
+		EnGapMS:   settings.LLM.EnGapMS,
+		ZhGapMS:   settings.LLM.ZhGapMS,
+		SpanMS:    settings.LLM.SpanMS,
+		FillGapMS: settings.LLM.FillGapMS,
+	}
+
+	deliveredASSBytes, err := os.ReadFile(filepath.Join(dir, "bilingual.ass"))
+	if err != nil {
+		t.Fatalf("read bilingual.ass: %v", err)
+	}
+	deliveredASS := string(deliveredASSBytes)
+	deliveredEvents := parseDialogues(t, deliveredASS)
+
+	out, err := RenderWithWordTimings(bundle, mapping, llmCfg, style, settings.Width, settings.Height, words)
+	if err != nil {
+		t.Fatalf("render enhanced: %v", err)
+	}
+	_ = os.WriteFile("/tmp/fusionn_enhanced_rerendered.ass", out, 0644)
+
+	newEvents := parseDialogues(t, string(out))
+	t.Logf("Delivered events: %d, re-rendered events: %d", len(deliveredEvents), len(newEvents))
+
+	enMap, zhMap, err := cueIndex(bundle)
+	if err != nil {
+		t.Fatalf("cueIndex: %v", err)
+	}
+
+	// Helper to find events overlapping a time range
+	findEvents := func(evs []dialogue, start, end int) []dialogue {
+		var res []dialogue
+		for _, e := range evs {
+			if e.start >= start-50 && e.end <= end+50 {
+				res = append(res, e)
+			}
+		}
+		return res
+	}
+
+	// Group verification definitions for 0-based group indices:
+	// 101, 102, 103, 106, 107, 119, 121, 128, 305.
+	type groupExpectation struct {
+		groupIndex  int
+		expectStyle string
+		checkFunc   func(t *testing.T, delivered, rendered []dialogue, g Group)
+	}
+
+	expectations := []groupExpectation{
+		{
+			groupIndex:  101, // 0-based 101: EN [105, 106], ZH [86], Top
+			expectStyle: "TopDefault",
+			checkFunc: func(t *testing.T, del, ren []dialogue, g Group) {
+				if len(ren) != 2 {
+					t.Fatalf("group 101: want 2 counterpart sliced events, got %d", len(ren))
+				}
+				for i, e := range ren {
+					if e.style != "TopDefault" {
+						t.Errorf("group 101 ev[%d]: style = %q, want TopDefault", i, e.style)
+					}
+				}
+				if ren[0].start != 484570 || ren[0].end != 486610 {
+					t.Errorf("group 101 ev[0] time = [%d..%d], want [484570..486610]", ren[0].start, ren[0].end)
+				}
+				if ren[1].start != 486610 || ren[1].end != 489950 {
+					t.Errorf("group 101 ev[1] time = [%d..%d], want [486610..489950]", ren[1].start, ren[1].end)
+				}
+				assertGlyphs(t, ren[0].text, "出现了一个精通高新技术的a new, technologically savvy al-Qaeda")
+				assertGlyphs(t, ren[1].text, "新基地组织对西方发动战争has emerged to wage war against the west,")
+			},
+		},
+		{
+			groupIndex:  102, // 0-based 102: EN [107, 108], ZH [87], Top
+			expectStyle: "TopDefault",
+			checkFunc: func(t *testing.T, del, ren []dialogue, g Group) {
+				if len(ren) != 2 {
+					t.Fatalf("group 102: want 2 counterpart sliced events, got %d", len(ren))
+				}
+				for i, e := range ren {
+					if e.style != "TopDefault" {
+						t.Errorf("group 102 ev[%d]: style = %q, want TopDefault", i, e.style)
+					}
+				}
+				if ren[0].start != 489950 || ren[0].end != 491740 {
+					t.Errorf("group 102 ev[0] time = [%d..%d], want [489950..491740]", ren[0].start, ren[0].end)
+				}
+				if ren[1].start != 491740 || ren[1].end != 493830 {
+					t.Errorf("group 102 ev[1] time = [%d..%d], want [491740..493830]", ren[1].start, ren[1].end)
+				}
+				assertGlyphs(t, ren[0].text, "他们甚至在社媒上even using images of the attack")
+				assertGlyphs(t, ren[1].text, "利用袭击现场的影像招兵买马on social media for recruitment.")
+			},
+		},
+		{
+			groupIndex:  103, // 0-based 103: EN [109, 110], ZH [88, 89], Top
+			expectStyle: "TopDefault",
+			checkFunc: func(t *testing.T, del, ren []dialogue, g Group) {
+				if len(ren) != 4 {
+					t.Fatalf("group 103: want 4 split events, got %d", len(ren))
+				}
+				for i, e := range ren {
+					if e.style != "TopDefault" {
+						t.Errorf("group 103 ev[%d]: style = %q, want TopDefault", i, e.style)
+					}
+				}
+				if ren[0].start != 493830 || ren[0].end != 495350 {
+					t.Errorf("group 103 ev[0] time = [%d..%d], want [493830..495350]", ren[0].start, ren[0].end)
+				}
+				if ren[1].start != 495350 || ren[1].end != 497370 {
+					t.Errorf("group 103 ev[1] time = [%d..%d], want [495350..497370]", ren[1].start, ren[1].end)
+				}
+				if ren[2].start != 497370 || ren[2].end != 498250 {
+					t.Errorf("group 103 ev[2] time = [%d..%d], want [497370..498250]", ren[2].start, ren[2].end)
+				}
+				if ren[3].start != 498250 || ren[3].end != 500330 {
+					t.Errorf("group 103 ev[3] time = [%d..%d], want [498250..500330]", ren[3].start, ren[3].end)
+				}
+				assertGlyphs(t, ren[0].text, "新基地组织的威胁 出现在詹姆斯里斯The threat of this new al-Qaeda")
+				assertGlyphs(t, ren[1].text, "新基地组织的威胁 出现在詹姆斯里斯comes only six months after James Reece's")
+				assertGlyphs(t, ren[2].text, "新基地组织的威胁 出现在詹姆斯里斯attack on Defense Secretary Hartley's home,")
+				assertGlyphs(t, ren[3].text, "偷袭国防部长哈特利家六个月后attack on Defense Secretary Hartley's home,")
+			},
+		},
+		{
+			groupIndex:  106, // 0-based 106: EN [114, 115], ZH [92, 93], Top
+			expectStyle: "TopDefault",
+			checkFunc: func(t *testing.T, del, ren []dialogue, g Group) {
+				if len(ren) != 3 {
+					t.Fatalf("group 106: want 3 events from source split, got %d", len(ren))
+				}
+				for i, e := range ren {
+					if e.style != "TopDefault" {
+						t.Errorf("group 106 ev[%d]: style = %q, want TopDefault", i, e.style)
+					}
+				}
+				if ren[0].start != 506550 || ren[0].end != 509090 {
+					t.Errorf("group 106 ev[0] time = [%d..%d], want [506550..509090]", ren[0].start, ren[0].end)
+				}
+				if ren[1].start != 509090 || ren[1].end != 510510 {
+					t.Errorf("group 106 ev[1] time = [%d..%d], want [509090..510510]", ren[1].start, ren[1].end)
+				}
+				if ren[2].start != 510510 || ren[2].end != 512760 {
+					t.Errorf("group 106 ev[2] time = [%d..%d], want [510510..512760]", ren[2].start, ren[2].end)
+				}
+				assertGlyphs(t, ren[0].text, "基本上就是 亚敏阿尔-纳瓦兹的新基地组织that's basically Amin Al-Nawaz's")
+				assertGlyphs(t, ren[1].text, "基本上就是 亚敏阿尔-纳瓦兹的新基地组织new al-Qaeda: making terror into TikToks.")
+				assertGlyphs(t, ren[2].text, "把恐袭做成短视频new al-Qaeda: making terror into TikToks.")
+			},
+		},
+		{
+			groupIndex:  107, // 0-based 107: EN [116, 117], ZH [94], Top
+			expectStyle: "TopDefault",
+			checkFunc: func(t *testing.T, del, ren []dialogue, g Group) {
+				if len(ren) != 2 {
+					t.Fatalf("group 107: want 2 counterpart sliced events, got %d", len(ren))
+				}
+				for i, e := range ren {
+					if e.style != "TopDefault" {
+						t.Errorf("group 107 ev[%d]: style = %q, want TopDefault", i, e.style)
+					}
+				}
+				if ren[0].start != 512760 || ren[0].end != 514350 {
+					t.Errorf("group 107 ev[0] time = [%d..%d], want [512760..514350]", ren[0].start, ren[0].end)
+				}
+				if ren[1].start != 514350 || ren[1].end != 518060 {
+					t.Errorf("group 107 ev[1] time = [%d..%d], want [514350..518060]", ren[1].start, ren[1].end)
+				}
+				assertGlyphs(t, ren[0].text, "亚敏在散播恐惧 一是要招收新人Amin is spreading fear")
+				assertGlyphs(t, ren[1].text, "二是要让我们的经济瘫痪both to find recruits and to disable our economy.")
+			},
+		},
+		{
+			groupIndex:  119, // 0-based 119: EN [133, 134], ZH [108], Top
+			expectStyle: "TopDefault",
+			checkFunc: func(t *testing.T, del, ren []dialogue, g Group) {
+				if len(ren) != 3 {
+					t.Fatalf("group 119: want 3 events, got %d", len(ren))
+				}
+				for i, e := range ren {
+					if e.style != "TopDefault" {
+						t.Errorf("group 119 ev[%d]: style = %q, want TopDefault", i, e.style)
+					}
+				}
+				if ren[0].start != 559480 || ren[0].end != 561400 {
+					t.Errorf("group 119 ev[0] time = [%d..%d], want [559480..561400]", ren[0].start, ren[0].end)
+				}
+				if ren[1].start != 562480 || ren[1].end != 563230 {
+					t.Errorf("group 119 ev[1] time = [%d..%d], want [562480..563230]", ren[1].start, ren[1].end)
+				}
+				if ren[2].start != 563230 || ren[2].end != 565110 {
+					t.Errorf("group 119 ev[2] time = [%d..%d], want [563230..565110]", ren[2].start, ren[2].end)
+				}
+				assertGlyphs(t, ren[0].text, "不在乎17点回家 他四处为家Not going home at 1700. He is home.")
+				assertGlyphs(t, ren[1].text, "不在乎17点回家 他四处为家He only cares about the cause.")
+				assertGlyphs(t, ren[2].text, "他只关心大业”He only cares about the cause.")
+			},
+		},
+		{
+			groupIndex:  121, // 0-based 121: EN [135], ZH [110, 111], Top
+			expectStyle: "TopDefault",
+			checkFunc: func(t *testing.T, del, ren []dialogue, g Group) {
+				if len(ren) != 2 {
+					t.Fatalf("group 121: want 2 events, got %d", len(ren))
+				}
+				for i, e := range ren {
+					if e.style != "TopDefault" {
+						t.Errorf("group 121 ev[%d]: style = %q, want TopDefault", i, e.style)
+					}
+				}
+				if ren[0].start != 565110 || ren[0].end != 567100 {
+					t.Errorf("group 121 ev[0] time = [%d..%d], want [565110..567100]", ren[0].start, ren[0].end)
+				}
+				if ren[1].start != 567100 || ren[1].end != 568400 {
+					t.Errorf("group 121 ev[1] time = [%d..%d], want [567100..568400]", ren[1].start, ren[1].end)
+				}
+				assertGlyphs(t, ren[0].text, "这是一位不具名的 特种部队教官的话And that is a quote from an unidentified")
+				assertGlyphs(t, ren[1].text, "这是一位不具名的 特种部队教官的话Special Forces instructor,")
+			},
+		},
+		{
+			groupIndex:  128, // 0-based 128: EN [143, 144], ZH [118], Top
+			expectStyle: "TopDefault",
+			checkFunc: func(t *testing.T, del, ren []dialogue, g Group) {
+				// Group 128 has 2 top dialogue events plus 1 concurrent on-screen text [567800..569590]
+				var topEvs []dialogue
+				for _, e := range ren {
+					if e.style == "TopDefault" {
+						topEvs = append(topEvs, e)
+					}
+				}
+				if len(topEvs) != 2 {
+					t.Fatalf("group 128: want 2 TopDefault events, got %d", len(topEvs))
+				}
+				if topEvs[0].start != 584000 || topEvs[0].end != 586420 {
+					t.Errorf("group 128 ev[0] time = [%d..%d], want [584000..586420]", topEvs[0].start, topEvs[0].end)
+				}
+				if topEvs[1].start != 586420 || topEvs[1].end != 589670 {
+					t.Errorf("group 128 ev[1] time = [%d..%d], want [586420..589670]", topEvs[1].start, topEvs[1].end)
+				}
+				assertGlyphs(t, topEvs[0].text, "我同意基地组织一直都在I agree that Al-Qaeda never went away,")
+				assertGlyphs(t, topEvs[1].text, "但阿尔-纳瓦兹是不一样的敌人but Al-Nawaz is a very different animal.")
+			},
+		},
+		{
+			groupIndex:  305, // 0-based 305: EN [335, 336], ZH [301, 302], Bottom
+			expectStyle: "Default",
+			checkFunc: func(t *testing.T, del, ren []dialogue, g Group) {
+				if len(ren) != 4 {
+					t.Fatalf("group 305: want 4 events, got %d", len(ren))
+				}
+				for i, e := range ren {
+					if e.style != "Default" {
+						t.Errorf("group 305 ev[%d]: style = %q, want Default", i, e.style)
+					}
+				}
+				// Must equal delivered events exactly
+				if len(del) != len(ren) {
+					t.Fatalf("group 305: delivered count %d != rendered count %d", len(del), len(ren))
+				}
+				for i := range ren {
+					if ren[i].start != del[i].start || ren[i].end != del[i].end || ren[i].text != del[i].text {
+						t.Errorf("group 305 ev[%d] mismatch:\n  del: [%d..%d] %s\n  ren: [%d..%d] %s",
+							i, del[i].start, del[i].end, del[i].text, ren[i].start, ren[i].end, ren[i].text)
+					}
+				}
+			},
+		},
+	}
+
+	for _, exp := range expectations {
+		g := mapping.Groups[exp.groupIndex]
+
+		var es []Cue
+		for _, id := range g.ENIDs {
+			if c, ok := enMap[id]; ok {
+				es = append(es, c)
+			}
+		}
+		var zs []Cue
+		for _, id := range g.ZHIDs {
+			if c, ok := zhMap[id]; ok {
+				zs = append(zs, c)
+			}
+		}
+		minStart := 1 << 30
+		maxEnd := 0
+		for _, c := range append(es, zs...) {
+			if c.Start < minStart {
+				minStart = c.Start
+			}
+			if c.End > maxEnd {
+				maxEnd = c.End
+			}
+		}
+
+		delG := findEvents(deliveredEvents, minStart, maxEnd)
+		renG := findEvents(newEvents, minStart, maxEnd)
+
+		t.Run(fmt.Sprintf("group_%d", exp.groupIndex), func(t *testing.T) {
+			exp.checkFunc(t, delG, renG, g)
+		})
+	}
+
+	// Global parity assertion:
+	// Verify that exactly 23 diff records exist between Delivered (664) and New (669),
+	// and that all other 641 events in the episode match delivered bilingual.ass exactly.
+	diffPoints := 0
+	dI, nI := 0, 0
+	for dI < len(deliveredEvents) || nI < len(newEvents) {
+		if dI < len(deliveredEvents) && nI < len(newEvents) {
+			d := deliveredEvents[dI]
+			n := newEvents[nI]
+			if d.start == n.start && d.end == n.end && d.style == n.style && d.text == n.text {
+				dI++
+				nI++
+				continue
+			}
+		}
+		diffPoints++
+		if dI < len(deliveredEvents) && (nI >= len(newEvents) || deliveredEvents[dI].start < newEvents[nI].start) {
+			dI++
+		} else if nI < len(newEvents) && (dI >= len(deliveredEvents) || newEvents[nI].start < deliveredEvents[dI].start) {
+			nI++
+		} else {
+			dI++
+			nI++
+		}
+	}
+	if diffPoints != 23 {
+		t.Errorf("expected exactly 23 diff points against delivered bilingual.ass, got %d", diffPoints)
+	}
+}
+
 // TestTopTemporal_CompareTopVsBottomTemporalEquivalence verifies that for the
 // real episode groups (such as 101, 103, 104, 106, 109, 121), the temporal
 // planning decisions (event intervals, splitting, text fragments) are identical
 // whether the group is at the top or at the bottom.
+//
+// Gated behind FUSIONN_POSITION_RECORD_DIR.
 func TestTopTemporal_CompareTopVsBottomTemporalEquivalence(t *testing.T) {
 	dir := os.Getenv(positionRecordDirEnv)
 	if dir == "" {
-		cand := "/Users/maverick/Desktop/fusionn-subtitle-split-test/terminal-list-s02e01-dialogue-lyrics-v5"
-		if _, err := os.Stat(cand); err == nil {
-			dir = cand
-		}
-	}
-	if dir == "" {
-		t.Skip("skipping E01 recorded replay: fixture directory not found")
+		t.Skip("skipping E01 recorded replay: set FUSIONN_POSITION_RECORD_DIR to run")
 	}
 
 	cfg := replayConfig{
