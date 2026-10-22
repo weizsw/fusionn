@@ -2,13 +2,13 @@ package subtitlellm
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/fusionn/internal/config"
@@ -210,8 +210,42 @@ func TestAlign_SameLanguageNativePositionTransitionAccepted(t *testing.T) {
 	}
 }
 
-// TestAlign_NegativeSafeguardsPreserved verifies that ID validation, duplicate detection,
-// excessive distance, and span safeguards continue to reject invalid groups as expected.
+// TestAlign_MaxDistanceToleranceBoundary verifies that validateResponse respects
+// custom maxDistance thresholds on cue distance checks.
+func TestAlign_MaxDistanceToleranceBoundary(t *testing.T) {
+	w := window{
+		Index:     0,
+		CoreStart: 0,
+		CoreEnd:   60000,
+		EN: []Cue{
+			{ID: 1, Start: 1000, End: 2000, Plain: "Cue 1", Display: "Cue 1"},
+		},
+		ZH: []Cue{
+			{ID: 1, Start: 5000, End: 6000, Plain: "ZH 1", Display: "ZH 1"},
+		},
+	}
+	content := json.RawMessage(`{"alignments":[{"en_ids":[1],"zh_ids":[1],"layer":"bottom"}]}`)
+
+	// With tolerance 3000ms: distance is 3000ms (1000 to 5000 start difference is 4000ms).
+	// Distance between start times is 4000ms.
+	// When maxDistance is 2000, it should be rejected with "too_far".
+	valid, rejections, err := validateResponse(content, w, 2000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(valid) != 0 || len(rejections) != 1 || rejections[0].Reason != "too_far" {
+		t.Fatalf("expected too_far rejection with tight maxDistance=2000, got valid=%v rejections=%v", valid, rejections)
+	}
+
+	// When maxDistance is 10000, it should be accepted.
+	valid, rejections, err = validateResponse(content, w, 10000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(valid) != 1 || len(rejections) != 0 {
+		t.Fatalf("expected accepted pair with relaxed maxDistance=10000, got valid=%v rejections=%v", valid, rejections)
+	}
+}
 func TestAlign_NegativeSafeguardsPreserved(t *testing.T) {
 	en := []Cue{
 		{ID: 1, Start: 1000, End: 2000, Plain: "Cue 1", Display: "Cue 1", Top: false, Alignment: 2, Changes: []string{}},
@@ -256,214 +290,117 @@ func TestAlign_NegativeSafeguardsPreserved(t *testing.T) {
 	}
 }
 
-var recordedCacheFiles = []string{
-	"/tmp/e01-iso/cache/subtitlellm-v1/000-365ce57a551df0af.json",
-	"/tmp/e01-iso/cache/subtitlellm-v1/001-4230c7a74e76fbb7.json",
-	"/tmp/e01-iso/cache/subtitlellm-v1/002-cee346922cee3148.json",
-	"/tmp/e01-iso/cache/subtitlellm-v1/003-1c2ef48470f023c8.json",
-	"/tmp/e01-iso/cache/subtitlellm-v1/004-29f5b156540c3ba3.json",
-	"/tmp/e01-iso/cache/subtitlellm-v1/005-1d8283a9f33a6bab.json",
-	"/tmp/e01-iso/cache/subtitlellm-v1/006-1856f8bc1cd06c75.json",
-	"/tmp/e01-iso/cache/subtitlellm-v1/007-12cf5f6c646768d8.json",
-	"/tmp/e01-iso/cache/subtitlellm-v1/008-059a698adb3f9e5c.json",
-	"/tmp/e01-iso/cache/subtitlellm-v1/009-6b454678b45e8d9f.json",
-	"/tmp/e01-iso/cache/subtitlellm-v1/010-99ed7da96e9fc2d5.json",
-	"/tmp/e01-iso/cache/subtitlellm-v1/011-b7b1dd106fd8a499.json",
-	"/tmp/e01-iso/cache/subtitlellm-v1/012-e3dd3ad4164d2edf.json",
-	"/tmp/e01-iso/cache/subtitlellm-v1/013-f9cede6c93496e48.json",
-	"/tmp/e01-iso/cache/subtitlellm-v1/014-90eb218ecc0e65e9.json",
+const (
+	positionRecordDirEnv      = "FUSIONN_POSITION_RECORD_DIR"
+	positionRecordManifestEnv = "FUSIONN_POSITION_RECORD_MANIFEST"
+	positionSourcesEnv        = "FUSIONN_POSITION_SOURCES"
+	positionStyleEnv          = "FUSIONN_POSITION_STYLE"
+	positionWordsEnv          = "FUSIONN_POSITION_WORDS"
+	positionBaselineEnv       = "FUSIONN_POSITION_BASELINE_MAPPING"
+	positionAssEnv            = "FUSIONN_POSITION_ASS"
+)
+
+type recordManifestEntry struct {
+	Index  int    `json:"index"`
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
 }
 
-// TestGenerateDeliveredArtifacts creates the new delivery artifacts under
-// /Users/maverick/Desktop/fusionn-subtitle-split-test/terminal-list-s02e01-position-fix/
-// and verifies them via reverify.sh / TestWholeEpisodeFixtureIsOptIn.
-func TestGenerateDeliveredArtifacts(t *testing.T) {
-	v12Dir := "/Users/maverick/Desktop/fusionn-subtitle-split-test/terminal-list-s02e01-v12"
-	outDir := "/Users/maverick/Desktop/fusionn-subtitle-split-test/terminal-list-s02e01-position-fix"
-
-	if err := os.MkdirAll(filepath.Join(outDir, "alignment"), 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	rawBundle, err := os.ReadFile(filepath.Join(v12Dir, "sources.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var bundle Bundle
-	if err := json.Unmarshal(rawBundle, &bundle); err != nil {
-		t.Fatal(err)
-	}
-
-	windows := buildWindows(bundle, 210000, 15000)
-	audit := Audit{
-		Rejected:       []RejectedRow{},
-		Conflicts:      []Group{},
-		Restored:       map[string][]int{"en": {}, "zh": {}},
-		WindowMissing:  []WindowMissing{},
-		CacheCorrupted: []CacheCorruption{},
-		Coverage:       Coverage{EN: len(bundle.EN), ZH: len(bundle.ZH)},
-		CacheHits:      15,
-		ResolvedModels: []string{"qfmodel"},
-		Provenance: &Provenance{
-			Source:            "native",
-			ConfiguredModel:   "group/auto-qfmodel",
-			SourceFingerprint: bundle.Fingerprint,
-		},
-	}
-
-	batches := make([]batch, 0, len(windows))
-	for i, w := range windows {
-		rawCache, err := os.ReadFile(recordedCacheFiles[i])
-		if err != nil {
-			t.Fatal(err)
-		}
-		var rec cacheRecord
-		if err := json.Unmarshal(rawCache, &rec); err != nil {
-			t.Fatal(err)
-		}
-		valid, rejected, err := validateResponse(rec.Response, w, MaxDistanceMS)
-		if err != nil {
-			t.Fatalf("window %d validateResponse failed: %v", i, err)
-		}
-		batches = append(batches, batch{Index: w.Index, Valid: valid, Rejected: rejected, Missing: missingWindow(w, valid)})
-	}
-
-	for _, b := range batches {
-		audit.Rejected = append(audit.Rejected, b.Rejected...)
-		audit.WindowMissing = append(audit.WindowMissing, b.Missing)
-	}
-
-	groups, reconcileAudit := reconcile(bundle, batches, 210000)
-	audit.Conflicts = reconcileAudit.Conflicts
-	audit.ContextDuplicates = reconcileAudit.ContextDuplicates
-	audit.Restored = reconcileAudit.Restored
-
-	rawMappingV12, err := os.ReadFile(filepath.Join(v12Dir, "alignment", "mapping.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var mappingV12 Mapping
-	if err := json.Unmarshal(rawMappingV12, &mappingV12); err != nil {
-		t.Fatal(err)
-	}
-
-	mapping := Mapping{
-		Version:           Version,
-		SourceFingerprint: bundle.Fingerprint,
-		Parameters:        mappingV12.Parameters,
-		Groups:            groups,
-	}
-	fingerprint, err := mappingDigest(mapping)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mapping.Fingerprint = fingerprint
-
-	// Copy verbatim sources.json, word-timings.json, delivered-style.json
-	rawWords, err := os.ReadFile(filepath.Join(v12Dir, "word-timings.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	rawStyle, err := os.ReadFile(filepath.Join(v12Dir, "delivered-style.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var words WordTimings
-	_ = json.Unmarshal(rawWords, &words)
-	var style config.ASSStyleConfig
-	_ = json.Unmarshal(rawStyle, &style)
-
-	if err := os.WriteFile(filepath.Join(outDir, "sources.json"), rawBundle, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(outDir, "word-timings.json"), rawWords, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(outDir, "delivered-style.json"), rawStyle, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	rawMapping, err := json.MarshalIndent(mapping, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(outDir, "alignment", "mapping.json"), append(rawMapping, '\n'), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	rawAudit, err := json.MarshalIndent(audit, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(outDir, "alignment", "audit.json"), append(rawAudit, '\n'), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	width, height := 3840, 1632
-	renderedASS, err := RenderWithWordTimings(bundle, mapping, fixtureConfig(), style, width, height, words)
-	if err != nil {
-		t.Fatalf("render failed: %v", err)
-	}
-	assPath := filepath.Join(outDir, "E01.zh20-bilingual-layout.ass")
-	if err := os.WriteFile(assPath, renderedASS, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// reverify.sh
-	reverifyScript := `#!/bin/sh
-# Re-verify this delivered sample against the recorded inputs.
-# Usage: ./reverify.sh [repo-root]
-set -eu
-HERE=$(cd "$(dirname "$0")" && pwd)
-REPO=${1:-/Users/maverick/go/src/Github/fusionn-worktrees/native-position-pairing}
-cd "$REPO"
-FUSIONN_EPISODE_FIXTURE_DIR="$HERE" \
-FUSIONN_EPISODE_STYLE_JSON="$HERE/delivered-style.json" \
-FUSIONN_EPISODE_ASS="$HERE/E01.zh20-bilingual-layout.ass" \
-FUSIONN_EPISODE_WRITE_VALIDATION="$HERE/validation.json" \
-  go test -count=1 ./internal/subtitlellm -run TestWholeEpisodeFixtureIsOptIn -v
-`
-	reverifyPath := filepath.Join(outDir, "reverify.sh")
-	if err := os.WriteFile(reverifyPath, []byte(reverifyScript), 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	// run.json
-	runData := map[string]any{
-		"height":                  height,
-		"width":                   width,
-		"http_attempts":           0,
-		"mapping_groups":          len(mapping.Groups),
-		"seconds":                 70.515157117,
-		"source_fingerprint":      bundle.Fingerprint,
-		"word_timing_cues":        len(words),
-		"render_origin":           "offline recorded-response replay",
-		"offline_replay_response": 15,
-	}
-	rawRun, _ := json.MarshalIndent(runData, "", "  ")
-	if err := os.WriteFile(filepath.Join(outDir, "run.json"), append(rawRun, '\n'), 0600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// TestReplayRecordedResponsesWithPositionFix performs the offline replay of all
-// 15 recorded responses through production decode/validation/reconcile with this fix.
+// TestReplayRecordedResponsesWithPositionFix performs an offline replay of recorded
+// LLM responses through production decode, validation, and reconcile with the position fix.
+//
+// This test is explicit opt-in: it requires FUSIONN_POSITION_RECORD_DIR or
+// FUSIONN_POSITION_RECORD_MANIFEST to be set. When omitted, it is skipped cleanly so
+// standard repository tests remain completely portable and free of filesystem dependencies.
+// When enabled, all inputs must exist and be valid or the test fails loudly.
 func TestReplayRecordedResponsesWithPositionFix(t *testing.T) {
-	v12Dir := "/Users/maverick/Desktop/fusionn-subtitle-split-test/terminal-list-s02e01-v12"
-	rawBundle, err := os.ReadFile(filepath.Join(v12Dir, "sources.json"))
+	dir := os.Getenv(positionRecordDirEnv)
+	manifestPath := os.Getenv(positionRecordManifestEnv)
+	if dir == "" && manifestPath == "" {
+		t.Skipf("skipping recorded response replay: set %s or %s to run", positionRecordDirEnv, positionRecordManifestEnv)
+	}
+
+	if manifestPath == "" && dir != "" {
+		cand := filepath.Join(dir, "recorded-responses", "manifest.json")
+		if _, err := os.Stat(cand); err == nil {
+			manifestPath = cand
+		} else {
+			cand2 := filepath.Join(dir, "manifest.json")
+			if _, err2 := os.Stat(cand2); err2 == nil {
+				manifestPath = cand2
+			}
+		}
+	}
+	if manifestPath == "" {
+		t.Fatalf("%s or manifest file not found in %s", positionRecordManifestEnv, dir)
+	}
+
+	sourcesPath := os.Getenv(positionSourcesEnv)
+	if sourcesPath == "" && dir != "" {
+		sourcesPath = filepath.Join(dir, "sources.json")
+	}
+	if sourcesPath == "" {
+		t.Fatalf("sources.json path required: set %s or %s", positionSourcesEnv, positionRecordDirEnv)
+	}
+
+	stylePath := os.Getenv(positionStyleEnv)
+	if stylePath == "" && dir != "" {
+		stylePath = filepath.Join(dir, "delivered-style.json")
+	}
+	if stylePath == "" {
+		t.Fatalf("delivered-style.json path required: set %s or %s", positionStyleEnv, positionRecordDirEnv)
+	}
+
+	wordsPath := os.Getenv(positionWordsEnv)
+	if wordsPath == "" && dir != "" {
+		wordsPath = filepath.Join(dir, "word-timings.json")
+	}
+
+	baselinePath := os.Getenv(positionBaselineEnv)
+	if baselinePath == "" && dir != "" {
+		for _, cand := range []string{
+			filepath.Join(dir, "baseline", "v12-mapping.json"),
+			filepath.Join(dir, "baseline", "mapping.json"),
+			filepath.Join(dir, "v12-mapping.json"),
+			filepath.Join(dir, "baseline-mapping.json"),
+		} {
+			if _, err := os.Stat(cand); err == nil {
+				baselinePath = cand
+				break
+			}
+		}
+	}
+
+	assPath := os.Getenv(positionAssEnv)
+	if assPath == "" && dir != "" {
+		assPath = filepath.Join(dir, "E01.zh20-bilingual-layout.ass")
+	}
+
+	rawBundle, err := os.ReadFile(sourcesPath)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("read sources from %s: %v", sourcesPath, err)
 	}
 	var bundle Bundle
 	if err := json.Unmarshal(rawBundle, &bundle); err != nil {
-		t.Fatal(err)
+		t.Fatalf("unmarshal bundle from %s: %v", sourcesPath, err)
+	}
+
+	rawManifest, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest from %s: %v", manifestPath, err)
+	}
+	var manifestEntries []recordManifestEntry
+	if err := json.Unmarshal(rawManifest, &manifestEntries); err != nil {
+		t.Fatalf("unmarshal manifest from %s: %v", manifestPath, err)
 	}
 
 	windows := buildWindows(bundle, 210000, 15000)
-	if len(windows) != len(recordedCacheFiles) {
-		t.Fatalf("windows count %d != cache files count %d", len(windows), len(recordedCacheFiles))
+	if len(windows) != len(manifestEntries) {
+		t.Fatalf("windows count %d != manifest entries count %d", len(windows), len(manifestEntries))
 	}
 
+	batches := make([]batch, 0, len(windows))
+	manifestDir := filepath.Dir(manifestPath)
 	audit := Audit{
 		Rejected:       []RejectedRow{},
 		Conflicts:      []Group{},
@@ -471,7 +408,7 @@ func TestReplayRecordedResponsesWithPositionFix(t *testing.T) {
 		WindowMissing:  []WindowMissing{},
 		CacheCorrupted: []CacheCorruption{},
 		Coverage:       Coverage{EN: len(bundle.EN), ZH: len(bundle.ZH)},
-		CacheHits:      15,
+		CacheHits:      len(windows),
 		ResolvedModels: []string{"qfmodel"},
 		Provenance: &Provenance{
 			Source:            "native",
@@ -480,16 +417,75 @@ func TestReplayRecordedResponsesWithPositionFix(t *testing.T) {
 		},
 	}
 
-	batches := make([]batch, 0, len(windows))
 	for i, w := range windows {
-		rawCache, err := os.ReadFile(recordedCacheFiles[i])
-		if err != nil {
-			t.Fatal(err)
+		entry := manifestEntries[i]
+		if entry.Index != w.Index {
+			t.Fatalf("manifest entry index %d != window index %d", entry.Index, w.Index)
 		}
+
+		recPath := entry.Path
+		if !filepath.IsAbs(recPath) {
+			recPath = filepath.Join(manifestDir, recPath)
+		}
+		rawCache, err := os.ReadFile(recPath)
+		if err != nil {
+			t.Fatalf("read record %s: %v", recPath, err)
+		}
+
+		hash := fmt.Sprintf("%x", sha256.Sum256(rawCache))
+		if hash != entry.SHA256 {
+			t.Fatalf("record %s sha256 changed: got %s, want %s", filepath.Base(recPath), hash, entry.SHA256)
+		}
+
 		var rec cacheRecord
 		if err := json.Unmarshal(rawCache, &rec); err != nil {
-			t.Fatal(err)
+			t.Fatalf("decode record %s: %v", filepath.Base(recPath), err)
 		}
+
+		// Validate that the recorded request strictly matches window Index and cue IDs.
+		var reqPayload struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.Unmarshal(rec.Request, &reqPayload); err != nil {
+			t.Fatalf("window %d unmarshal request payload: %v", i, err)
+		}
+		var userContent string
+		for _, m := range reqPayload.Messages {
+			if m.Role == "user" {
+				userContent = m.Content
+				break
+			}
+		}
+		if userContent == "" {
+			t.Fatalf("window %d missing user prompt in recorded request", i)
+		}
+		var reqView windowView
+		if err := json.Unmarshal([]byte(userContent), &reqView); err != nil {
+			t.Fatalf("window %d unmarshal user view: %v", i, err)
+		}
+		if len(reqView.CoreMS) != 2 || reqView.CoreMS[0] != w.CoreStart || reqView.CoreMS[1] != w.CoreEnd {
+			t.Fatalf("window %d core_ms mismatch: got %v, want [%d, %d]", i, reqView.CoreMS, w.CoreStart, w.CoreEnd)
+		}
+		if len(reqView.EN) != len(w.EN) {
+			t.Fatalf("window %d EN cue count mismatch: got %d, want %d", i, len(reqView.EN), len(w.EN))
+		}
+		for ci, cue := range w.EN {
+			if reqView.EN[ci].ID != cue.ID {
+				t.Fatalf("window %d EN cue %d ID mismatch: got %d, want %d", i, ci, reqView.EN[ci].ID, cue.ID)
+			}
+		}
+		if len(reqView.ZH) != len(w.ZH) {
+			t.Fatalf("window %d ZH cue count mismatch: got %d, want %d", i, len(reqView.ZH), len(w.ZH))
+		}
+		for ci, cue := range w.ZH {
+			if reqView.ZH[ci].ID != cue.ID {
+				t.Fatalf("window %d ZH cue %d ID mismatch: got %d, want %d", i, ci, reqView.ZH[ci].ID, cue.ID)
+			}
+		}
+
 		valid, rejected, err := validateResponse(rec.Response, w, MaxDistanceMS)
 		if err != nil {
 			t.Fatalf("window %d validateResponse failed: %v", i, err)
@@ -507,24 +503,14 @@ func TestReplayRecordedResponsesWithPositionFix(t *testing.T) {
 	audit.ContextDuplicates = reconcileAudit.ContextDuplicates
 	audit.Restored = reconcileAudit.Restored
 
-	rawMappingV12, err := os.ReadFile(filepath.Join(v12Dir, "alignment", "mapping.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var mappingV12 Mapping
-	if err := json.Unmarshal(rawMappingV12, &mappingV12); err != nil {
-		t.Fatal(err)
-	}
-
 	mapping := Mapping{
 		Version:           Version,
 		SourceFingerprint: bundle.Fingerprint,
-		Parameters:        mappingV12.Parameters,
 		Groups:            groups,
 	}
 	fingerprint, err := mappingDigest(mapping)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("mappingDigest failed: %v", err)
 	}
 	mapping.Fingerprint = fingerprint
 
@@ -543,7 +529,47 @@ func TestReplayRecordedResponsesWithPositionFix(t *testing.T) {
 		t.Fatalf("expected group_span_over_30s, got %s", audit.Rejected[0].Reason)
 	}
 
-	// 2. All 7 candidate groups must be successfully accepted into mapping.Groups:
+	// 2. Source cue layout position metadata preserved intact on all cues
+	var freshBundle Bundle
+	if err := json.Unmarshal(rawBundle, &freshBundle); err != nil {
+		t.Fatal(err)
+	}
+	for idx, c := range bundle.EN {
+		orig := freshBundle.EN[idx]
+		if c.Top != orig.Top || c.Alignment != orig.Alignment {
+			t.Fatalf("EN cue %d position metadata mutated: top %v->%v, align %d->%d", c.ID, orig.Top, c.Top, orig.Alignment, c.Alignment)
+		}
+	}
+	for idx, c := range bundle.ZH {
+		orig := freshBundle.ZH[idx]
+		if c.Top != orig.Top || c.Alignment != orig.Alignment {
+			t.Fatalf("ZH cue %d position metadata mutated: top %v->%v, align %d->%d", c.ID, orig.Top, c.Top, orig.Alignment, c.Alignment)
+		}
+	}
+
+	// 3. Every source ID must appear exactly once in accepted mapping groups
+	enCounts := map[int]int{}
+	zhCounts := map[int]int{}
+	for _, g := range mapping.Groups {
+		for _, id := range g.ENIDs {
+			enCounts[id]++
+		}
+		for _, id := range g.ZHIDs {
+			zhCounts[id]++
+		}
+	}
+	for _, c := range bundle.EN {
+		if count := enCounts[c.ID]; count != 1 {
+			t.Fatalf("source EN cue %d appears %d times in mapping.Groups (want 1)", c.ID, count)
+		}
+	}
+	for _, c := range bundle.ZH {
+		if count := zhCounts[c.ID]; count != 1 {
+			t.Fatalf("source ZH cue %d appears %d times in mapping.Groups (want 1)", c.ID, count)
+		}
+	}
+
+	// 4. All 7 candidate groups must be successfully accepted into mapping.Groups:
 	expectedPairs := []struct {
 		en []int
 		zh []int
@@ -557,14 +583,16 @@ func TestReplayRecordedResponsesWithPositionFix(t *testing.T) {
 		{en: []int{194}, zh: []int{168}},
 	}
 
+	groupKey := func(en, zh []int) string {
+		return fmt.Sprintf("en:%v_zh:%v", en, zh)
+	}
 	groupMap := map[string]Group{}
 	for _, g := range mapping.Groups {
-		key := fmt.Sprintf("en:%v_zh:%v", g.ENIDs, g.ZHIDs)
-		groupMap[key] = g
+		groupMap[groupKey(g.ENIDs, g.ZHIDs)] = g
 	}
 
 	for _, ep := range expectedPairs {
-		key := fmt.Sprintf("en:%v_zh:%v", ep.en, ep.zh)
+		key := groupKey(ep.en, ep.zh)
 		g, ok := groupMap[key]
 		if !ok {
 			t.Errorf("candidate group %s not found in accepted mapping groups", key)
@@ -575,7 +603,7 @@ func TestReplayRecordedResponsesWithPositionFix(t *testing.T) {
 		}
 	}
 
-	// 3. None of the 18 cues should be in restored single-sided list
+	// 5. None of the 18 cues should be in restored single-sided list
 	restoredEN := map[int]bool{}
 	for _, id := range audit.Restored["en"] {
 		restoredEN[id] = true
@@ -597,55 +625,131 @@ func TestReplayRecordedResponsesWithPositionFix(t *testing.T) {
 		}
 	}
 
-	t.Logf("Replayed mapping groups with fix: %d (v12 had 534)", len(mapping.Groups))
-	t.Logf("Replayed rejected rows with fix: %d (v12 had 9)", len(audit.Rejected))
-	t.Logf("Replayed conflicts with fix: %d (v12 had 12)", len(audit.Conflicts))
-	t.Logf("Replayed restored EN with fix: %d (v12 had 37)", len(audit.Restored["en"]))
-	t.Logf("Replayed restored ZH with fix: %d (v12 had 19)", len(audit.Restored["zh"]))
-	// 4. Verify rendering and whole episode validation with the new mapping
-	var words WordTimings
-	if rawWords, err := os.ReadFile(filepath.Join(v12Dir, "word-timings.json")); err == nil {
-		_ = json.Unmarshal(rawWords, &words)
+	// 6. Proving by calculation: 7 groups recovered and all remaining groups unchanged against baseline
+	if baselinePath != "" {
+		rawBaseline, err := os.ReadFile(baselinePath)
+		if err != nil {
+			t.Fatalf("read baseline mapping from %s: %v", baselinePath, err)
+		}
+		var baselineMapping Mapping
+		if err := json.Unmarshal(rawBaseline, &baselineMapping); err != nil {
+			t.Fatalf("unmarshal baseline mapping from %s: %v", baselinePath, err)
+		}
+
+		removedRestoredKeys := map[string]bool{}
+		for _, ep := range expectedPairs {
+			for _, id := range ep.en {
+				removedRestoredKeys[groupKey([]int{id}, []int{})] = true
+			}
+			for _, id := range ep.zh {
+				removedRestoredKeys[groupKey([]int{}, []int{id})] = true
+			}
+		}
+		if len(removedRestoredKeys) != 18 {
+			t.Fatalf("expected 18 single-sided keys to remove, got %d", len(removedRestoredKeys))
+		}
+
+		addedModelKeys := map[string]bool{}
+		for _, ep := range expectedPairs {
+			addedModelKeys[groupKey(ep.en, ep.zh)] = true
+		}
+		if len(addedModelKeys) != 7 {
+			t.Fatalf("expected 7 model keys to add, got %d", len(addedModelKeys))
+		}
+
+		baselineMap := map[string]Group{}
+		for _, g := range baselineMapping.Groups {
+			baselineMap[groupKey(g.ENIDs, g.ZHIDs)] = g
+		}
+
+		normKind := func(k string) string {
+			if k == KindUnknown {
+				return ""
+			}
+			return k
+		}
+		for key, bg := range baselineMap {
+			if removedRestoredKeys[key] {
+				if _, exists := groupMap[key]; exists {
+					t.Fatalf("baseline restored group %s still exists in new mapping", key)
+				}
+			} else {
+				ng, exists := groupMap[key]
+				if !exists {
+					t.Fatalf("baseline group %s missing from new mapping", key)
+				}
+				if ng.Layer != bg.Layer || ng.Origin != bg.Origin || normKind(ng.Kind) != normKind(bg.Kind) {
+					t.Fatalf("group %s modified: new=%+v baseline=%+v", key, ng, bg)
+				}
+			}
+		}
+
+		for key, ng := range groupMap {
+			if addedModelKeys[key] {
+				if _, exists := baselineMap[key]; exists {
+					t.Fatalf("recovered model group %s was already in baseline mapping", key)
+				}
+			} else {
+				bg, exists := baselineMap[key]
+				if !exists {
+					t.Fatalf("new group %s not found in baseline mapping", key)
+				}
+				if ng.Layer != bg.Layer || ng.Origin != bg.Origin || normKind(ng.Kind) != normKind(bg.Kind) {
+					t.Fatalf("group %s modified: new=%+v baseline=%+v", key, ng, bg)
+				}
+			}
+		}
+
+		if len(mapping.Groups) != len(baselineMapping.Groups)-18+7 {
+			t.Fatalf("group count mismatch: got %d, want baseline %d - 18 + 7 = %d",
+				len(mapping.Groups), len(baselineMapping.Groups), len(baselineMapping.Groups)-11)
+		}
 	}
-	rawStyle, err := os.ReadFile(filepath.Join(v12Dir, "delivered-style.json"))
+
+	// 7. Whole episode validation with rendered ASS and Verify()
+	var words WordTimings
+	if wordsPath != "" {
+		if rawWords, err := os.ReadFile(wordsPath); err == nil {
+			_ = json.Unmarshal(rawWords, &words)
+		}
+	}
+
+	rawStyle, err := os.ReadFile(stylePath)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("read style from %s: %v", stylePath, err)
 	}
 	var style config.ASSStyleConfig
 	if err := json.Unmarshal(rawStyle, &style); err != nil {
-		t.Fatal(err)
+		t.Fatalf("unmarshal style: %v", err)
 	}
 
 	width, height := 3840, 1632
-	renderedASS, err := RenderWithWordTimings(bundle, mapping, fixtureConfig(), style, width, height, words)
-	if err != nil {
-		t.Fatalf("render failed: %v", err)
-	}
-
 	v, events, err := validateEpisode(bundle, mapping, fixtureConfig(), style, width, height, words)
 	if err != nil {
 		t.Fatalf("validateEpisode failed: %v", err)
 	}
 
-	t.Logf("Rendered ASS bytes: %d, events: %d (v12 had 675)", len(renderedASS), len(events))
-	t.Logf("Coverage EN: %d/%d, ZH: %d/%d", v.ENCovered, v.ENSourceCues, v.ZHCovered, v.ZHSourceCues)
-	t.Logf("Text mismatches: %d, Order mismatches: %d, Interval mismatches: %d", len(v.TextMismatches), len(v.OrderMismatches), len(v.IntervalMismatches))
-	t.Logf("Unchecked: %v", v.Unchecked)
-
-	// Print rendered events for the 7 recovered passages:
-	t.Logf("=== 7 RECOVERED PASSAGES RENDERED WITH FIX ===")
-	searchTerms := []string{
-		"RD-4895", "terror attacks", "spreading fear", "Not going home", "Amin Al-Nawaz", "new al-Qaeda", "start over",
-	}
-	for _, line := range strings.Split(string(renderedASS), "\n") {
-		if !strings.HasPrefix(line, "Dialogue:") {
-			continue
+	failures := v.Verify()
+	if len(failures) != 0 {
+		for _, f := range failures {
+			t.Errorf("validation failure: %s", f)
 		}
-		for _, term := range searchTerms {
-			if strings.Contains(line, term) {
-				t.Logf("  MATCH %q: %s", term, line)
-				break
+		t.Fatalf("%d validation failures in validateEpisode", len(failures))
+	}
+
+	if assPath != "" {
+		if rawASS, err := os.ReadFile(assPath); err == nil {
+			checkSerializedASS(t, string(rawASS), events)
+			rerendered, err := RenderWithWordTimings(bundle, mapping, fixtureConfig(), style, width, height, words)
+			if err != nil {
+				t.Fatalf("RenderWithWordTimings failed: %v", err)
+			}
+			if string(rerendered) != string(rawASS) {
+				t.Fatalf("re-rendered ASS does not match delivered ASS %s byte-for-byte", assPath)
 			}
 		}
 	}
+
+	t.Logf("Replayed mapping groups: %d, rejected: %d, conflicts: %d, restored EN: %d, restored ZH: %d",
+		len(mapping.Groups), len(audit.Rejected), len(audit.Conflicts), len(audit.Restored["en"]), len(audit.Restored["zh"]))
 }
