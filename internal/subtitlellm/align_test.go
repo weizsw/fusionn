@@ -477,7 +477,9 @@ func TestAlignInvalidMapsAreQuarantinedAndRestored(t *testing.T) {
 	assertCoverage(t, mapping, bundle)
 }
 
-func TestAlignTooFarAndNativePositionConflict(t *testing.T) {
+// TestAlignTooFarRejection verifies distance checks reject remote cue pairings.
+// Native position differences do not veto pairing; excessive distance continues to be rejected.
+func TestAlignTooFarRejection(t *testing.T) {
 	en := []Cue{
 		{ID: 1, Start: 0, End: 1000, Style: "Default", Changes: []string{}},
 		{ID: 2, Start: 100000, End: 101000, Style: "Default", Changes: []string{}},
