@@ -481,155 +481,70 @@ func VerifyDeliveredASSAgainstReference(deliveredASSPath string, bundle Bundle, 
 	return VerifyDeliveredASSContentAgainstReference(string(assBytes), bundle, mapping, cfg, style, playResX, playResY)
 }
 
-// ASSHeaderInfo holds parsed header sections and styles.
-type ASSHeaderInfo struct {
-	PlayResX  int
-	PlayResY  int
-	WrapStyle string
-	Styles    map[string]ASSStyleInfo
-}
-
-// ASSStyleInfo holds parsed properties of an ASS Style definition.
-type ASSStyleInfo struct {
-	Name      string
-	Fontname  string
-	Fontsize  int
-	Alignment int
-	MarginL   int
-	MarginR   int
-	MarginV   int
-	RawLine   string
-}
-
-// ParseASSHeader extracts Script Info attributes and V4+ Styles from ASS content.
-// It supports both LF and CRLF newlines.
-func ParseASSHeader(content string) (*ASSHeaderInfo, error) {
+// ExtractASSHeader extracts all lines before the first Dialogue: line,
+// representing the complete serialized script header, styles, and events format.
+// It normalizes line endings to CRLF (\r\n) and trims trailing blank lines.
+func ExtractASSHeader(content string) string {
 	norm := strings.ReplaceAll(content, "\r\n", "\n")
 	norm = strings.ReplaceAll(norm, "\r", "\n")
-
-	info := &ASSHeaderInfo{
-		Styles: make(map[string]ASSStyleInfo),
-	}
-
 	lines := strings.Split(norm, "\n")
-	currentSection := ""
-
-	styleFormatIndices := make(map[string]int)
-
+	var headerLines []string
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
-			currentSection = trimmed
-			continue
+		if strings.HasPrefix(trimmed, "Dialogue:") {
+			break
 		}
-		if trimmed == "" || strings.HasPrefix(trimmed, ";") {
-			continue
-		}
-
-		if currentSection == "[Script Info]" {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) == 2 {
-				key := strings.TrimSpace(parts[0])
-				val := strings.TrimSpace(parts[1])
-				switch key {
-				case "PlayResX":
-					if x, err := strconv.Atoi(val); err == nil {
-						info.PlayResX = x
-					}
-				case "PlayResY":
-					if y, err := strconv.Atoi(val); err == nil {
-						info.PlayResY = y
-					}
-				case "WrapStyle":
-					info.WrapStyle = val
-				}
-			}
-		} else if currentSection == "[V4+ Styles]" {
-			if strings.HasPrefix(trimmed, "Format:") {
-				headerParts := strings.Split(strings.TrimPrefix(trimmed, "Format:"), ",")
-				styleFormatIndices = make(map[string]int)
-				for i, h := range headerParts {
-					styleFormatIndices[strings.TrimSpace(h)] = i
-				}
-			} else if strings.HasPrefix(trimmed, "Style:") {
-				valPart := strings.TrimPrefix(trimmed, "Style:")
-				parts := strings.Split(valPart, ",")
-				nameIdx := 0
-				if idx, ok := styleFormatIndices["Name"]; ok && idx < len(parts) {
-					nameIdx = idx
-				}
-				name := strings.TrimSpace(parts[nameIdx])
-
-				styleInfo := ASSStyleInfo{
-					Name:    name,
-					RawLine: trimmed,
-				}
-				if fIdx, ok := styleFormatIndices["Fontname"]; ok && fIdx < len(parts) {
-					styleInfo.Fontname = strings.TrimSpace(parts[fIdx])
-				}
-				if sIdx, ok := styleFormatIndices["Fontsize"]; ok && sIdx < len(parts) {
-					if sz, err := strconv.Atoi(strings.TrimSpace(parts[sIdx])); err == nil {
-						styleInfo.Fontsize = sz
-					}
-				}
-				if aIdx, ok := styleFormatIndices["Alignment"]; ok && aIdx < len(parts) {
-					if al, err := strconv.Atoi(strings.TrimSpace(parts[aIdx])); err == nil {
-						styleInfo.Alignment = al
-					}
-				}
-				if lIdx, ok := styleFormatIndices["MarginL"]; ok && lIdx < len(parts) {
-					if ml, err := strconv.Atoi(strings.TrimSpace(parts[lIdx])); err == nil {
-						styleInfo.MarginL = ml
-					}
-				}
-				if rIdx, ok := styleFormatIndices["MarginR"]; ok && rIdx < len(parts) {
-					if mr, err := strconv.Atoi(strings.TrimSpace(parts[rIdx])); err == nil {
-						styleInfo.MarginR = mr
-					}
-				}
-				if vIdx, ok := styleFormatIndices["MarginV"]; ok && vIdx < len(parts) {
-					if mv, err := strconv.Atoi(strings.TrimSpace(parts[vIdx])); err == nil {
-						styleInfo.MarginV = mv
-					}
-				}
-				info.Styles[name] = styleInfo
-			}
-		}
+		headerLines = append(headerLines, line)
 	}
-
-	return info, nil
+	for len(headerLines) > 0 && strings.TrimSpace(headerLines[len(headerLines)-1]) == "" {
+		headerLines = headerLines[:len(headerLines)-1]
+	}
+	return strings.Join(headerLines, "\r\n")
 }
 
-// VerifyDeliveredASSHeader verifies [Script Info], PlayResX/Y, [V4+ Styles], and Style: Default.
-func VerifyDeliveredASSHeader(content string, expectedPlayResX, expectedPlayResY int, expectedDefaultAlignment int) ([]string, error) {
-	norm := strings.ReplaceAll(content, "\r\n", "\n")
-	norm = strings.ReplaceAll(norm, "\r", "\n")
+// VerifyDeliveredASSHeader strictly verifies the delivered ASS serialized header
+// against an independent expected serialized header. It requires standard sections
+// ([Script Info], [V4+ Styles], [Events], and Events Format), normalizes CRLF/LF,
+// and compares header lines exactly (including PlayRes, WrapStyle, all Style definitions,
+// fonts, alignments, margins, and format specifications).
+func VerifyDeliveredASSHeader(deliveredContent, expectedContent string) ([]string, error) {
+	normDelivered := strings.ReplaceAll(deliveredContent, "\r\n", "\n")
+	normDelivered = strings.ReplaceAll(normDelivered, "\r", "\n")
 
 	var failures []string
-	if !strings.Contains(norm, "[Script Info]") {
+	if !strings.Contains(normDelivered, "[Script Info]") {
 		failures = append(failures, "missing '[Script Info]' section")
 	}
-	if !strings.Contains(norm, "[V4+ Styles]") {
+	if !strings.Contains(normDelivered, "[V4+ Styles]") {
 		failures = append(failures, "missing '[V4+ Styles]' section")
 	}
-
-	header, err := ParseASSHeader(norm)
-	if err != nil {
-		return nil, fmt.Errorf("parse ASS header: %w", err)
+	if !strings.Contains(normDelivered, "[Events]") {
+		failures = append(failures, "missing '[Events]' section")
 	}
 
-	if expectedPlayResX > 0 && header.PlayResX != expectedPlayResX {
-		failures = append(failures, fmt.Sprintf("PlayResX mismatch: got %d, want %d", header.PlayResX, expectedPlayResX))
-	}
-	if expectedPlayResY > 0 && header.PlayResY != expectedPlayResY {
-		failures = append(failures, fmt.Sprintf("PlayResY mismatch: got %d, want %d", header.PlayResY, expectedPlayResY))
+	delHeader := ExtractASSHeader(deliveredContent)
+	expHeader := ExtractASSHeader(expectedContent)
+
+	delLines := strings.Split(delHeader, "\r\n")
+	expLines := strings.Split(expHeader, "\r\n")
+
+	maxLines := len(delLines)
+	if len(expLines) > maxLines {
+		maxLines = len(expLines)
 	}
 
-	defaultStyle, hasDefault := header.Styles["Default"]
-	if !hasDefault {
-		failures = append(failures, "missing 'Default' style definition in [V4+ Styles]")
-	} else if expectedDefaultAlignment > 0 && defaultStyle.Alignment != expectedDefaultAlignment {
-		failures = append(failures, fmt.Sprintf("Default style alignment mismatch: got %d, want %d", defaultStyle.Alignment, expectedDefaultAlignment))
+	for i := 0; i < maxLines; i++ {
+		if i >= len(delLines) {
+			failures = append(failures, fmt.Sprintf("header line %d missing in delivered: expected %q", i+1, expLines[i]))
+			continue
+		}
+		if i >= len(expLines) {
+			failures = append(failures, fmt.Sprintf("header line %d unexpected in delivered: got %q", i+1, delLines[i]))
+			continue
+		}
+		if delLines[i] != expLines[i] {
+			failures = append(failures, fmt.Sprintf("header mismatch at line %d: got %q, want %q", i+1, delLines[i], expLines[i]))
+		}
 	}
 
 	return failures, nil
@@ -637,20 +552,16 @@ func VerifyDeliveredASSHeader(content string, expectedPlayResX, expectedPlayResY
 
 // DeliveryVerificationReport encapsulates diagnostic metrics comparing delivered ASS against expected baseline.
 type DeliveryVerificationReport struct {
-	Passed          bool     `json:"passed"`
-	Path            string   `json:"path"`
-	TotalActual     int      `json:"total_actual"`
-	TotalExpected   int      `json:"total_expected"`
-	HeaderPassed    bool     `json:"header_passed"`
-	FirstEventMatch bool     `json:"first_event_match"`
-	LastEventMatch  bool     `json:"last_event_match"`
-	KeyAnchorsMatch bool     `json:"key_anchors_match"`
-	Failures        []string `json:"failures,omitempty"`
+	Passed        bool     `json:"passed"`
+	Path          string   `json:"path,omitempty"`
+	TotalActual   int      `json:"total_actual"`
+	TotalExpected int      `json:"total_expected"`
+	HeaderPassed  bool     `json:"header_passed"`
+	Failures      []string `json:"failures,omitempty"`
 }
 
 // VerifyDeliveredASSAgainstExpected compares delivered ASS file on disk against expected ASS bytes.
-// It checks header integrity, event count, first/last boundary events, key quartile anchors,
-// and line-by-line dialogue timing/style/text/pos equivalence.
+// It checks header integrity, event count, and line-by-line dialogue timing/style/text/pos equivalence.
 func VerifyDeliveredASSAgainstExpected(path string, expectedASS []byte) (*DeliveryVerificationReport, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -666,31 +577,21 @@ func VerifyDeliveredASSAgainstExpected(path string, expectedASS []byte) (*Delive
 // VerifyDeliveredASSContentAgainstExpected strictly compares delivered ASS content against expected reference bytes.
 func VerifyDeliveredASSContentAgainstExpected(deliveredContent string, expectedASS []byte) (*DeliveryVerificationReport, error) {
 	report := &DeliveryVerificationReport{
-		Passed:          true,
-		HeaderPassed:    true,
-		FirstEventMatch: true,
-		LastEventMatch:  true,
-		KeyAnchorsMatch: true,
+		Passed:       true,
+		HeaderPassed: true,
 	}
 
 	normDelivered := strings.ReplaceAll(deliveredContent, "\r\n", "\n")
 	normExpected := strings.ReplaceAll(string(expectedASS), "\r\n", "\n")
 
-	// 1. Parse headers
-	expectedHeader, errExpH := ParseASSHeader(normExpected)
-	if errExpH == nil && expectedHeader != nil {
-		defAlign := 2
-		if ds, ok := expectedHeader.Styles["Default"]; ok && ds.Alignment > 0 {
-			defAlign = ds.Alignment
-		}
-		hFailures, errHF := VerifyDeliveredASSHeader(normDelivered, expectedHeader.PlayResX, expectedHeader.PlayResY, defAlign)
-		if errHF != nil {
-			return nil, fmt.Errorf("verify header: %w", errHF)
-		}
-		if len(hFailures) > 0 {
-			report.HeaderPassed = false
-			report.Failures = append(report.Failures, hFailures...)
-		}
+	// 1. Verify header prefix against expected
+	hFailures, errHF := VerifyDeliveredASSHeader(normDelivered, normExpected)
+	if errHF != nil {
+		return nil, fmt.Errorf("verify header: %w", errHF)
+	}
+	if len(hFailures) > 0 {
+		report.HeaderPassed = false
+		report.Failures = append(report.Failures, hFailures...)
 	}
 
 	// 2. Parse dialogues
@@ -713,45 +614,10 @@ func VerifyDeliveredASSContentAgainstExpected(deliveredContent string, expectedA
 	}
 
 	if len(actualDialogues) > 0 {
-		// First event check
-		firstFails := VerifySerializedDialogueAgainstExpected(actualDialogues[:1], expectedDialogues[:1])
-		if len(firstFails) > 0 {
-			report.FirstEventMatch = false
-			report.Failures = append(report.Failures, firstFails...)
-		}
-
-		// Last event check
-		lastFails := VerifySerializedDialogueAgainstExpected(actualDialogues[len(actualDialogues)-1:], expectedDialogues[len(expectedDialogues)-1:])
-		if len(lastFails) > 0 {
-			report.LastEventMatch = false
-			report.Failures = append(report.Failures, lastFails...)
-		}
-
-		// Key anchors check (e.g. 25%, 50%, 75% quartiles)
-		anchors := []int{len(actualDialogues) / 4, len(actualDialogues) / 2, (len(actualDialogues) * 3) / 4}
-		for _, idx := range anchors {
-			if idx > 0 && idx < len(actualDialogues)-1 {
-				aFails := VerifySerializedDialogueAgainstExpected([]SerializedDialogue{actualDialogues[idx]}, []SerializedDialogue{expectedDialogues[idx]})
-				if len(aFails) > 0 {
-					report.KeyAnchorsMatch = false
-					report.Failures = append(report.Failures, fmt.Sprintf("anchor event %d mismatch: %v", idx, aFails))
-				}
-			}
-		}
-
-		// Full dialogue verification
+		// Full dialogue line-by-line verification
 		allFails := VerifySerializedDialogueAgainstExpected(actualDialogues, expectedDialogues)
 		if len(allFails) > 0 {
-			seen := make(map[string]bool)
-			for _, f := range report.Failures {
-				seen[f] = true
-			}
-			for _, f := range allFails {
-				if !seen[f] {
-					report.Failures = append(report.Failures, f)
-					seen[f] = true
-				}
-			}
+			report.Failures = append(report.Failures, allFails...)
 		}
 	}
 
@@ -765,21 +631,17 @@ func VerifyDeliveredASSContentAgainstExpected(deliveredContent string, expectedA
 // VerifyDeliveredASSContentAgainstReference strictly verifies a delivered ASS content string
 // against an independently rendered expected reference ASS.
 func VerifyDeliveredASSContentAgainstReference(deliveredASS string, bundle Bundle, mapping Mapping, cfg config.LLMConfig, style config.ASSStyleConfig, playResX, playResY int) ([]string, error) {
-	expectedAlign := style.Alignment
-	if expectedAlign < 1 || expectedAlign > 9 {
-		expectedAlign = 2
+	expectedBytes, _, err := renderWithAudits(bundle, mapping, cfg, style, playResX, playResY, nil)
+	if err != nil {
+		return nil, fmt.Errorf("render expected reference ASS: %w", err)
 	}
-	headerFailures, err := VerifyDeliveredASSHeader(deliveredASS, playResX, playResY, expectedAlign)
+	headerFailures, err := VerifyDeliveredASSHeader(deliveredASS, string(expectedBytes))
 	if err != nil {
 		return nil, fmt.Errorf("verify delivered ASS header: %w", err)
 	}
 	actualDialogues, err := ParseSerializedASSWithPositions(deliveredASS)
 	if err != nil {
 		return nil, fmt.Errorf("parse delivered ASS: %w", err)
-	}
-	expectedBytes, _, err := renderWithAudits(bundle, mapping, cfg, style, playResX, playResY, nil)
-	if err != nil {
-		return nil, fmt.Errorf("render expected reference ASS: %w", err)
 	}
 	expectedDialogues, err := ParseSerializedASSWithPositions(string(expectedBytes))
 	if err != nil {
@@ -1651,8 +1513,12 @@ func RunDarkMatterCrossRegressionToDir(dir, outDir string) (*RegressionRunResult
 	}
 
 	// Write sources.json for ledger tool
-	if sourcesBytes, errSources := json.MarshalIndent(bundle, "", "  "); errSources == nil {
-		_ = os.WriteFile(filepath.Join(outDir, "sources.json"), sourcesBytes, 0644)
+	sourcesBytes, errSources := json.MarshalIndent(bundle, "", "  ")
+	if errSources != nil {
+		return nil, fmt.Errorf("marshal sources.json: %w", errSources)
+	}
+	if err := os.WriteFile(filepath.Join(outDir, "sources.json"), sourcesBytes, 0644); err != nil {
+		return nil, fmt.Errorf("write sources.json: %w", err)
 	}
 
 	// Write validation.json with event_audit for review-ledger tool
@@ -1694,8 +1560,12 @@ func RunDarkMatterCrossRegressionToDir(dir, outDir string) (*RegressionRunResult
 	valObj := map[string]interface{}{
 		"event_audit": eventAudits,
 	}
-	if valBytes, errVal := json.MarshalIndent(valObj, "", "  "); errVal == nil {
-		_ = os.WriteFile(filepath.Join(outDir, "validation.json"), valBytes, 0644)
+	valBytes, errVal := json.MarshalIndent(valObj, "", "  ")
+	if errVal != nil {
+		return nil, fmt.Errorf("marshal validation.json: %w", errVal)
+	}
+	if err := os.WriteFile(filepath.Join(outDir, "validation.json"), valBytes, 0644); err != nil {
+		return nil, fmt.Errorf("write validation.json: %w", err)
 	}
 
 	// 11. Write REGRESSION-SUMMARY.md

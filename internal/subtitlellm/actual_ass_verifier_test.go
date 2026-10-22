@@ -7,30 +7,24 @@ import (
 	"testing"
 )
 
-// Gap 1: Test verification of ASS headers and Style definitions, including CRLF tolerance.
+// Gap 1: Test verification of ASS headers and Style definitions using public Render.
 func TestVerifyDeliveredASSHeader_Gap1(t *testing.T) {
-	validASS := `[Script Info]
-Title: Bilingual Subtitle
-ScriptType: v4.00+
-WrapStyle: 2
-ScaledBorderAndShadow: yes
-Collisions: Normal
-PlayResX: 1920
-PlayResY: 1080
-YCbCr Matrix: TV.709
+	style := fixtureStyle()
+	cfg := fixtureConfig()
+	bundle := fixtureBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 3000, Display: "Hello world", Plain: "Hello world"}},
+		[]Cue{{ID: 1, Start: 1000, End: 3000, Display: "你好世界"}},
+	)
+	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
 
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Source Han Sans SC,46,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0.0,0,1,2.0,1.0,2,30,30,30,1
-Style: Eng,Source Han Sans SC,32,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0.0,0,1,2.0,1.0,2,30,30,30,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:01:00.00,0:01:02.00,Default,,0,0,0,,Line 1
-`
+	renderedBytes, err := Render(bundle, mapping, cfg, style, 1920, 1080)
+	if err != nil {
+		t.Fatalf("render valid reference ASS: %v", err)
+	}
+	validASS := string(renderedBytes)
 
 	t.Run("Valid LF header passes", func(t *testing.T) {
-		failures, err := VerifyDeliveredASSHeader(validASS, 1920, 1080, 2)
+		failures, err := VerifyDeliveredASSHeader(validASS, validASS)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -39,9 +33,9 @@ Dialogue: 0,0:01:00.00,0:01:02.00,Default,,0,0,0,,Line 1
 		}
 	})
 
-	t.Run("Valid CRLF header passes identically", func(t *testing.T) {
+	t.Run("Valid CRLF header passes against LF reference", func(t *testing.T) {
 		crlfASS := strings.ReplaceAll(validASS, "\n", "\r\n")
-		failures, err := VerifyDeliveredASSHeader(crlfASS, 1920, 1080, 2)
+		failures, err := VerifyDeliveredASSHeader(crlfASS, validASS)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -50,58 +44,100 @@ Dialogue: 0,0:01:00.00,0:01:02.00,Default,,0,0,0,,Line 1
 		}
 	})
 
-	t.Run("Missing Script Info section detected", func(t *testing.T) {
-		tampered := strings.ReplaceAll(validASS, "[Script Info]", "[Info]")
-		failures, err := VerifyDeliveredASSHeader(tampered, 1920, 1080, 2)
+	t.Run("LF delivered passes against CRLF reference", func(t *testing.T) {
+		crlfRef := strings.ReplaceAll(validASS, "\n", "\r\n")
+		failures, err := VerifyDeliveredASSHeader(validASS, crlfRef)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(failures) != 0 {
+			t.Fatalf("expected 0 failures, got: %v", failures)
+		}
+	})
+
+	t.Run("PlayRes mismatch detected", func(t *testing.T) {
+		tampered := strings.Replace(validASS, "PlayResX: 1920", "PlayResX: 1280", 1)
+		failures, err := VerifyDeliveredASSHeader(tampered, validASS)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if len(failures) == 0 {
-			t.Fatal("expected failure for missing [Script Info]")
+			t.Fatal("expected failure for PlayResX tampering, got 0")
+		}
+		found := false
+		for _, f := range failures {
+			if strings.Contains(f, "PlayResX") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected failure mentioning PlayResX, got: %v", failures)
 		}
 	})
 
-	t.Run("PlayResX mismatch detected", func(t *testing.T) {
-		tampered := strings.ReplaceAll(validASS, "PlayResX: 1920", "PlayResX: 1280")
-		failures, err := VerifyDeliveredASSHeader(tampered, 1920, 1080, 2)
+	t.Run("Default alignment mismatch detected", func(t *testing.T) {
+		// Style: Default,...,Alignment=2,... tampered to Alignment=8
+		tampered := strings.Replace(validASS, ",2,80,80,32,1", ",8,80,80,32,1", 1)
+		failures, err := VerifyDeliveredASSHeader(tampered, validASS)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(failures) == 0 || !strings.Contains(failures[0], "PlayResX mismatch") {
-			t.Fatalf("expected PlayResX mismatch failure, got: %v", failures)
+		if len(failures) == 0 {
+			t.Fatal("expected failure for Default style alignment tampering, got 0")
+		}
+		found := false
+		for _, f := range failures {
+			if strings.Contains(f, "Default") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected failure mentioning Default style, got: %v", failures)
 		}
 	})
 
-	t.Run("PlayResY mismatch detected", func(t *testing.T) {
-		tampered := strings.ReplaceAll(validASS, "PlayResY: 1080", "PlayResY: 720")
-		failures, err := VerifyDeliveredASSHeader(tampered, 1920, 1080, 2)
+	t.Run("Eng font mismatch detected", func(t *testing.T) {
+		// Style: Eng,Go,... tampered to Style: Eng,Comic Sans,...
+		tampered := strings.Replace(validASS, "Style: Eng,Go,", "Style: Eng,Comic Sans,", 1)
+		failures, err := VerifyDeliveredASSHeader(tampered, validASS)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(failures) == 0 || !strings.Contains(failures[0], "PlayResY mismatch") {
-			t.Fatalf("expected PlayResY mismatch failure, got: %v", failures)
+		if len(failures) == 0 {
+			t.Fatal("expected failure for Eng font tampering, got 0")
+		}
+		found := false
+		for _, f := range failures {
+			if strings.Contains(f, "Comic Sans") || strings.Contains(f, "Eng") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected failure mentioning Eng font, got: %v", failures)
 		}
 	})
 
-	t.Run("Missing Style Default detected", func(t *testing.T) {
-		tampered := strings.ReplaceAll(validASS, "Style: Default,", "Style: Custom,")
-		failures, err := VerifyDeliveredASSHeader(tampered, 1920, 1080, 2)
+	t.Run("Events Format line mismatch detected", func(t *testing.T) {
+		tampered := strings.Replace(validASS, "Format: Layer, Start, End, Style", "Format: Layer, Start, End, CustomStyle", 1)
+		failures, err := VerifyDeliveredASSHeader(tampered, validASS)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(failures) == 0 || !strings.Contains(failures[0], "missing 'Default' style") {
-			t.Fatalf("expected missing Default style failure, got: %v", failures)
+		if len(failures) == 0 {
+			t.Fatal("expected failure for Events Format line tampering, got 0")
 		}
-	})
-
-	t.Run("Style Default alignment mismatch detected", func(t *testing.T) {
-		// In validASS, Default style alignment is 2. We request expected alignment 8 (top).
-		failures, err := VerifyDeliveredASSHeader(validASS, 1920, 1080, 8)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		found := false
+		for _, f := range failures {
+			if strings.Contains(f, "Format:") {
+				found = true
+				break
+			}
 		}
-		if len(failures) == 0 || !strings.Contains(failures[0], "alignment mismatch") {
-			t.Fatalf("expected alignment mismatch failure, got: %v", failures)
+		if !found {
+			t.Fatalf("expected failure mentioning Format line, got: %v", failures)
 		}
 	})
 }
@@ -169,55 +205,141 @@ Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,{\pos(NaN,100)}Broken line
 	})
 }
 
-// Gap 3: Test direct delivery verification against expected ASS / word timing baseline.
-func TestVerifyDeliveredASSAgainstExpected_Gap3(t *testing.T) {
+// Gap 3: Test delivery verification against expected ASS using actual word timing splits.
+func TestVerifyDeliveredASSAgainstExpected_WordTimingEvidence_Gap3(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	baseASS := `[Script Info]
-Title: Bilingual Subtitle
-ScriptType: v4.00+
-WrapStyle: 2
-PlayResX: 1920
-PlayResY: 1080
+	cfg := renderTestConfig()
+	cfg.EnChars = 22 // forces long cue splitting
+	style := fixtureStyle()
 
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Source Han Sans SC,46,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0.0,0,1,2.0,1.0,2,30,30,30,1
+	bundle := makeBundle(
+		[]Cue{{
+			ID:      1,
+			Start:   1000,
+			End:     7000,
+			Display: "We should leave now and return tomorrow.",
+			Plain:   "We should leave now\nand return tomorrow.",
+		}},
+		[]Cue{{
+			ID:      1,
+			Start:   1000,
+			End:     7000,
+			Display: "我们该走了，明天再来",
+		}},
+	)
+	mapping := makeMapping(bundle, []Group{{
+		ENIDs:  []int{1},
+		ZHIDs:  []int{1},
+		Layer:  LayerBottom,
+		Origin: OriginModel,
+	}})
 
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,First line.\N{\rEng}First english.
-Dialogue: 0,0:00:04.00,0:00:06.00,Default,,0,0,0,,{\pos(960,800)}Middle line.\N{\rEng}Middle english.
-Dialogue: 0,0:00:07.00,0:00:09.00,Default,,0,0,0,,Last line.\N{\rEng}Last english.
-`
-	assPath := filepath.Join(tmpDir, "delivered.ass")
-	if err := os.WriteFile(assPath, []byte(baseASS), 0644); err != nil {
-		t.Fatalf("write base ass: %v", err)
+	// Word timings that place the break between "now" (2400ms) and "and" (2800ms) -> split at 2600ms
+	words := WordTimings{1: {
+		{Text: "We", StartMS: 1000, EndMS: 1200},
+		{Text: "should", StartMS: 1250, EndMS: 1500},
+		{Text: "leave", StartMS: 1550, EndMS: 1900},
+		{Text: "now", StartMS: 2000, EndMS: 2400},
+		{Text: "and", StartMS: 2800, EndMS: 3000},
+		{Text: "return", StartMS: 3100, EndMS: 3500},
+		{Text: "tomorrow", StartMS: 3600, EndMS: 4300},
+	}}
+
+	// 1. Generate actual ASS using public producer RenderWithWordTimings
+	actualBytes, err := RenderWithWordTimings(bundle, mapping, cfg, style, 1920, 1080, words)
+	if err != nil {
+		t.Fatalf("RenderWithWordTimings actual: %v", err)
 	}
 
-	t.Run("Identical delivery passes with full report", func(t *testing.T) {
-		report, err := VerifyDeliveredASSAgainstExpected(assPath, []byte(baseASS))
+	// 2. Generate expected baseline with identical word timings
+	expectedWithWordsBytes, err := RenderWithWordTimings(bundle, mapping, cfg, style, 1920, 1080, words)
+	if err != nil {
+		t.Fatalf("RenderWithWordTimings expectedWithWords: %v", err)
+	}
+
+	// 3. Generate expected baseline without word timings (falls back to proportional split)
+	expectedWithoutWordsBytes, err := Render(bundle, mapping, cfg, style, 1920, 1080)
+	if err != nil {
+		t.Fatalf("Render expectedWithoutWords: %v", err)
+	}
+
+	// 4. Parse dialogues to verify that word timings genuinely change event slice timestamps
+	actualDialogues, err := ParseSerializedASSWithPositions(string(actualBytes))
+	if err != nil {
+		t.Fatalf("parse actual dialogues: %v", err)
+	}
+	withoutWordsDialogues, err := ParseSerializedASSWithPositions(string(expectedWithoutWordsBytes))
+	if err != nil {
+		t.Fatalf("parse without words dialogues: %v", err)
+	}
+
+	if len(actualDialogues) < 2 || len(withoutWordsDialogues) < 2 {
+		t.Fatalf("expected both to produce at least 2 split events, got %d and %d",
+			len(actualDialogues), len(withoutWordsDialogues))
+	}
+
+	// Assert that word timing split boundary (2600ms) genuinely differs from proportional split
+	if actualDialogues[0].End == withoutWordsDialogues[0].End {
+		t.Fatalf("precondition failed: expected word-timed split end (%d ms) to differ from proportional split end (%d ms)",
+			actualDialogues[0].End, withoutWordsDialogues[0].End)
+	}
+
+	actualFile := filepath.Join(tmpDir, "actual.ass")
+	if err := os.WriteFile(actualFile, actualBytes, 0644); err != nil {
+		t.Fatalf("write actual.ass: %v", err)
+	}
+
+	t.Run("Delivered matches expected reference with word timings", func(t *testing.T) {
+		report, err := VerifyDeliveredASSAgainstExpected(actualFile, expectedWithWordsBytes)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if !report.Passed {
 			t.Fatalf("expected report.Passed == true, got false. Failures: %v", report.Failures)
 		}
-		if report.TotalActual != 3 || report.TotalExpected != 3 {
-			t.Fatalf("expected 3 events, got %d actual, %d expected", report.TotalActual, report.TotalExpected)
+		if !report.HeaderPassed {
+			t.Fatal("expected report.HeaderPassed == true")
 		}
-		if !report.HeaderPassed || !report.FirstEventMatch || !report.LastEventMatch || !report.KeyAnchorsMatch {
-			t.Fatalf("expected all match flags true, got: %+v", report)
+		if len(report.Failures) != 0 {
+			t.Fatalf("expected 0 failures, got: %v", report.Failures)
+		}
+		if report.TotalActual != len(actualDialogues) || report.TotalExpected != len(actualDialogues) {
+			t.Fatalf("event count mismatch: actual %d vs expected %d", report.TotalActual, report.TotalExpected)
 		}
 	})
 
-	t.Run("CRLF delivery matches LF expected reference", func(t *testing.T) {
-		crlfASS := strings.ReplaceAll(baseASS, "\n", "\r\n")
-		crlfPath := filepath.Join(tmpDir, "delivered_crlf.ass")
-		if err := os.WriteFile(crlfPath, []byte(crlfASS), 0644); err != nil {
-			t.Fatalf("write crlf ass: %v", err)
+	t.Run("Delivered fails against reference without word timings", func(t *testing.T) {
+		report, err := VerifyDeliveredASSAgainstExpected(actualFile, expectedWithoutWordsBytes)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
-		report, err := VerifyDeliveredASSAgainstExpected(crlfPath, []byte(baseASS))
+		if report.Passed {
+			t.Fatal("expected report.Passed == false when comparing word-timed delivery against non-word reference")
+		}
+		if len(report.Failures) == 0 {
+			t.Fatal("expected failure descriptions for timing discrepancy, got 0")
+		}
+		// Confirm timing mismatch failure is present
+		foundTimingMismatch := false
+		for _, f := range report.Failures {
+			if strings.Contains(f, "time mismatch") {
+				foundTimingMismatch = true
+				break
+			}
+		}
+		if !foundTimingMismatch {
+			t.Fatalf("expected timing mismatch failure, got: %v", report.Failures)
+		}
+	})
+
+	t.Run("CRLF delivery matches LF reference with word timings", func(t *testing.T) {
+		crlfActual := strings.ReplaceAll(string(actualBytes), "\n", "\r\n")
+		crlfFile := filepath.Join(tmpDir, "actual_crlf.ass")
+		if err := os.WriteFile(crlfFile, []byte(crlfActual), 0644); err != nil {
+			t.Fatalf("write crlf: %v", err)
+		}
+		report, err := VerifyDeliveredASSAgainstExpected(crlfFile, expectedWithWordsBytes)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -226,66 +348,51 @@ Dialogue: 0,0:00:07.00,0:00:09.00,Default,,0,0,0,,Last line.\N{\rEng}Last englis
 		}
 	})
 
-	t.Run("Missing dialogue count detected", func(t *testing.T) {
-		truncated := strings.ReplaceAll(baseASS, "Dialogue: 0,0:00:07.00,0:00:09.00,Default,,0,0,0,,Last line.\\N{\\rEng}Last english.\n", "")
-		truncPath := filepath.Join(tmpDir, "truncated.ass")
-		if err := os.WriteFile(truncPath, []byte(truncated), 0644); err != nil {
+	t.Run("Dialogue count mismatch detected", func(t *testing.T) {
+		// Truncate to first event
+		lines := strings.Split(string(actualBytes), "\n")
+		var truncatedLines []string
+		dialogueCount := 0
+		for _, line := range lines {
+			if strings.HasPrefix(strings.TrimSpace(line), "Dialogue:") {
+				dialogueCount++
+				if dialogueCount > 1 {
+					continue
+				}
+			}
+			truncatedLines = append(truncatedLines, line)
+		}
+		truncFile := filepath.Join(tmpDir, "truncated.ass")
+		if err := os.WriteFile(truncFile, []byte(strings.Join(truncatedLines, "\n")), 0644); err != nil {
 			t.Fatalf("write trunc: %v", err)
 		}
-		report, err := VerifyDeliveredASSAgainstExpected(truncPath, []byte(baseASS))
+		report, err := VerifyDeliveredASSAgainstExpected(truncFile, expectedWithWordsBytes)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if report.Passed {
-			t.Fatal("expected report.Passed == false for truncated dialogues")
+			t.Fatal("expected report.Passed == false for dialogue count mismatch")
 		}
-		if report.TotalActual != 2 || report.TotalExpected != 3 {
-			t.Fatalf("expected 2 actual vs 3 expected, got: %d vs %d", report.TotalActual, report.TotalExpected)
-		}
-	})
-
-	t.Run("First event mismatch detected", func(t *testing.T) {
-		tampered := strings.Replace(baseASS, "0:00:01.00", "0:00:01.50", 1)
-		tPath := filepath.Join(tmpDir, "tampered_first.ass")
-		if err := os.WriteFile(tPath, []byte(tampered), 0644); err != nil {
-			t.Fatalf("write: %v", err)
-		}
-		report, err := VerifyDeliveredASSAgainstExpected(tPath, []byte(baseASS))
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if report.Passed || report.FirstEventMatch {
-			t.Fatalf("expected FirstEventMatch == false, got: %+v", report)
+		if report.TotalActual == report.TotalExpected {
+			t.Fatalf("expected actual count != expected count, got %d", report.TotalActual)
 		}
 	})
 
-	t.Run("Last event mismatch detected", func(t *testing.T) {
-		tampered := strings.Replace(baseASS, "Last line.", "Tampered last line.", 1)
-		tPath := filepath.Join(tmpDir, "tampered_last.ass")
-		if err := os.WriteFile(tPath, []byte(tampered), 0644); err != nil {
-			t.Fatalf("write: %v", err)
+	t.Run("Line-by-line dialogue text tampering detected", func(t *testing.T) {
+		tampered := strings.Replace(string(actualBytes), "tomorrow", "tonight", 1)
+		tFile := filepath.Join(tmpDir, "tampered.ass")
+		if err := os.WriteFile(tFile, []byte(tampered), 0644); err != nil {
+			t.Fatalf("write tampered: %v", err)
 		}
-		report, err := VerifyDeliveredASSAgainstExpected(tPath, []byte(baseASS))
+		report, err := VerifyDeliveredASSAgainstExpected(tFile, expectedWithWordsBytes)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if report.Passed || report.LastEventMatch {
-			t.Fatalf("expected LastEventMatch == false, got: %+v", report)
+		if report.Passed {
+			t.Fatal("expected report.Passed == false for text tampering")
 		}
-	})
-
-	t.Run("Middle anchor position tag removal detected", func(t *testing.T) {
-		tampered := strings.Replace(baseASS, `{\pos(960,800)}`, "", 1)
-		tPath := filepath.Join(tmpDir, "tampered_anchor.ass")
-		if err := os.WriteFile(tPath, []byte(tampered), 0644); err != nil {
-			t.Fatalf("write: %v", err)
-		}
-		report, err := VerifyDeliveredASSAgainstExpected(tPath, []byte(baseASS))
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if report.Passed || report.KeyAnchorsMatch {
-			t.Fatalf("expected KeyAnchorsMatch == false, got: %+v", report)
+		if len(report.Failures) == 0 {
+			t.Fatal("expected failure reporting tampered text")
 		}
 	})
 }
