@@ -211,6 +211,13 @@ type RequestRetry struct {
 	Reason string `json:"reason"`
 }
 
+// WindowFailure records the sanitized failure reason for a sliding window whose
+// attempts were exhausted or non-retryable.
+type WindowFailure struct {
+	Window int    `json:"window"`
+	Reason string `json:"reason"`
+}
+
 // Audit is the deterministic validation record for an alignment run.
 type Audit struct {
 	Rejected          []RejectedRow     `json:"rejected"`
@@ -221,6 +228,7 @@ type Audit struct {
 	CacheCorrupted    []CacheCorruption `json:"cache_corrupted,omitempty"`
 	RequestRetries    []RequestRetry    `json:"request_retries,omitempty"`
 	FailedWindows     []int             `json:"failed_windows,omitempty"`
+	WindowFailures    []WindowFailure   `json:"window_failures,omitempty"`
 	CacheHits         int               `json:"cache_hits,omitempty"`
 	HTTPAttempts      int               `json:"http_attempts_this_run,omitempty"`
 	ResolvedModels    []string          `json:"resolved_models,omitempty"`

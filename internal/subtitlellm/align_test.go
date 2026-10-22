@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -243,7 +244,7 @@ func TestAlignRetriesThenSucceeds(t *testing.T) {
 	}
 }
 
-func TestAlignFailureIsErrorNotPartialSuccess(t *testing.T) {
+func TestAlignFailureFallsBackWithAuditedWindows(t *testing.T) {
 	en, zh := testCues(1, 1000)
 	bundle := testBundle(t, en, zh)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -253,21 +254,24 @@ func TestAlignFailureIsErrorNotPartialSuccess(t *testing.T) {
 	cfg := testConfig(t, server.URL+"/v1")
 	cfg.APIKey = "secret-key"
 	mapping, audit, err := NewEngine().Align(context.Background(), bundle, cfg)
-	if err == nil {
-		t.Fatal("expected failed-window error")
+	if err != nil {
+		t.Fatalf("expected fallback with nil error, got: %v", err)
 	}
 	if len(mapping.Groups) == 0 {
-		t.Fatal("partial mapping should retain restored groups for auditing")
+		t.Fatal("fallback mapping should retain restored groups")
 	}
 	if len(audit.FailedWindows) != 1 {
 		t.Fatalf("failed windows = %v", audit.FailedWindows)
 	}
-	combined := err.Error()
+	if len(audit.WindowFailures) != 1 {
+		t.Fatalf("window failures = %+v, want 1 entry", audit.WindowFailures)
+	}
+	combined := audit.WindowFailures[0].Reason
 	for _, value := range audit.Rejected {
 		combined += " " + string(value.Value)
 	}
 	if strings.Contains(combined, "secret-key") {
-		t.Fatal("credential leaked into error/audit")
+		t.Fatal("credential leaked into audit reason")
 	}
 	entries, readErr := os.ReadDir(filepath.Join(cfg.CacheDir, cacheNamespace))
 	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
@@ -292,9 +296,15 @@ func TestAlignTimeout(t *testing.T) {
 	cfg.TimeoutSeconds = 1
 	cfg.Retries = 0
 	started := time.Now()
-	_, _, err := NewEngine().Align(context.Background(), bundle, cfg)
-	if err == nil {
-		t.Fatal("expected timeout error")
+	_, audit, err := NewEngine().Align(context.Background(), bundle, cfg)
+	if err != nil {
+		t.Fatalf("expected fallback with nil error on client timeout, got: %v", err)
+	}
+	if len(audit.FailedWindows) != 1 {
+		t.Fatalf("failed windows = %v", audit.FailedWindows)
+	}
+	if len(audit.WindowFailures) != 1 {
+		t.Fatalf("window failures = %+v, want 1 entry", audit.WindowFailures)
 	}
 	if time.Since(started) > 5*time.Second {
 		t.Fatal("timeout not applied")
@@ -872,20 +882,21 @@ func TestAlignFailureSurfacesSanitizedReason(t *testing.T) {
 	cfg.APIKey = "secret-key"
 	cfg.Retries = 0
 	_, audit, err := NewEngine().Align(context.Background(), bundle, cfg)
-	if err == nil {
-		t.Fatal("expected failure")
+	if err != nil {
+		t.Fatalf("expected fallback with nil error, got: %v", err)
 	}
-	message := err.Error()
-	if !strings.Contains(message, "window 0") || !strings.Contains(message, "HTTP 400") {
-		t.Fatalf("error lacks window/status: %v", err)
+	if len(audit.FailedWindows) != 1 {
+		t.Fatalf("failed windows = %v, want 1", audit.FailedWindows)
 	}
-	for _, want := range []string{"reasoning_effort", "response_format", "model", "auth"} {
-		if !strings.Contains(message, want) {
-			t.Fatalf("guidance lacks %q: %v", want, err)
-		}
+	if len(audit.WindowFailures) != 1 {
+		t.Fatalf("window failures = %+v, want 1 entry", audit.WindowFailures)
 	}
-	if strings.Contains(message, "secret-key") || strings.Contains(message, "invalid reasoning_effort") {
-		t.Fatalf("error leaked body or key: %v", err)
+	reason := audit.WindowFailures[0].Reason
+	if !strings.Contains(reason, "HTTP 400") {
+		t.Fatalf("reason lacks status: %s", reason)
+	}
+	if strings.Contains(reason, "secret-key") || strings.Contains(reason, "invalid reasoning_effort") {
+		t.Fatalf("reason leaked body or key: %s", reason)
 	}
 	if len(audit.Rejected) == 0 {
 		t.Fatal("failed window should still be auditable")
@@ -942,9 +953,18 @@ func TestAlignRejectsDuplicateJSONKeys(t *testing.T) {
 	defer server.Close()
 	cfg := testConfig(t, server.URL+"/v1")
 	cfg.Retries = 0
-	_, _, err := NewEngine().Align(context.Background(), bundle, cfg)
-	if err == nil || !strings.Contains(err.Error(), "duplicate object key") {
-		t.Fatalf("error = %v", err)
+	_, audit, err := NewEngine().Align(context.Background(), bundle, cfg)
+	if err != nil {
+		t.Fatalf("expected fallback with nil error, got: %v", err)
+	}
+	if len(audit.FailedWindows) != 1 {
+		t.Fatalf("failed windows = %v, want 1", audit.FailedWindows)
+	}
+	if len(audit.WindowFailures) != 1 {
+		t.Fatalf("window failures = %+v, want 1 entry", audit.WindowFailures)
+	}
+	if !strings.Contains(audit.WindowFailures[0].Reason, "duplicate object key") {
+		t.Fatalf("reason = %s, want duplicate object key", audit.WindowFailures[0].Reason)
 	}
 }
 
@@ -984,5 +1004,322 @@ func assertCoverage(t *testing.T, mapping Mapping, bundle Bundle) {
 		if uses["zh"][cue.ID] != 1 {
 			t.Fatalf("zh cue %d used %d times", cue.ID, uses["zh"][cue.ID])
 		}
+	}
+}
+
+func TestAlignMixedMultiWindowPreservesSuccessfulEdgesAndRestoresFailedCues(t *testing.T) {
+	// Window 0: 0s - 10s (cues 1..3)
+	// Window 1: 10s - 20s (cues 4..5)
+	en := []Cue{
+		{ID: 1, Start: 1000, End: 3000, OriginalStart: 1000, OriginalEnd: 3000, Raw: "en1", Plain: "en1", Display: "en1", Style: "Default", Alignment: 2},
+		{ID: 2, Start: 3500, End: 5000, OriginalStart: 3500, OriginalEnd: 5000, Raw: "en2", Plain: "en2", Display: "en2", Style: "Default", Alignment: 2},
+		{ID: 3, Start: 5500, End: 7500, OriginalStart: 5500, OriginalEnd: 7500, Raw: "en3", Plain: "en3", Display: "en3", Style: "Default", Alignment: 2},
+		{ID: 4, Start: 12000, End: 14000, OriginalStart: 12000, OriginalEnd: 14000, Raw: "en4", Plain: "en4", Display: "en4", Style: "Default", Alignment: 2},
+		{ID: 5, Start: 15000, End: 17000, OriginalStart: 15000, OriginalEnd: 17000, Raw: "en5", Plain: "en5", Display: "en5", Style: "Default", Alignment: 2},
+	}
+	zh := []Cue{
+		{ID: 1, Start: 1000, End: 5000, OriginalStart: 1000, OriginalEnd: 5000, Raw: "zh1", Plain: "zh1", Display: "zh1", Style: "Default", Alignment: 2},
+		{ID: 2, Start: 5500, End: 6500, OriginalStart: 5500, OriginalEnd: 6500, Raw: "zh2", Plain: "zh2", Display: "zh2", Style: "Default", Alignment: 2},
+		{ID: 3, Start: 6500, End: 7500, OriginalStart: 6500, OriginalEnd: 7500, Raw: "zh3", Plain: "zh3", Display: "zh3", Style: "Default", Alignment: 2},
+		{ID: 4, Start: 12500, End: 14200, OriginalStart: 12500, OriginalEnd: 14200, Raw: "zh4", Plain: "zh4", Display: "zh4", Style: "Default", Alignment: 2},
+		{ID: 5, Start: 15200, End: 17100, OriginalStart: 15200, OriginalEnd: 17100, Raw: "zh5", Plain: "zh5", Display: "zh5", Style: "Default", Alignment: 2},
+	}
+	bundle := testBundle(t, en, zh)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		promptText := ""
+		if len(req.Messages) > 1 {
+			promptText = req.Messages[1].Content
+		}
+		// Window 0 contains core [0, 10000]
+		if strings.Contains(promptText, `"core_ms":[0,10000]`) || strings.Contains(promptText, `"core_ms": [0, 10000]`) {
+			// Return non-1:1 model alignment: EN [1, 2] -> ZH [1], and EN [3] -> ZH [2, 3]
+			content := `{"alignments":[{"en_ids":[1,2],"zh_ids":[1],"layer":"bottom","kind":"dialogue"},{"en_ids":[3],"zh_ids":[2,3],"layer":"bottom","kind":"dialogue"}]}`
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"model": "test-model", "choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"content": content}}},
+			})
+			return
+		}
+		// Window 1 fails with 503
+		http.Error(w, "upstream unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	cfg := testConfig(t, server.URL+"/v1")
+	cfg.WindowSeconds = 10
+	cfg.OverlapSeconds = 2
+	cfg.Retries = 0
+
+	mapping, audit, err := NewEngine().Align(context.Background(), bundle, cfg)
+	if err != nil {
+		t.Fatalf("Align() error = %v, want fallback with nil error", err)
+	}
+	if len(audit.FailedWindows) != 1 || audit.FailedWindows[0] != 1 {
+		t.Fatalf("failed windows = %v, want [1]", audit.FailedWindows)
+	}
+
+	// Verify Window 0 preserved its non-1:1 model edges
+	var found2to1, found1to2 bool
+	for _, g := range mapping.Groups {
+		if reflect.DeepEqual(g.ENIDs, []int{1, 2}) && reflect.DeepEqual(g.ZHIDs, []int{1}) {
+			found2to1 = true
+			if g.Origin == OriginRestored {
+				t.Error("2:1 group should be model-aligned, not restored")
+			}
+		}
+		if reflect.DeepEqual(g.ENIDs, []int{3}) && reflect.DeepEqual(g.ZHIDs, []int{2, 3}) {
+			found1to2 = true
+			if g.Origin == OriginRestored {
+				t.Error("1:2 group should be model-aligned, not restored")
+			}
+		}
+	}
+	if !found2to1 {
+		t.Error("2:1 non-1:1 alignment edge was not preserved")
+	}
+	if !found1to2 {
+		t.Error("1:2 non-1:1 alignment edge was not preserved")
+	}
+
+	// Verify Window 1 cues (4, 5) were restored as single-sided groups
+	for _, id := range []int{4, 5} {
+		var enRestored, zhRestored bool
+		for _, g := range mapping.Groups {
+			if reflect.DeepEqual(g.ENIDs, []int{id}) && len(g.ZHIDs) == 0 {
+				enRestored = true
+				if g.Origin != OriginRestored {
+					t.Errorf("EN cue %d origin = %s, want %s", id, g.Origin, OriginRestored)
+				}
+			}
+			if reflect.DeepEqual(g.ZHIDs, []int{id}) && len(g.ENIDs) == 0 {
+				zhRestored = true
+				if g.Origin != OriginRestored {
+					t.Errorf("ZH cue %d origin = %s, want %s", id, g.Origin, OriginRestored)
+				}
+			}
+		}
+		if !enRestored {
+			t.Errorf("EN cue %d was not restored", id)
+		}
+		if !zhRestored {
+			t.Errorf("ZH cue %d was not restored", id)
+		}
+	}
+
+	assertCoverage(t, mapping, bundle)
+}
+
+func TestAlignFailedWindowRestoresExactOriginalTimingAndOrder(t *testing.T) {
+	en := []Cue{
+		{ID: 1, Start: 1000, End: 2500, OriginalStart: 1000, OriginalEnd: 2500, Raw: "en1", Plain: "en1", Display: "en1", Style: "Default", Alignment: 2},
+		{ID: 2, Start: 3000, End: 4500, OriginalStart: 3000, OriginalEnd: 4500, Raw: "en2", Plain: "en2", Display: "en2", Style: "Default", Alignment: 2},
+		{ID: 3, Start: 5000, End: 6500, OriginalStart: 5000, OriginalEnd: 6500, Raw: "en3", Plain: "en3", Display: "en3", Style: "Default", Alignment: 2},
+	}
+	zh := []Cue{
+		{ID: 1, Start: 1100, End: 2400, OriginalStart: 1100, OriginalEnd: 2400, Raw: "zh1", Plain: "zh1", Display: "zh1", Style: "Default", Alignment: 2},
+		{ID: 2, Start: 3100, End: 4600, OriginalStart: 3100, OriginalEnd: 4600, Raw: "zh2", Plain: "zh2", Display: "zh2", Style: "Default", Alignment: 2},
+		{ID: 3, Start: 5200, End: 6700, OriginalStart: 5200, OriginalEnd: 6700, Raw: "zh3", Plain: "zh3", Display: "zh3", Style: "Default", Alignment: 2},
+	}
+	bundle := testBundle(t, en, zh)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "upstream failed", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	cfg := testConfig(t, server.URL+"/v1")
+	cfg.Retries = 0
+	cfg.EnChars = 65
+	cfg.ZhChars = 25
+	cfg.EnGapMS = 400
+	cfg.ZhGapMS = 500
+	cfg.SpanMS = 5500
+	cfg.FillGapMS = 500
+
+	mapping, audit, err := NewEngine().Align(context.Background(), bundle, cfg)
+	if err != nil {
+		t.Fatalf("Align() error = %v, want fallback", err)
+	}
+	if len(audit.FailedWindows) != 1 {
+		t.Fatalf("failed windows = %v, want 1", audit.FailedWindows)
+	}
+
+	// Verify exact timing and non-decreasing chronological order in rendered ASS
+	style := config.ASSStyleConfig{
+		Enabled:         true,
+		PlayResX:        1920,
+		PlayResY:        1080,
+		PrimaryFont:     "PingFang SC",
+		PrimarySize:     52,
+		PrimaryColor:    "&H08EFECEA",
+		SecondaryFont:   "Helvetica Neue",
+		SecondarySize:   36,
+		SecondaryColor:  "&H087BC0E5",
+		Outline:         1.4,
+		OutlineColor:    "&H30141414",
+		Shadow:          1.5,
+		BackColor:       "&H80000000",
+		MarginV:         32,
+		MarginLeft:      80,
+		MarginRight:     80,
+		Alignment:       2,
+		BorderStyle:     1,
+		WrapStyle:       "0",
+		ScaleX:          100,
+		LineHeightRatio: 1.23,
+		BlockPadding:    16,
+		CollisionGap:    12,
+	}
+	rendered, renderErr := Render(bundle, mapping, cfg, style, 1920, 1080)
+	if renderErr != nil {
+		t.Fatalf("Render() error = %v", renderErr)
+	}
+
+	dialogues := parseDialogues(t, string(rendered))
+	if len(dialogues) != 6 {
+		t.Fatalf("dialogues count = %d, want 6 (3 EN + 3 ZH)", len(dialogues))
+	}
+
+	expectedTimings := []struct {
+		start int
+		end   int
+		text  string
+	}{
+		{start: 1000, end: 2500, text: "en1"},
+		{start: 1100, end: 2400, text: "zh1"},
+		{start: 3000, end: 4500, text: "en2"},
+		{start: 3100, end: 4600, text: "zh2"},
+		{start: 5000, end: 6500, text: "en3"},
+		{start: 5200, end: 6700, text: "zh3"},
+	}
+
+	for i, exp := range expectedTimings {
+		d := dialogues[i]
+		if d.start != exp.start || d.end != exp.end {
+			t.Errorf("dialogue [%d] timing = %d-%d, want %d-%d", i, d.start, d.end, exp.start, exp.end)
+		}
+		if !strings.Contains(d.text, exp.text) {
+			t.Errorf("dialogue [%d] text = %q, want text containing %q", i, d.text, exp.text)
+		}
+	}
+
+	// Verify non-decreasing chronological start times
+	for i := 1; i < len(dialogues); i++ {
+		if dialogues[i].start < dialogues[i-1].start {
+			t.Errorf("dialogue [%d] start (%d) < dialogue [%d] start (%d)", i, dialogues[i].start, i-1, dialogues[i-1].start)
+		}
+	}
+	assertCoverage(t, mapping, bundle)
+}
+
+func TestAlignProtocolExhaustionAndRequestCount(t *testing.T) {
+	en, zh := testCues(1, 1000)
+	bundle := testBundle(t, en, zh)
+
+	var requestCount int
+	var mu sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requestCount++
+		mu.Unlock()
+		http.Error(w, "bad gateway", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	cfg := testConfig(t, server.URL+"/v1")
+	cfg.Retries = 2 // 1 initial + 2 retries = 3 total requests
+
+	mapping, audit, err := NewEngine().Align(context.Background(), bundle, cfg)
+	if err != nil {
+		t.Fatalf("Align() error = %v, want fallback on retry exhaustion", err)
+	}
+	mu.Lock()
+	totalRequests := requestCount
+	mu.Unlock()
+	if totalRequests != 3 {
+		t.Fatalf("request count = %d, want exactly 3 (1 initial + 2 retries)", totalRequests)
+	}
+	if len(audit.FailedWindows) != 1 {
+		t.Fatalf("failed windows = %v, want 1", audit.FailedWindows)
+	}
+	if len(audit.WindowFailures) != 1 {
+		t.Fatalf("window failures = %+v, want 1 entry", audit.WindowFailures)
+	}
+	if !strings.Contains(audit.WindowFailures[0].Reason, "HTTP 502") {
+		t.Fatalf("reason = %s, want HTTP 502", audit.WindowFailures[0].Reason)
+	}
+	assertCoverage(t, mapping, bundle)
+}
+
+func TestAlignSuccessfulRetryDoesNotDegrade(t *testing.T) {
+	en, zh := testCues(1, 1000)
+	bundle := testBundle(t, en, zh)
+
+	var attempt int
+	var mu sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		attempt++
+		current := attempt
+		mu.Unlock()
+		if current == 1 {
+			http.Error(w, "transient error", http.StatusInternalServerError)
+			return
+		}
+		content := `{"alignments":[{"en_ids":[1],"zh_ids":[1],"layer":"bottom","kind":"dialogue"}]}`
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"model": "test-model", "choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"content": content}}},
+		})
+	}))
+	defer server.Close()
+
+	cfg := testConfig(t, server.URL+"/v1")
+	cfg.Retries = 1
+
+	mapping, audit, err := NewEngine().Align(context.Background(), bundle, cfg)
+	if err != nil {
+		t.Fatalf("Align() error = %v, want successful retry", err)
+	}
+	if len(audit.FailedWindows) != 0 {
+		t.Fatalf("failed windows = %v, want 0 on successful retry", audit.FailedWindows)
+	}
+	if len(audit.WindowFailures) != 0 {
+		t.Fatalf("window failures = %+v, want 0 on successful retry", audit.WindowFailures)
+	}
+	if len(mapping.Groups) != 1 || mapping.Groups[0].Origin == OriginRestored {
+		t.Fatalf("groups = %+v, expected model-aligned group", mapping.Groups)
+	}
+	assertCoverage(t, mapping, bundle)
+}
+
+func TestAlignNonPermissionCacheIOErrorIsHardError(t *testing.T) {
+	en, zh := testCues(1, 1000)
+	bundle := testBundle(t, en, zh)
+
+	dir := t.TempDir()
+	// Create a file where the cache directory is supposed to be, causing ENOTDIR
+	blockedPath := filepath.Join(dir, "blocked-cache-dir")
+	if err := os.WriteFile(blockedPath, []byte("plain file"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "server should not be contacted if cache dir is invalid", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	cfg := testConfig(t, server.URL+"/v1")
+	cfg.CacheEnabled = true
+	cfg.CacheDir = blockedPath
+
+	_, _, err := NewEngine().Align(context.Background(), bundle, cfg)
+	if err == nil {
+		t.Fatal("expected hard error on cache ENOTDIR, got nil")
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fusionn/internal/config"
@@ -136,11 +137,29 @@ type batch struct {
 	ZHInput  []int
 }
 
+type windowErrorKind int
+
+const (
+	windowErrorNone       windowErrorKind = iota
+	windowErrorDegradable                 // HTTP 4xx/5xx, client local timeout, malformed model JSON/schema
+	windowErrorContext                    // parent context.Canceled or context.DeadlineExceeded
+	windowErrorCacheIO                    // cache filesystem read/write/remove failure
+	windowErrorFatal                      // payload build failure, source/bundle failure, internal marshal failure
+)
+
+type cacheCorruptError struct {
+	cause error
+}
+
+func (e *cacheCorruptError) Error() string { return e.cause.Error() }
+func (e *cacheCorruptError) Unwrap() error { return e.cause }
+
 type fetchedWindow struct {
 	index       int
 	record      *cacheRecord
 	requests    int
 	err         error
+	kind        windowErrorKind
 	cached      bool
 	corruptPath string
 	corruptErr  error
@@ -151,9 +170,13 @@ type fetchedWindow struct {
 // taken from model output: every group refers to source cue IDs, and any cue
 // the model left out is restored one-sided at its original time.
 //
-// Align fails rather than reporting partial success when a window request fails
-// or the context is cancelled. An explicitly configured MappingPath is imported
-// and validated instead of calling the model.
+// When window requests fail after configured retries or return malformed
+// responses, Align falls back to native timing and cue order for those windows,
+// preserving all successful model pairings and recording failed windows in
+// Audit. Align returns an error only for fatal conditions such as context
+// cancellation, invalid configuration or source tracks, or cache I/O failures.
+// An explicitly configured MappingPath is imported and validated instead of
+// calling the model.
 func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig) (Mapping, Audit, error) {
 	if err := validateLLMConfig(cfg); err != nil {
 		return Mapping{}, Audit{}, err
@@ -174,6 +197,11 @@ func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig)
 
 	windows := buildWindows(bundle, cfg.WindowSeconds*1000, cfg.OverlapSeconds*1000)
 	cacheDir := cacheDirectory(cfg)
+	if cacheDir != "" {
+		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+			return Mapping{}, Audit{}, fmt.Errorf("create alignment cache directory %q: %w", cacheDir, err)
+		}
+	}
 
 	records := e.fetchAll(ctx, bundle, windows, cfg, cacheDir)
 	audit := Audit{
@@ -224,6 +252,16 @@ func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig)
 		}
 		if result.err != nil || result.record == nil || len(result.record.Response) == 0 {
 			failed = append(failed, index)
+			reason := "request_failed"
+			if result.err != nil {
+				reason = redactError(result.err.Error(), resolveAPIKey(cfg))
+			} else if result.record == nil || len(result.record.Response) == 0 {
+				reason = "empty model response"
+			}
+			audit.WindowFailures = append(audit.WindowFailures, WindowFailure{
+				Window: index,
+				Reason: reason,
+			})
 			batches = append(batches, batch{
 				Index:    index,
 				Rejected: []RejectedRow{{Window: index, Reason: "request_failed"}},
@@ -239,6 +277,10 @@ func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig)
 			// responses (validated in requestWindow); treat defensively as a
 			// failed window rather than silently accepting it.
 			failed = append(failed, index)
+			audit.WindowFailures = append(audit.WindowFailures, WindowFailure{
+				Window: index,
+				Reason: redactError(err.Error(), resolveAPIKey(cfg)),
+			})
 			batches = append(batches, batch{
 				Index:    index,
 				Rejected: append(rejected, RejectedRow{Window: index, Reason: "invalid_response"}),
@@ -298,31 +340,18 @@ func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig)
 	if ctx.Err() != nil {
 		return mapping, audit, ctx.Err()
 	}
-	if len(failed) > 0 {
-		apiKey := resolveAPIKey(cfg)
-		reasons := make([]string, 0, len(records))
-		guidance := false
-		for _, result := range records {
-			if result.err != nil && isPermissionError(result.err) {
-				// Cache I/O permission failures are not model failures and must
-				// surface with their cause intact.
+	// Cache I/O, parent context, or internal build failures are fatal and must
+	// surface with their cause intact.
+	for _, result := range records {
+		if result.err != nil {
+			switch result.kind {
+			case windowErrorDegradable:
+				// Allowed to fall back to native timing
+			default:
+				// Fatal: context cancellation, cache I/O, config/source build error, or unexpected error
 				return mapping, audit, result.err
 			}
-			if result.err == nil {
-				continue
-			}
-			// Surface only the sanitized reason: never a response body or key.
-			reason := redactError(result.err.Error(), apiKey)
-			if strings.Contains(reason, "HTTP 4") {
-				guidance = true
-			}
-			reasons = append(reasons, fmt.Sprintf("window %d: %s", result.index, reason))
 		}
-		message := fmt.Sprintf("alignment incomplete: %d of %d windows failed: %s", len(failed), len(windows), strings.Join(reasons, "; "))
-		if guidance {
-			message += "; check subtitle.llm reasoning_effort, response_format, model, and API key/auth settings"
-		}
-		return mapping, audit, fmt.Errorf("%s", message)
 	}
 	return mapping, audit, nil
 }
@@ -505,7 +534,7 @@ func (e *Engine) fetchAll(ctx context.Context, bundle Bundle, windows []window, 
 			defer wg.Done()
 			for index := range jobs {
 				if runCtx.Err() != nil {
-					results[index] = fetchedWindow{index: index, err: runCtx.Err()}
+					results[index] = fetchedWindow{index: index, err: runCtx.Err(), kind: windowErrorContext}
 					continue
 				}
 				results[index] = e.fetchWindow(runCtx, client, bundle, windows[index], cfg, cacheDir)
@@ -526,11 +555,11 @@ func cacheDirectory(cfg config.LLMConfig) string {
 func (e *Engine) fetchWindow(ctx context.Context, client *http.Client, bundle Bundle, w window, cfg config.LLMConfig, cacheDir string) fetchedWindow {
 	payload, payloadValue, err := buildPayload(w, cfg)
 	if err != nil {
-		return fetchedWindow{index: w.Index, err: err}
+		return fetchedWindow{index: w.Index, err: err, kind: windowErrorFatal}
 	}
 	requestHash, err := requestDigest(bundle.Fingerprint, strings.TrimRight(cfg.BaseURL, "/"), payloadValue, cfg)
 	if err != nil {
-		return fetchedWindow{index: w.Index, err: err}
+		return fetchedWindow{index: w.Index, err: err, kind: windowErrorFatal}
 	}
 	key := cacheKey(requestHash)
 	path := ""
@@ -539,33 +568,32 @@ func (e *Engine) fetchWindow(ctx context.Context, client *http.Client, bundle Bu
 	if cacheDir != "" {
 		path = filepath.Join(cacheDir, fmt.Sprintf("%03d-%s.json", w.Index, key[:16]))
 		record, err := readCacheRecord(path, requestHash)
-		switch {
-		case err != nil && isPermissionError(err):
-			// An I/O permission problem is not corruption; fail loudly.
-			return fetchedWindow{index: w.Index, err: err}
-		case err != nil:
-			// Corrupt or foreign entry: discard and treat as a cache miss.
-			corruptPath, corruptErr = path, err
-			if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-				return fetchedWindow{index: w.Index, err: fmt.Errorf("remove corrupt alignment cache %q: %w", filepath.Base(path), removeErr)}
+		if err != nil {
+			var corrupt *cacheCorruptError
+			if errors.As(err, &corrupt) {
+				corruptPath, corruptErr = path, corrupt.cause
+				if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+					return fetchedWindow{index: w.Index, err: fmt.Errorf("remove corrupt alignment cache %q: %w", filepath.Base(path), removeErr), kind: windowErrorCacheIO}
+				}
+			} else {
+				return fetchedWindow{index: w.Index, err: fmt.Errorf("read alignment cache %q: %w", filepath.Base(path), err), kind: windowErrorCacheIO}
 			}
-		case record != nil:
+		} else if record != nil {
 			if _, _, validationErr := validateResponse(record.Response, w, MaxDistanceMS); validationErr != nil {
-				// A readable entry with an unusable response is corruption too.
 				corruptPath, corruptErr = path, validationErr
 				if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-					return fetchedWindow{index: w.Index, err: fmt.Errorf("remove corrupt alignment cache %q: %w", filepath.Base(path), removeErr)}
+					return fetchedWindow{index: w.Index, err: fmt.Errorf("remove corrupt alignment cache %q: %w", filepath.Base(path), removeErr), kind: windowErrorCacheIO}
 				}
-				break
+			} else {
+				record.CacheHit = true
+				return fetchedWindow{index: w.Index, record: record, cached: true}
 			}
-			record.CacheHit = true
-			return fetchedWindow{index: w.Index, record: record, cached: true}
 		}
 	}
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return fetchedWindow{index: w.Index, err: err}
+		return fetchedWindow{index: w.Index, err: err, kind: windowErrorFatal}
 	}
 	apiKey := resolveAPIKey(cfg)
 	endpoint := strings.TrimRight(cfg.BaseURL, "/") + "/chat/completions"
@@ -576,12 +604,19 @@ func (e *Engine) fetchWindow(ctx context.Context, client *http.Client, bundle Bu
 	for attempt := 0; attempt <= cfg.Retries; attempt++ {
 		if err := ctx.Err(); err != nil {
 			result.err = err
+			result.kind = windowErrorContext
 			return result
 		}
 		result.requests++
 		// Every retry sends the current request body again; a malformed body
 		// (non-JSON or structurally invalid) is a retryable window failure.
 		attempt, retryable, err := e.requestWindow(ctx, client, endpoint, apiKey, body, w)
+		if attempt == nil && !retryable && err != nil {
+			// Request creation failure (bad endpoint, invalid URL) is fatal, not degradable.
+			result.err = err
+			result.kind = windowErrorFatal
+			return result
+		}
 		if attempt == nil {
 			attempt = &attemptRecord{}
 		}
@@ -591,10 +626,16 @@ func (e *Engine) fetchWindow(ctx context.Context, client *http.Client, bundle Bu
 			record.Response = json.RawMessage(response)
 			if path != "" {
 				if writeErr := writeCacheRecord(path, record); writeErr != nil {
-					result.err = writeErr
+					result.err = fmt.Errorf("write alignment cache %q: %w", filepath.Base(path), writeErr)
+					result.kind = windowErrorCacheIO
 					return result
 				}
 			}
+			return result
+		}
+		if ctx.Err() != nil {
+			result.err = ctx.Err()
+			result.kind = windowErrorContext
 			return result
 		}
 		redacted := redactError(err.Error(), apiKey)
@@ -607,7 +648,13 @@ func (e *Engine) fetchWindow(ctx context.Context, client *http.Client, bundle Bu
 			break
 		}
 	}
-	result.err = lastErr
+	if ctx.Err() != nil {
+		result.err = ctx.Err()
+		result.kind = windowErrorContext
+	} else {
+		result.err = lastErr
+		result.kind = windowErrorDegradable
+	}
 	return result
 }
 
@@ -697,32 +744,30 @@ func redactError(message, secret string) string {
 	return message
 }
 
-// isPermissionError reports whether an error is an I/O permission failure
-// rather than a content problem, so callers must not silently discard data.
-func isPermissionError(err error) bool {
-	return errors.Is(err, os.ErrPermission)
-}
-
 func readCacheRecord(path, requestHash string) (*cacheRecord, error) {
 	data, err := os.ReadFile(path)
+	if errors.Is(err, syscall.ENOTDIR) {
+		return nil, err
+	}
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
+		// Filesystem I/O error (permission, ENOTDIR, etc.)
 		return nil, err
 	}
 	if err := rejectDuplicateJSONKeys(data); err != nil {
-		return nil, fmt.Errorf("read alignment cache %q: %w", filepath.Base(path), err)
+		return nil, &cacheCorruptError{cause: fmt.Errorf("read alignment cache %q: %w", filepath.Base(path), err)}
 	}
 	var record cacheRecord
 	if err := json.Unmarshal(data, &record); err != nil {
-		return nil, fmt.Errorf("read alignment cache %q: %w", filepath.Base(path), err)
+		return nil, &cacheCorruptError{cause: fmt.Errorf("read alignment cache %q: %w", filepath.Base(path), err)}
 	}
 	if record.RequestHash != requestHash {
-		return nil, fmt.Errorf("alignment cache %q belongs to a different request", filepath.Base(path))
+		return nil, &cacheCorruptError{cause: fmt.Errorf("alignment cache %q belongs to a different request", filepath.Base(path))}
 	}
 	if len(record.Response) == 0 {
-		return nil, fmt.Errorf("alignment cache %q has no response", filepath.Base(path))
+		return nil, &cacheCorruptError{cause: fmt.Errorf("alignment cache %q has no response", filepath.Base(path))}
 	}
 	return &record, nil
 }

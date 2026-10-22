@@ -400,7 +400,7 @@ func TestLLMMergerProbeDimensionsAdaptWideFrame(t *testing.T) {
 	}
 }
 
-func TestLLMMergerRequestFailureReturnsError(t *testing.T) {
+func TestLLMMergerRequestFailureFallsBackToNativeASS(t *testing.T) {
 	videoPath, enPath, zhPath := mergerFixture(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream unavailable", http.StatusInternalServerError)
@@ -414,18 +414,25 @@ func TestLLMMergerRequestFailureReturnsError(t *testing.T) {
 
 	pctx := &ProcessingContext{VideoPath: videoPath, EnglishSubPath: enPath, ChineseSubPath: zhPath, Metadata: map[string]interface{}{}}
 	err := processor.Process(context.Background(), pctx)
-	if err == nil {
-		t.Fatal("Process() expected an error for a failed request")
+	if err != nil {
+		t.Fatalf("Process() error = %v, want fallback with nil error", err)
 	}
-	if !strings.Contains(err.Error(), "alignment failed") {
-		t.Fatalf("error = %v, want alignment failure", err)
+	if pctx.MergedSubPath == "" {
+		t.Fatal("merged path not set on fallback")
 	}
-	if pctx.MergedSubPath != "" {
-		t.Fatalf("merged path set despite failure: %s", pctx.MergedSubPath)
+	content, readErr := os.ReadFile(pctx.MergedSubPath)
+	if readErr != nil {
+		t.Fatalf("failed reading merged ASS: %v", readErr)
 	}
-	// Partial audit evidence is still persisted for diagnosis.
+	if len(content) == 0 {
+		t.Fatal("merged ASS is empty")
+	}
+	if degraded, ok := pctx.Metadata["llm_degraded"].(bool); !ok || !degraded {
+		t.Fatalf("expected llm_degraded metadata to be true, got %v", pctx.Metadata["llm_degraded"])
+	}
+	// Fallback audit evidence is still persisted for diagnosis.
 	if path, _ := pctx.Metadata[MetadataLLMAuditPath].(string); path == "" {
-		t.Fatal("audit artifact was not persisted for a failed alignment")
+		t.Fatal("audit artifact was not persisted for fallback alignment")
 	}
 }
 
