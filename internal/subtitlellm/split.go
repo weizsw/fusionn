@@ -573,16 +573,44 @@ func wordCuts(text string, parts []string, words []WordTiming) []int {
 	return cuts
 }
 
+// sharedCuts reuses existing, ordered, non-overlapping English source piece
+// boundaries as cuts for the Chinese plan.
+//
+// Two cases, kept deliberately distinct so the existing contiguous rule is
+// unchanged:
+//   - Contiguous English slices (every end == next start): the plan's own outer
+//     bounds must match the English span exactly, as before.
+//   - Slices separated by a real source gap (end < next start): the shared cut is
+//     the next cue's start, so each Chinese source line follows its own English
+//     counterpart instead of replaying inside the following English window. Only
+//     the inner cut positions matter here; each must stay strictly inside the
+//     plan's own source range.
+//
+// Overlapping slices, a count mismatch, and a cut outside the plan's source range
+// are rejected in both cases.
 func sharedCuts(english []textPiece, count, start, end int) []int {
-	if len(english) != count || english[0].start != start || english[len(english)-1].end != end {
+	if len(english) != count {
+		return nil
+	}
+	gapped := false
+	for i := 1; i < len(english); i++ {
+		if english[i-1].end > english[i].start {
+			return nil
+		}
+		if english[i-1].end < english[i].start {
+			gapped = true
+		}
+	}
+	if !gapped && (english[0].start != start || english[len(english)-1].end != end) {
 		return nil
 	}
 	var cuts []int
 	for i := 1; i < len(english); i++ {
-		if english[i-1].end != english[i].start {
+		cut := english[i].start
+		if cut <= start || cut >= end {
 			return nil
 		}
-		cuts = append(cuts, english[i].start)
+		cuts = append(cuts, cut)
 	}
 	return cuts
 }
