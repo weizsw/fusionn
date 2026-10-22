@@ -251,24 +251,35 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 		}
 
 		cursors := map[int]bool{0: true}
+		var lastText, lastIDs string
+		hasLast := false
 		for _, rec := range recs {
 			t := ""
+			idsKey := ""
 			if lang == "en" {
 				t = normText(rec.enText)
+				idsKey = intsKey(rec.enIDs)
 			} else {
 				t = normText(rec.zhText)
+				idsKey = intsKey(rec.zhIDs)
 			}
 			if t == "" {
 				continue
 			}
 			nextCursors := map[int]bool{}
+			// Hold check: this emission legitimately repeats the previous emission
+			// only when BOTH the language-internal source identity set AND the
+			// complete displayed text match. Merely matching a suffix of the already
+			// consumed expectation is not a hold; an emission that changes its text
+			// must advance through the expected sequence.
+			isHold := hasLast && lastIDs == idsKey && lastText == t
 			for pos := range cursors {
 				// 1. Advance: matches next expected source segment
 				if strings.HasPrefix(want[pos:], t) {
 					nextCursors[pos+len(t)] = true
 				}
-				// 2. Hold: legitimate continuation of the previously consumed segment
-				if pos >= len(t) && want[pos-len(t):pos] == t {
+				// 2. Hold: legitimate continuation of the exact previous emission
+				if isHold {
 					nextCursors[pos] = true
 				}
 			}
@@ -279,6 +290,9 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 				return
 			}
 			cursors = nextCursors
+			lastText = t
+			lastIDs = idsKey
+			hasLast = true
 		}
 
 		if !cursors[len(want)] {

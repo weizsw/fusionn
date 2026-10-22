@@ -125,3 +125,41 @@ func TestParent33PartialHoldWithRepeatedPrefixRemainsValid(t *testing.T) {
 		t.Fatalf("valid partial hold with genuinely repeated source prefix rejected: %v", failures)
 	}
 }
+
+// TestReview7cRejectsSuffixReplayAsHold ensures that an emission changing from a
+// whole sentence to its trailing suffix is treated as an invalid replay/change,
+// not as an acceptable hold.
+func TestReview7cRejectsSuffixReplayAsHold(t *testing.T) {
+	for _, lang := range []string{"en", "zh"} {
+		t.Run(lang, func(t *testing.T) {
+			bundle := fixtureBundle(
+				[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "Alpha. Beta.", Plain: "Alpha.\nBeta."}},
+				[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "甲乙 丙丁", Plain: "甲乙\n丙丁"}},
+			)
+			mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+			events := []renderedEvent{
+				{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 1000, assEnd: 3000, enText: "Alpha. Beta.", zhText: "甲乙 丙丁"},
+				{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 3000, assEnd: 5000, enText: "Alpha. Beta.", zhText: "甲乙 丙丁"},
+			}
+			good, err := verifyEpisode(bundle, mapping, fixtureConfig(), events)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if failures := good.Verify(); len(failures) > 0 {
+				t.Fatalf("baseline whole-sentence freeze must pass: %v", failures)
+			}
+			if lang == "en" {
+				events[1].enText = "Beta."
+			} else {
+				events[1].zhText = "丙丁"
+			}
+			bad, err := verifyEpisode(bundle, mapping, fixtureConfig(), events)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(bad.OrderMismatches) == 0 {
+				t.Fatalf("validator accepted whole sentence followed by its suffix as a hold in %s: %+v", lang, bad)
+			}
+		})
+	}
+}
