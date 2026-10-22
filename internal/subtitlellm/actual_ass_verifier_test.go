@@ -1,10 +1,13 @@
 package subtitlellm
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/fusionn/internal/config"
 )
 
 // Gap 1: Test verification of ASS headers and Style definitions using public Render.
@@ -401,4 +404,112 @@ func TestVerifyDeliveredASSAgainstExpected_WordTimingEvidence_Gap3(t *testing.T)
 			t.Fatal("expected failure reporting tampered text")
 		}
 	})
+}
+
+// TestValidateTerminalListGPT61EnhancedArtifacts loads the generated artifacts from
+// the live GPT-6.1 enhanced run, validates bilingual.ass against an independently
+// rendered expected ASS, and outputs validation.json for the review-ledger tool.
+func TestValidateTerminalListGPT61EnhancedArtifacts(t *testing.T) {
+	sampleDir := "/Users/maverick/Desktop/fusionn-subtitle-split-test/terminal-list-s02e01-gpt61-enhanced"
+	if _, err := os.Stat(filepath.Join(sampleDir, "bilingual.ass")); err != nil {
+		t.Skip("sample directory not present, skipping")
+	}
+
+	rawBundle, err := os.ReadFile(filepath.Join(sampleDir, "sources.json"))
+	if err != nil {
+		t.Fatalf("read sources.json: %v", err)
+	}
+	var bundle Bundle
+	if err := json.Unmarshal(rawBundle, &bundle); err != nil {
+		t.Fatalf("unmarshal sources.json: %v", err)
+	}
+
+	rawMapping, err := os.ReadFile(filepath.Join(sampleDir, "alignment", "mapping.json"))
+	if err != nil {
+		t.Fatalf("read mapping.json: %v", err)
+	}
+	var mapping Mapping
+	if err := json.Unmarshal(rawMapping, &mapping); err != nil {
+		t.Fatalf("unmarshal mapping.json: %v", err)
+	}
+
+	rawWords, err := os.ReadFile(filepath.Join(sampleDir, "word-timings.json"))
+	if err != nil {
+		t.Fatalf("read word-timings.json: %v", err)
+	}
+	var words WordTimings
+	if err := json.Unmarshal(rawWords, &words); err != nil {
+		t.Fatalf("unmarshal word-timings.json: %v", err)
+	}
+
+	loadedCfg, err := config.Load("/tmp/fusionn-phase-b-gpt61.yaml")
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	cfg := loadedCfg.Subtitle.LLM
+	style := loadedCfg.Subtitle.ASSStyle
+
+	expectedData, events, err := renderWithAudits(bundle, mapping, cfg, style, 3840, 1632, words)
+	if err != nil {
+		t.Fatalf("renderWithAudits: %v", err)
+	}
+
+	// 1. Strict delivery verification using Phase A verifier
+	assPath := filepath.Join(sampleDir, "bilingual.ass")
+	report, err := VerifyDeliveredASSAgainstExpected(assPath, expectedData)
+	if err != nil {
+		t.Fatalf("VerifyDeliveredASSAgainstExpected: %v", err)
+	}
+	if !report.Passed {
+		t.Fatalf("bilingual.ass failed verification: %v", report.Failures)
+	}
+	t.Logf("bilingual.ass verified successfully: %d dialogues match expected reference", report.TotalActual)
+
+	// 2. Export validation.json for review-ledger tool
+	type eventAuditRecord struct {
+		GroupIndex int    `json:"group"`
+		Strategy   string `json:"strategy"`
+		ENIDs      []int  `json:"en_ids"`
+		ZHIDs      []int  `json:"zh_ids"`
+		StartMS    int    `json:"start_ms"`
+		EndMS      int    `json:"end_ms"`
+		Alignment  int    `json:"alignment"`
+		Top        bool   `json:"top"`
+		ENText     string `json:"en_text"`
+		ZHText     string `json:"zh_text"`
+		ENLines    int    `json:"en_lines"`
+		ZHLines    int    `json:"zh_lines"`
+		ZHMerged   bool   `json:"zh_merged"`
+		ENMerged   bool   `json:"en_merged"`
+	}
+	var eventAudits []eventAuditRecord
+	for _, ev := range events {
+		eventAudits = append(eventAudits, eventAuditRecord{
+			GroupIndex: ev.group,
+			Strategy:   ev.strategy,
+			ENIDs:      ev.enIDs,
+			ZHIDs:      ev.zhIDs,
+			StartMS:    ev.assStart,
+			EndMS:      ev.assEnd,
+			Alignment:  ev.alignment,
+			Top:        ev.alignment >= 7,
+			ENText:     ev.enText,
+			ZHText:     ev.zhText,
+			ENLines:    countVisibleLines(ev.enText),
+			ZHLines:    countVisibleLines(ev.zhText),
+			ZHMerged:   ev.zhMerged,
+			ENMerged:   ev.enMerged,
+		})
+	}
+	valObj := map[string]interface{}{
+		"event_audit": eventAudits,
+	}
+	valBytes, errVal := json.MarshalIndent(valObj, "", "  ")
+	if errVal != nil {
+		t.Fatalf("marshal validation.json: %v", errVal)
+	}
+	if err := os.WriteFile(filepath.Join(sampleDir, "validation.json"), valBytes, 0644); err != nil {
+		t.Fatalf("write validation.json: %v", err)
+	}
+	t.Logf("validation.json written with %d rendered events", len(eventAudits))
 }
