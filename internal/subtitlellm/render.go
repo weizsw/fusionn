@@ -660,7 +660,7 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 			continue
 		}
 		if len(es) == 1 {
-			if zhJoinable && !es[0].MultiSpeaker && !top {
+			if zhJoinable && !es[0].MultiSpeaker {
 				result = append(result, makeBlock(es[0].Start, es[0].End, es, zs, strategyOneToOne))
 				continue
 			}
@@ -699,7 +699,7 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 			}
 			slices = append(slices, makeBlock(cue.Start, end, []Cue{cue}, zs, strategy))
 		}
-		if len(zs) > 1 && !zhJoinable && !top {
+		if len(zs) > 1 && !zhJoinable {
 			slices = splitChineseSources(slices, zs)
 		}
 		slices = mergeDialogueCounterpartSlices(slices, en, zh, cfg)
