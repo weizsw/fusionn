@@ -368,40 +368,18 @@ func hasMusicSymbol(text string) bool {
 	return strings.ContainsAny(text, "♪♫")
 }
 
-func cueAllLinesAreLyrics(cue Cue) bool {
-	lines := sourceLines(cue.Plain)
-	if len(lines) == 0 {
-		return false
-	}
-	hasAny := false
-	for _, l := range lines {
-		trimmed := strings.TrimSpace(l)
-		if trimmed == "" {
-			continue
-		}
-		if !hasMusicSymbol(trimmed) {
-			return false
-		}
-		hasAny = true
-	}
-	return hasAny
-}
-
-func cuesAreLyrics(cues []Cue) bool {
-	if len(cues) == 0 {
-		return false
-	}
-	for _, cue := range cues {
-		if !cueAllLinesAreLyrics(cue) {
-			return false
-		}
-	}
-	return true
-}
-
 func cueIsMixedLyric(cue Cue) (lyricLines, spokenLines []string, isMixed bool) {
 	lines := sourceLines(cue.Plain)
 	if len(lines) <= 1 {
+		return nil, nil, false
+	}
+	dashCount := 0
+	for _, l := range lines {
+		if startsWithDash(l) {
+			dashCount++
+		}
+	}
+	if !cue.MultiSpeaker && dashCount < 2 && (len(lines) != 2 || !startsWithDash(lines[1])) {
 		return nil, nil, false
 	}
 	var lyrics, spoken []string
@@ -420,6 +398,37 @@ func cueIsMixedLyric(cue Cue) (lyricLines, spokenLines []string, isMixed bool) {
 		return lyrics, spoken, true
 	}
 	return nil, nil, false
+}
+
+func cueIsLyric(cue Cue) bool {
+	lines := sourceLines(cue.Plain)
+	if len(lines) == 0 {
+		return false
+	}
+	hasMusic := false
+	for _, l := range lines {
+		if hasMusicSymbol(l) {
+			hasMusic = true
+			break
+		}
+	}
+	if !hasMusic {
+		return false
+	}
+	_, _, isMixed := cueIsMixedLyric(cue)
+	return !isMixed
+}
+
+func cuesAreLyrics(cues []Cue) bool {
+	if len(cues) == 0 {
+		return false
+	}
+	for _, cue := range cues {
+		if !cueIsLyric(cue) {
+			return false
+		}
+	}
+	return true
 }
 
 // buildBlocks anchors groups to English timing. Short text can stay joined;
@@ -462,12 +471,17 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 			alignment = 8
 		}
 
+		blockPos := native.Position
+		if top != sourceTop {
+			blockPos = nil
+		}
+
 		makeBlock := func(start, end int, ee, zz []Cue, strategy string) block {
 			return block{
 				start: start, end: end,
 				enIDs: cueIDs(ee), zhIDs: cueIDs(zz), group: groupIndex,
 				strategy: strategy, top: top, sourceTop: sourceTop,
-				alignment: alignment, position: native.Position,
+				alignment: alignment, position: blockPos,
 				isLyric: groupIsLyric,
 			}
 		}
@@ -488,6 +502,9 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 			b.top = cueTop
 			b.alignment = cueAlign
 			b.isLyric = cueLyric
+			if b.top != b.sourceTop {
+				b.position = nil
+			}
 			return b
 		}
 
@@ -501,85 +518,117 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig) []bl
 			continue
 		}
 		if len(es) == 1 && len(zs) == 1 {
-			if lyrics, spoken, isMixed := cueIsMixedLyric(es[0]); isMixed && !hasMusicSymbol(zs[0].Plain) && zs[0].Start > es[0].Start {
-				lyricText := strings.Join(lyrics, "\n")
-				spokenText := strings.Join(spoken, "\n")
-				zhText := zs[0].Plain
+			if lyrics, spoken, isMixed := cueIsMixedLyric(es[0]); isMixed && !hasMusicSymbol(zs[0].Plain) {
+				sStart := zs[0].Start
+				sEnd := es[0].End
+				assStart := roundCentiseconds(sStart)
+				assEnd := roundCentiseconds(sEnd)
+				dur := assEnd - assStart
+				floor := minFallbackFragmentMS
+				nativeDur := roundCentiseconds(zs[0].End) - roundCentiseconds(zs[0].Start)
+				if nativeDur < floor {
+					floor = nativeDur
+				}
+				if sStart > es[0].Start && sStart < es[0].End && dur >= floor && dur > 0 {
+					lyricText := strings.Join(lyrics, "\n")
+					spokenText := strings.Join(spoken, "\n")
+					zhText := zs[0].Plain
 
-				lyricBlock := block{
-					start:       es[0].Start,
-					end:         es[0].End,
-					enIDs:       []int{es[0].ID},
-					zhIDs:       nil,
-					group:       groupIndex,
-					strategy:    strategyOneToOne,
-					top:         true,
-					sourceTop:   sourceTop,
-					alignment:   8,
-					position:    native.Position,
-					enText:      &lyricText,
-					enFlattened: true,
-					isLyric:     true,
+					lyricBlock := block{
+						start:       es[0].Start,
+						end:         es[0].End,
+						enIDs:       []int{es[0].ID},
+						zhIDs:       nil,
+						group:       groupIndex,
+						strategy:    strategyOneToOne,
+						top:         true,
+						sourceTop:   sourceTop,
+						alignment:   8,
+						position:    nil,
+						enText:      &lyricText,
+						enFlattened: false,
+						isLyric:     true,
+					}
+					var spokenPos *[2]float64
+					if !sourceTop {
+						spokenPos = native.Position
+					}
+					spokenBlock := block{
+						start:       sStart,
+						end:         sEnd,
+						enIDs:       []int{es[0].ID},
+						zhIDs:       []int{zs[0].ID},
+						group:       groupIndex,
+						strategy:    strategyOneToOne,
+						top:         false,
+						sourceTop:   sourceTop,
+						alignment:   2,
+						position:    spokenPos,
+						enText:      &spokenText,
+						zhText:      &zhText,
+						enFlattened: false,
+						zhFlattened: false,
+						isLyric:     false,
+					}
+					result = append(result, lyricBlock, spokenBlock)
+					continue
 				}
-				spokenBlock := block{
-					start:       zs[0].Start,
-					end:         es[0].End,
-					enIDs:       []int{es[0].ID},
-					zhIDs:       []int{zs[0].ID},
-					group:       groupIndex,
-					strategy:    strategyOneToOne,
-					top:         false,
-					sourceTop:   sourceTop,
-					alignment:   2,
-					position:    native.Position,
-					enText:      &spokenText,
-					zhText:      &zhText,
-					enFlattened: true,
-					zhFlattened: true,
-					isLyric:     false,
-				}
-				result = append(result, lyricBlock, spokenBlock)
-				continue
 			}
-			if lyrics, spoken, isMixed := cueIsMixedLyric(zs[0]); isMixed && !hasMusicSymbol(es[0].Plain) && es[0].Start > zs[0].Start {
-				lyricText := strings.Join(lyrics, "\n")
-				spokenText := strings.Join(spoken, "\n")
-				enText := es[0].Plain
+			if lyrics, spoken, isMixed := cueIsMixedLyric(zs[0]); isMixed && !hasMusicSymbol(es[0].Plain) {
+				sStart := es[0].Start
+				sEnd := zs[0].End
+				assStart := roundCentiseconds(sStart)
+				assEnd := roundCentiseconds(sEnd)
+				dur := assEnd - assStart
+				floor := minFallbackFragmentMS
+				nativeDur := roundCentiseconds(es[0].End) - roundCentiseconds(es[0].Start)
+				if nativeDur < floor {
+					floor = nativeDur
+				}
+				if sStart > zs[0].Start && sStart < zs[0].End && dur >= floor && dur > 0 {
+					lyricText := strings.Join(lyrics, "\n")
+					spokenText := strings.Join(spoken, "\n")
+					enText := es[0].Plain
 
-				lyricBlock := block{
-					start:       zs[0].Start,
-					end:         zs[0].End,
-					enIDs:       nil,
-					zhIDs:       []int{zs[0].ID},
-					group:       groupIndex,
-					strategy:    strategyOneToOne,
-					top:         true,
-					sourceTop:   sourceTop,
-					alignment:   8,
-					position:    native.Position,
-					zhText:      &lyricText,
-					zhFlattened: true,
-					isLyric:     true,
+					lyricBlock := block{
+						start:       zs[0].Start,
+						end:         zs[0].End,
+						enIDs:       nil,
+						zhIDs:       []int{zs[0].ID},
+						group:       groupIndex,
+						strategy:    strategyOneToOne,
+						top:         true,
+						sourceTop:   sourceTop,
+						alignment:   8,
+						position:    nil,
+						zhText:      &lyricText,
+						zhFlattened: false,
+						isLyric:     true,
+					}
+					var spokenPos *[2]float64
+					if !sourceTop {
+						spokenPos = native.Position
+					}
+					spokenBlock := block{
+						start:       sStart,
+						end:         sEnd,
+						enIDs:       []int{es[0].ID},
+						zhIDs:       []int{zs[0].ID},
+						group:       groupIndex,
+						strategy:    strategyOneToOne,
+						top:         false,
+						sourceTop:   sourceTop,
+						alignment:   2,
+						position:    spokenPos,
+						enText:      &enText,
+						zhText:      &spokenText,
+						enFlattened: false,
+						zhFlattened: false,
+						isLyric:     false,
+					}
+					result = append(result, lyricBlock, spokenBlock)
+					continue
 				}
-				spokenBlock := block{
-					start:       es[0].Start,
-					end:         zs[0].End,
-					enIDs:       []int{es[0].ID},
-					zhIDs:       []int{zs[0].ID},
-					group:       groupIndex,
-					strategy:    strategyOneToOne,
-					top:         false,
-					sourceTop:   sourceTop,
-					alignment:   2,
-					position:    native.Position,
-					enText:      &enText,
-					zhText:      &spokenText,
-					enFlattened: true,
-					zhFlattened: true,
-					isLyric:     false,
-				}
-				result = append(result, lyricBlock, spokenBlock)
-				continue
 			}
 			result = append(result, makeBlock(es[0].Start, es[0].End, es, zs, strategyOneToOne))
 			continue
@@ -661,13 +710,27 @@ func mergeDialogueCounterpartSlices(slices []block, en, zh map[int]Cue, cfg conf
 			if zcue.MultiSpeaker {
 				j := i + 1
 				candidateEN := cuesFor(en, b.enIDs)
+				seenEN := make(map[int]bool)
+				for _, id := range b.enIDs {
+					seenEN[id] = true
+				}
 				for j < len(slices) {
 					next := slices[j]
 					if len(next.zhIDs) != 1 || next.zhIDs[0] != b.zhIDs[0] {
 						break
 					}
-					nextEN := cuesFor(en, next.enIDs)
-					combinedEN := append(append([]Cue(nil), candidateEN...), nextEN...)
+					var newEN []Cue
+					for _, id := range next.enIDs {
+						if !seenEN[id] {
+							seenEN[id] = true
+							newEN = append(newEN, en[id])
+						}
+					}
+					if len(newEN) == 0 {
+						j++
+						continue
+					}
+					combinedEN := append(append([]Cue(nil), candidateEN...), newEN...)
 					if !joinable(combinedEN, cfg.EnChars, cfg.EnGapMS, cfg.SpanMS) {
 						break
 					}
@@ -676,8 +739,8 @@ func mergeDialogueCounterpartSlices(slices []block, en, zh map[int]Cue, cfg conf
 				}
 				if j > i+1 {
 					merged := b
-					merged.start = candidateEN[0].Start
-					merged.end = candidateEN[len(candidateEN)-1].End
+					merged.start = slices[i].start
+					merged.end = slices[j-1].end
 					merged.enIDs = cueIDs(candidateEN)
 					merged.strategy = strategyShortJoin
 					out = append(out, merged)
@@ -691,13 +754,27 @@ func mergeDialogueCounterpartSlices(slices []block, en, zh map[int]Cue, cfg conf
 			if ecue.MultiSpeaker {
 				j := i + 1
 				candidateZH := cuesFor(zh, b.zhIDs)
+				seenZH := make(map[int]bool)
+				for _, id := range b.zhIDs {
+					seenZH[id] = true
+				}
 				for j < len(slices) {
 					next := slices[j]
 					if len(next.enIDs) != 1 || next.enIDs[0] != b.enIDs[0] {
 						break
 					}
-					nextZH := cuesFor(zh, next.zhIDs)
-					combinedZH := append(append([]Cue(nil), candidateZH...), nextZH...)
+					var newZH []Cue
+					for _, id := range next.zhIDs {
+						if !seenZH[id] {
+							seenZH[id] = true
+							newZH = append(newZH, zh[id])
+						}
+					}
+					if len(newZH) == 0 {
+						j++
+						continue
+					}
+					combinedZH := append(append([]Cue(nil), candidateZH...), newZH...)
 					if !joinable(combinedZH, cfg.ZhChars, cfg.ZhGapMS, 0) {
 						break
 					}
@@ -706,8 +783,8 @@ func mergeDialogueCounterpartSlices(slices []block, en, zh map[int]Cue, cfg conf
 				}
 				if j > i+1 {
 					merged := b
-					merged.start = candidateZH[0].Start
-					merged.end = candidateZH[len(candidateZH)-1].End
+					merged.start = slices[i].start
+					merged.end = slices[j-1].end
 					merged.zhIDs = cueIDs(candidateZH)
 					merged.strategy = strategyShortJoin
 					out = append(out, merged)
@@ -1135,6 +1212,7 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 		if topOccupied {
 			b.top = false
 			b.alignment = 2
+			b.position = nil
 		}
 	}
 

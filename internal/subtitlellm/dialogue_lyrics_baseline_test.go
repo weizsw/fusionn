@@ -667,35 +667,42 @@ func TestLyrics_TopOccupiedFallbackToBottom(t *testing.T) {
 }
 
 // TestProbeRenderE01 verifies rendering of full E01 recorded input.
+// This test is explicit opt-in via FUSIONN_E01_PROBE_DIR so default repository
+// tests stay portable and do not mutate delivered desktop artifacts.
 func TestProbeRenderE01(t *testing.T) {
-	dir := "/Users/maverick/Desktop/fusionn-subtitle-split-test/terminal-list-s02e01-alignment-combined"
+	dir := os.Getenv("FUSIONN_E01_PROBE_DIR")
+	if dir == "" {
+		t.Skip("skipping E01 probe test: set FUSIONN_E01_PROBE_DIR to run")
+	}
 	rawBundle, err := os.ReadFile(filepath.Join(dir, "sources.json"))
 	if err != nil {
-		t.Skipf("skipping E01 probe test (fixture not present): %v", err)
+		t.Fatalf("failed to read sources.json: %v", err)
 	}
 	var bundle Bundle
 	if err := jsonUnmarshal(rawBundle, &bundle); err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to unmarshal sources.json: %v", err)
 	}
 	rawMapping, err := os.ReadFile(filepath.Join(dir, "alignment", "mapping.json"))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to read alignment/mapping.json: %v", err)
 	}
 	var mapping Mapping
 	if err := jsonUnmarshal(rawMapping, &mapping); err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to unmarshal alignment/mapping.json: %v", err)
 	}
 	var words WordTimings
 	if rawWords, err := os.ReadFile(filepath.Join(dir, "word-timings.json")); err == nil {
-		_ = jsonUnmarshal(rawWords, &words)
+		if err := jsonUnmarshal(rawWords, &words); err != nil {
+			t.Fatalf("failed to unmarshal word-timings.json: %v", err)
+		}
 	}
 	rawStyle, err := os.ReadFile(filepath.Join(dir, "delivered-style.json"))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to read delivered-style.json: %v", err)
 	}
 	var style config.ASSStyleConfig
 	if err := jsonUnmarshal(rawStyle, &style); err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to unmarshal delivered-style.json: %v", err)
 	}
 
 	cfg := config.LLMConfig{
@@ -725,15 +732,9 @@ func TestProbeRenderE01(t *testing.T) {
 
 	t.Logf("Total events: %d (EN covered: %d/%d, ZH covered: %d/%d)", len(events), v.ENCovered, v.ENSourceCues, v.ZHCovered, v.ZHSourceCues)
 
-	// Inspect key groups
-	for _, e := range events {
-		if e.group == 46 || e.group == 90 || e.group == 24 || e.group == 142 || (e.group >= 91 && e.group <= 97) || (e.group >= 228 && e.group <= 233) {
-			t.Logf("G%d [%d-%d] top=%v strategy=%s zh=%q en=%q", e.group, e.assStart, e.assEnd, e.alignment >= 7, e.strategy, e.zhText, e.enText)
+	if outPath := os.Getenv("FUSIONN_E01_OUTPUT_ASS"); outPath != "" {
+		if err := os.WriteFile(outPath, assBytes, 0644); err != nil {
+			t.Fatalf("failed to write output ASS to %s: %v", outPath, err)
 		}
-	}
-
-	destDir := "/Users/maverick/Desktop/fusionn-subtitle-split-test/terminal-list-s02e01-dialogue-lyrics"
-	if _, err := os.Stat(destDir); err == nil {
-		_ = os.WriteFile(filepath.Join(destDir, "E01.zh20-bilingual-layout.ass"), assBytes, 0644)
 	}
 }
