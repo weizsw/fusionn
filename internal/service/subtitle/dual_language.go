@@ -130,7 +130,7 @@ func lineLanguages(line string) (chinese, english bool) {
 func latinWords(s string) int {
 	count := 0
 	for _, field := range strings.FieldsFunc(s, func(r rune) bool {
-		return r != '\'' && !(unicode.IsLetter(r) && unicode.In(r, unicode.Latin))
+		return r != '\'' && (!unicode.IsLetter(r) || !unicode.In(r, unicode.Latin))
 	}) {
 		if utf8.RuneCountInString(strings.Trim(field, "'")) >= 2 {
 			count++

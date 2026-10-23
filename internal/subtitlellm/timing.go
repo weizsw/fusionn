@@ -114,7 +114,7 @@ func isTimingDialogue(c Cue) bool {
 	}
 	runes := []rune(text)
 	closing, ok := closingBrackets[runes[0]]
-	return !(ok && len(runes) > 1 && runes[len(runes)-1] == closing)
+	return !ok || len(runes) <= 1 || runes[len(runes)-1] != closing
 }
 
 var closingBrackets = map[rune]rune{'(': ')', '（': '）', '[': ']', '【': '】'}
