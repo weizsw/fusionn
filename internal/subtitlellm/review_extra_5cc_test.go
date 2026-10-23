@@ -50,7 +50,9 @@ func TestReview5ccMixedRoleSyncMustNotReimportParent(t *testing.T) {
 
 // Removing one lyric row leaves two ordinary source speech rows per language.
 // The approved 2+2 preference still applies even when both texts fit the caps.
-func TestReview5ccDerivedTwoPlusTwoRetainsSyncPreference(t *testing.T) {
+// A derived ordinary 2+2 speech pair whose lines fit side by side stays one
+// event, like any other under-cap 2+2 pair.
+func TestReview5ccDerivedTwoPlusTwoStaysTogetherUnderCap(t *testing.T) {
 	for _, symmetric := range []bool{false, true} {
 		name := "english_mixed"
 		if symmetric {
@@ -74,13 +76,10 @@ func TestReview5ccDerivedTwoPlusTwoRetainsSyncPreference(t *testing.T) {
 					speech = append(speech, e)
 				}
 			}
-			if len(speech) != 2 {
-				t.Fatalf("derived ordinary 2+2 speech should sync into two readable fragments before under-cap merging: %+v", speech)
+			if len(speech) != 1 {
+				t.Fatalf("derived ordinary 2+2 speech under the caps should stay one event: %+v", speech)
 			}
 			for _, e := range speech {
-				if e.assEnd-e.assStart < 1200 {
-					t.Errorf("sync floor violated: %+v", e)
-				}
 				if hasMusicSymbol(e.enText) || hasMusicSymbol(e.zhText) {
 					t.Errorf("parent lyric reimported: %+v", e)
 				}

@@ -404,14 +404,13 @@ func TestEngine_CompatibleRefinement_Behavior3_GenuineCrossConflict(t *testing.T
 	if len(audit.Restored["en"]) != 3 || len(audit.Restored["zh"]) != 2 {
 		t.Fatalf("expected all cues restored single-sided (EN=3 ZH=2), got EN=%v ZH=%v", audit.Restored["en"], audit.Restored["zh"])
 	}
-	if len(mapping.Groups) != 5 {
-		t.Fatalf("expected 5 restored single-sided groups, got %d: %+v", len(mapping.Groups), mapping.Groups)
-	}
+	// Restored cues may then pair by timing, but no model group survives.
 	for _, g := range mapping.Groups {
-		if g.Origin != OriginRestored {
-			t.Errorf("expected restored group origin %q, got %q", OriginRestored, g.Origin)
+		if g.Origin == OriginModel {
+			t.Errorf("expected no model group after the conflict, got %+v", g)
 		}
 	}
+	assertCoverage(t, mapping, bundle)
 }
 
 // TestEngine_CompatibleRefinement_Behavior4_IncompletePartitionsCannotDisguise verifies Behavior 4:
@@ -1346,8 +1345,9 @@ func TestEngine_KindGuard_R1_PublicEngineTruncationCounterexample(t *testing.T) 
 				t.Errorf("independent cue origin = %s, want model", g.Origin)
 			}
 		}
-		// Fine group [1, 2]:[1] must not be accepted
-		if reflect.DeepEqual(g.ENIDs, []int{1, 2}) {
+		// Fine group [1, 2]:[1] must not be accepted from the model; restored
+		// cues may still pair by timing afterwards.
+		if reflect.DeepEqual(g.ENIDs, []int{1, 2}) && g.Origin == OriginModel {
 			t.Errorf("fine group [1, 2] should not be accepted when [3]:[2] has kind conflict: %+v", g)
 		}
 	}

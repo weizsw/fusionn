@@ -78,9 +78,10 @@ func TestTopTemporal_WordAlignmentCues(t *testing.T) {
 // TestTopTemporal_BothTwoLinesUnderLimitSyncSplit verifies that 2+2 normal dialogue
 // at the top of the screen undergoes synchronized 1.2s temporal splitting
 // identically to bottom subtitles, while preserving top style and geometry.
-func TestTopTemporal_BothTwoLinesUnderLimitSyncSplit(t *testing.T) {
+func TestTopTemporal_BothTwoLinesSyncSplit(t *testing.T) {
 	cfg := renderTestConfig()
-	cfg.EnChars = 65
+	// The joined English line (48 runes) is over the limit, so the pair splits.
+	cfg.EnChars = 30
 	cfg.ZhChars = 25
 
 	t.Run("source_top_both_languages", func(t *testing.T) {
@@ -89,6 +90,7 @@ func TestTopTemporal_BothTwoLinesUnderLimitSyncSplit(t *testing.T) {
 			[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "第一句对白 第二句对白", Plain: "第一句对白\n第二句对白", Top: true, Alignment: 8}},
 		)
 		mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerTop, Origin: OriginModel, Kind: KindDialogue}})
+		mapping = confirmAllSplits(t, bundle, mapping, cfg)
 		output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 		if err != nil {
 			t.Fatal(err)
@@ -111,6 +113,7 @@ func TestTopTemporal_BothTwoLinesUnderLimitSyncSplit(t *testing.T) {
 			[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "第一句对白 第二句对白", Plain: "第一句对白\n第二句对白", Top: false, Alignment: 2}},
 		)
 		bottomMapping := makeMapping(bottomBundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+		bottomMapping = confirmAllSplits(t, bottomBundle, bottomMapping, cfg)
 		bottomOut, err := Render(bottomBundle, bottomMapping, cfg, renderTestStyle(), 1920, 1080)
 		if err != nil {
 			t.Fatal(err)
@@ -133,6 +136,7 @@ func TestTopTemporal_BothTwoLinesUnderLimitSyncSplit(t *testing.T) {
 			[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "第一句对白 第二句对白", Plain: "第一句对白\n第二句对白", Top: false, Alignment: 2}},
 		)
 		mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerTop, Origin: OriginModel, Kind: KindDialogue}})
+		mapping = confirmAllSplits(t, bundle, mapping, cfg)
 		output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 		if err != nil {
 			t.Fatal(err)
@@ -267,7 +271,8 @@ func TestTopTemporal_ChineseTwoEnglishOne(t *testing.T) {
 func TestTopTemporal_PreservesNativePosAndAnchor(t *testing.T) {
 	t.Run("an8_default_top_with_pos", func(t *testing.T) {
 		cfg := renderTestConfig()
-		cfg.EnChars = 65
+		// The joined English line (48 runes) is over the limit, so the pair splits.
+		cfg.EnChars = 30
 		cfg.ZhChars = 25
 		pos := [2]float64{960, 120}
 		bundle := makeBundle(
@@ -275,6 +280,7 @@ func TestTopTemporal_PreservesNativePosAndAnchor(t *testing.T) {
 			[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "第一句对白 第二句对白", Plain: "第一句对白\n第二句对白", Top: true, Alignment: 8, Position: &pos}},
 		)
 		mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerTop, Origin: OriginModel, Kind: KindDialogue}})
+		mapping = confirmAllSplits(t, bundle, mapping, cfg)
 		output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 		if err != nil {
 			t.Fatal(err)
@@ -298,7 +304,8 @@ func TestTopTemporal_PreservesNativePosAndAnchor(t *testing.T) {
 
 	t.Run("an7_top_left_with_pos_and_an_tag", func(t *testing.T) {
 		cfg := renderTestConfig()
-		cfg.EnChars = 65
+		// The joined English line (48 runes) is over the limit, so the pair splits.
+		cfg.EnChars = 30
 		cfg.ZhChars = 25
 		pos := [2]float64{200, 100}
 		bundle := makeBundle(
@@ -306,6 +313,7 @@ func TestTopTemporal_PreservesNativePosAndAnchor(t *testing.T) {
 			[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "第一句对白 第二句对白", Plain: "第一句对白\n第二句对白", Top: true, Alignment: 7, Position: &pos}},
 		)
 		mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerTop, Origin: OriginModel, Kind: KindDialogue}})
+		mapping = confirmAllSplits(t, bundle, mapping, cfg)
 		output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 		if err != nil {
 			t.Fatal(err)
@@ -332,31 +340,38 @@ func TestTopTemporal_PreservesNativePosAndAnchor(t *testing.T) {
 // 0.8s fallback floor boundaries on Top cues.
 func TestTopTemporal_SyncAndFallbackFloorBoundaries(t *testing.T) {
 	t.Run("sync_floor_exact_2x1200ms_vs_10ms_below", func(t *testing.T) {
+		// Below the floor the pair cannot split in sync: only the over-limit
+		// English splits, and the Chinese stays whole.
 		cases := []struct {
 			name       string
 			start, end int
-			wantEvents int
+			want       []string
 		}{
-			{"exact_2x1200ms", 1000, 3400, 2},
-			{"10ms_below", 1000, 3390, 1},
+			{"exact_2x1200ms", 1000, 3400, []string{"甲。Alpha.", "乙。Bravo."}},
+			{"10ms_below", 1000, 3390, []string{"甲。 乙。Alpha.", "甲。 乙。Bravo."}},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
 				cfg := renderTestConfig()
-				cfg.EnChars = 65
+				// "Alpha. Bravo." is over the English limit, so the pair must split.
+				cfg.EnChars = 8
 				cfg.ZhChars = 25
 				bundle := makeBundle(
 					[]Cue{{ID: 1, Start: tc.start, End: tc.end, Display: "Alpha. Bravo.", Plain: "Alpha.\nBravo.", Top: true, Alignment: 8}},
 					[]Cue{{ID: 1, Start: tc.start, End: tc.end, Display: "甲。 乙。", Plain: "甲。\n乙。", Top: true, Alignment: 8}},
 				)
 				mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerTop, Origin: OriginModel, Kind: KindDialogue}})
+				mapping = confirmAllSplits(t, bundle, mapping, cfg)
 				out, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 				if err != nil {
 					t.Fatal(err)
 				}
 				events := parseDialogues(t, string(out))
-				if len(events) != tc.wantEvents {
-					t.Fatalf("events = %d, want %d", len(events), tc.wantEvents)
+				if len(events) != len(tc.want) {
+					t.Fatalf("events = %d, want %d", len(events), len(tc.want))
+				}
+				for i, want := range tc.want {
+					assertGlyphs(t, events[i].text, want)
 				}
 				for _, e := range events {
 					if e.style != "TopDefault" {
@@ -445,80 +460,6 @@ func TestTopTemporal_SourceBreaksVsWrapping(t *testing.T) {
 	})
 }
 
-// TestTopTemporal_SharedCutsBoundaries locks the sharedCuts contract that the
-// gapped-source fix relies on.
-func TestTopTemporal_SharedCutsBoundaries(t *testing.T) {
-	pc := func(start, end int) textPiece { return textPiece{start: start, end: end, text: "x"} }
-
-	t.Run("contiguous_english_requires_matching_outer_bounds", func(t *testing.T) {
-		eng := []textPiece{pc(1000, 2000), pc(2000, 3000)}
-		if cuts := sharedCuts(eng, 2, 1000, 3000); len(cuts) != 1 || cuts[0] != 2000 {
-			t.Fatalf("matching outer bounds: cuts = %v, want [2000]", cuts)
-		}
-		if cuts := sharedCuts(eng, 2, 900, 3000); cuts != nil {
-			t.Fatalf("mismatched start bound must be rejected, got %v", cuts)
-		}
-		if cuts := sharedCuts(eng, 2, 1000, 3100); cuts != nil {
-			t.Fatalf("mismatched end bound must be rejected, got %v", cuts)
-		}
-	})
-
-	t.Run("real_gap_allows_existing_source_boundary", func(t *testing.T) {
-		eng := []textPiece{pc(1000, 2000), pc(2500, 3500)}
-		if cuts := sharedCuts(eng, 2, 900, 3500); len(cuts) != 1 || cuts[0] != 2500 {
-			t.Fatalf("gapped slices: cuts = %v, want [2500]", cuts)
-		}
-	})
-
-	t.Run("overlap_is_rejected", func(t *testing.T) {
-		eng := []textPiece{pc(1000, 2600), pc(2500, 3500)}
-		if cuts := sharedCuts(eng, 2, 1000, 3500); cuts != nil {
-			t.Fatalf("overlapping slices must be rejected, got %v", cuts)
-		}
-	})
-
-	t.Run("count_mismatch_is_rejected", func(t *testing.T) {
-		eng := []textPiece{pc(1000, 2000), pc(2500, 3500)}
-		if cuts := sharedCuts(eng, 3, 1000, 3500); cuts != nil {
-			t.Fatalf("count mismatch must be rejected, got %v", cuts)
-		}
-	})
-
-	t.Run("cut_outside_plan_range_is_rejected", func(t *testing.T) {
-		eng := []textPiece{pc(1000, 2000), pc(2500, 3500)}
-		if cuts := sharedCuts(eng, 2, 2600, 3500); cuts != nil {
-			t.Fatalf("cut before plan start must be rejected, got %v", cuts)
-		}
-		if cuts := sharedCuts(eng, 2, 1000, 2400); cuts != nil {
-			t.Fatalf("cut after plan end must be rejected, got %v", cuts)
-		}
-	})
-
-	// A real gap waives the outer-bounds equality, so a gapped English span that
-	// is wider than the Chinese plan is accepted as long as every inner cut stays
-	// inside the plan. Lock that deliberately, and lock that the plan's own outer
-	// bounds are what the slices keep: no cut can fall outside [start, end).
-	t.Run("gapped_span_wider_than_plan_keeps_only_inner_cuts", func(t *testing.T) {
-		eng := []textPiece{pc(900, 2000), pc(2500, 3600)}
-		cuts := sharedCuts(eng, 2, 1000, 3000)
-		if len(cuts) != 1 || cuts[0] != 2500 {
-			t.Fatalf("wider gapped span: cuts = %v, want [2500]", cuts)
-		}
-		for _, c := range cuts {
-			if c <= 1000 || c >= 3000 {
-				t.Errorf("cut %d escapes the plan range [1000,3000)", c)
-			}
-		}
-	})
-
-	t.Run("gapped_span_entirely_outside_plan_is_rejected", func(t *testing.T) {
-		eng := []textPiece{pc(3100, 3800), pc(4200, 4900)}
-		if cuts := sharedCuts(eng, 2, 1000, 3000); cuts != nil {
-			t.Fatalf("cut outside plan range must be rejected, got %v", cuts)
-		}
-	})
-}
-
 // TestTopTemporal_TwoEnglishOneChineseSharedGap reproduces the real group-119
 // source cues separated by a real gap, and one Chinese cue whose Plain has two
 // source lines that merge over the configured limit while each line fits.
@@ -549,6 +490,7 @@ func TestTopTemporal_TwoEnglishOneChineseSharedGap(t *testing.T) {
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerTop, Origin: OriginModel, Kind: KindDialogue}})
 
+	mapping = confirmAllSplits(t, bundle, mapping, cfg)
 	out, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 	if err != nil {
 		t.Fatal(err)
@@ -621,6 +563,7 @@ func TestTopTemporal_TwoEnglishOneChineseSharedGap(t *testing.T) {
 		[]Cue{{ID: 1, Start: zhStart, End: zhEnd, Display: "不在乎17点回家 他四处为家 他只关心大业”", Plain: "不在乎17点回家 他四处为家\n他只关心大业”", Alignment: 2}},
 	)
 	floorMapping := makeMapping(floor, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+	floorMapping = confirmAllSplits(t, floor, floorMapping, cfg)
 	floorOut, err := Render(floor, floorMapping, cfg, renderTestStyle(), 1920, 1080)
 	if err != nil {
 		t.Fatal(err)
@@ -646,7 +589,8 @@ func TestTopTemporal_TwoEnglishOneChineseSharedGap(t *testing.T) {
 // when word timings are missing or invalid.
 func TestTopTemporal_WordTimingPriorityAndFallback(t *testing.T) {
 	cfg := renderTestConfig()
-	cfg.EnChars = 65
+	// The joined English line (37 runes) is over the limit, so the pair splits.
+	cfg.EnChars = 20
 	cfg.ZhChars = 25
 
 	bundle := makeBundle(
@@ -654,6 +598,7 @@ func TestTopTemporal_WordTimingPriorityAndFallback(t *testing.T) {
 		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "第一段词切测试 第二段词切测试", Plain: "第一段词切测试\n第二段词切测试", Top: true, Alignment: 8}},
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerTop, Origin: OriginModel, Kind: KindDialogue}})
+	mapping = confirmAllSplits(t, bundle, mapping, cfg)
 
 	t.Run("valid_word_timing_used", func(t *testing.T) {
 		// Cut at 2800ms

@@ -19,9 +19,6 @@ func TestLoadSourcesMatchesPrototypeBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSources() error = %v", err)
 	}
-	if bundle.Fingerprint != "14ec9eb49624d94352152b8fa0cc0b6bacc81228c66919d9e6d4731f20018bd9" {
-		t.Fatalf("fingerprint = %s, want prototype fingerprint", bundle.Fingerprint)
-	}
 	if len(bundle.EN) != 710 || len(bundle.ZH) != 722 {
 		t.Fatalf("cue counts = %d/%d, want 710/722", len(bundle.EN), len(bundle.ZH))
 	}
@@ -37,8 +34,27 @@ func TestLoadSourcesMatchesPrototypeBundle(t *testing.T) {
 	if err := json.Unmarshal(data, &reference); err != nil {
 		t.Fatal(err)
 	}
-	compareCues(t, "en", bundle.EN, reference.EN)
-	compareCues(t, "zh", bundle.ZH, reference.ZH)
+	compareCues(t, "en", bundle.EN, cleanedReference(reference.EN))
+	compareCues(t, "zh", bundle.ZH, cleanedReference(reference.ZH))
+}
+
+// cleanedReference applies the load-time text cleanup to prototype cues: one
+// half-width space between words and "- " before a speaker line. The flat
+// display text is compared with whitespace collapsed, because long two-speaker
+// cues keep their line breaks there.
+func cleanedReference(cues []Cue) []Cue {
+	out := make([]Cue, len(cues))
+	for i, cue := range cues {
+		lines := strings.Split(cue.Plain, "\n")
+		for j, line := range lines {
+			lines[j] = cleanLine(line)
+		}
+		cue.Plain = strings.Join(lines, "\n")
+		cue.Display = strings.Join(strings.Fields(strings.Join(lines, " ")), " ")
+		cue.Changes = nil
+		out[i] = cue
+	}
+	return out
 }
 
 func compareCues(t *testing.T, lang string, got, want []Cue) {
@@ -47,7 +63,10 @@ func compareCues(t *testing.T, lang string, got, want []Cue) {
 		t.Fatalf("%s cue count = %d, want %d", lang, len(got), len(want))
 	}
 	for i := range want {
-		gotJSON, _ := json.Marshal(got[i])
+		cue := got[i]
+		cue.Display = strings.Join(strings.Fields(cue.Display), " ")
+		cue.Changes = nil
+		gotJSON, _ := json.Marshal(cue)
 		wantJSON, _ := json.Marshal(want[i])
 		if string(gotJSON) != string(wantJSON) {
 			t.Fatalf("%s cue %d mismatch:\n got %s\nwant %s", lang, i+1, gotJSON, wantJSON)
@@ -70,7 +89,7 @@ func TestLoadSourcesParsesSRTNatives(t *testing.T) {
 	if first.Alignment != 8 || !first.Top {
 		t.Fatalf("native alignment = %d top=%v, want 8/true", first.Alignment, first.Top)
 	}
-	if !first.MultiSpeaker || first.Display != "- Hello   - Goodbye" {
+	if !first.MultiSpeaker || first.Display != "- Hello - Goodbye" {
 		t.Fatalf("multi speaker=%v display=%q", first.MultiSpeaker, first.Display)
 	}
 	if !contains(first.Changes, "markup_removed_or_newline_decoded") || !contains(first.Changes, "whitespace_flattened") {
@@ -129,8 +148,8 @@ func TestLoadSourcesMatchesPythonWhitespaceAndTags(t *testing.T) {
 	dir := t.TempDir()
 	enPath := filepath.Join(dir, "en.srt")
 	zhPath := filepath.Join(dir, "zh.srt")
-	// U+3000 before the dash counts as speaker markup in Python's \s, and
-	// SRT tags are stripped case-insensitively.
+	// U+3000 before the dash still marks a speaker line and is cleaned away,
+	// and SRT tags are stripped case-insensitively.
 	writeFile(t, enPath, "1\n00:00:01,000 --> 00:00:03,000\n　- Hello\n　- Goodbye <I>x</I>\n\n"+
 		"2\n00:00:04,000 --> 00:00:05,000\nfirst line\n\nsecond line\n")
 	writeFile(t, zhPath, "1\n00:00:01,000 --> 00:00:03,000\n你好\n")
@@ -141,7 +160,7 @@ func TestLoadSourcesMatchesPythonWhitespaceAndTags(t *testing.T) {
 	if !bundle.EN[0].MultiSpeaker {
 		t.Fatalf("U+3000 speaker lines not detected: %q", bundle.EN[0].Plain)
 	}
-	if bundle.EN[0].Plain != "- Hello\n　- Goodbye x" {
+	if bundle.EN[0].Plain != "- Hello\n- Goodbye x" {
 		t.Fatalf("plain = %q", bundle.EN[0].Plain)
 	}
 	// A blank line inside cue text is preserved, as pysubs2 does.
@@ -284,4 +303,26 @@ func contains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestCleanLine(t *testing.T) {
+	for in, want := range map[string]string{
+		"-  Fire.":         "- Fire.",
+		"-Fire.":           "- Fire.",
+		"－开火":              "- 开火",
+		"–Yes":             "- Yes",
+		"— 好":              "- 好",
+		"　- Hello":         "- Hello",
+		"a   b　c ":         "a b c",
+		"well-known  word": "well-known word",
+		"--":               "--",
+		"——好":              "——好",
+		"-5 degrees":       "-5 degrees",
+		"-":                "-",
+		"":                 "",
+	} {
+		if got := cleanLine(in); got != want {
+			t.Errorf("cleanLine(%q) = %q, want %q", in, got, want)
+		}
+	}
 }

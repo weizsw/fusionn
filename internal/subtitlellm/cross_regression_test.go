@@ -22,14 +22,7 @@ func darkMatterFixture(t *testing.T) (Bundle, Mapping, config.LLMConfig, config.
 		t.Fatalf("LoadSources: %v", err)
 	}
 
-	rawMapping, err := os.ReadFile(filepath.Join(prototypeSources, "alignment", "mapping.json"))
-	if err != nil {
-		t.Fatalf("Read mapping: %v", err)
-	}
-	var mapping Mapping
-	if err := json.Unmarshal(rawMapping, &mapping); err != nil {
-		t.Fatalf("Decode mapping: %v", err)
-	}
+	_, mapping := reboundPrototypeMapping(t, bundle)
 
 	cfg := config.LLMConfig{
 		BaseURL:        "https://example.com/v1",
@@ -811,8 +804,8 @@ func TestCrossRegression_5_FormatAndFontFallback(t *testing.T) {
 	if len(bundle.EN) != 710 || len(bundle.ZH) != 722 {
 		t.Fatalf("expected 710 EN and 722 ZH cues, got %d and %d", len(bundle.EN), len(bundle.ZH))
 	}
-	if bundle.Fingerprint != "14ec9eb49624d94352152b8fa0cc0b6bacc81228c66919d9e6d4731f20018bd9" {
-		t.Fatalf("expected fingerprint 14ec9eb4..., got %s", bundle.Fingerprint)
+	if want, err := bundleDigest(bundle); err != nil || bundle.Fingerprint != want {
+		t.Fatalf("fingerprint = %s, want digest %s (err %v)", bundle.Fingerprint, want, err)
 	}
 
 	// 5b. Genuine multi-speaker evidence preserved

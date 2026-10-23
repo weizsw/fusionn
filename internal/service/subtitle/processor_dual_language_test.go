@@ -37,12 +37,12 @@ func TestDualLanguageProcessor_ShouldRun(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "non-bazarr source",
+			name: "extracted embedded track",
 			pctx: &ProcessingContext{
 				ChineseSubSource: ChineseSourceExtracted,
 				ChineseSubPath:   "/path/to/sub.srt",
 			},
-			want: false,
+			want: true,
 		},
 		{
 			name: "translated source",

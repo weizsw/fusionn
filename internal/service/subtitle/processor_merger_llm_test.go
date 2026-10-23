@@ -514,8 +514,10 @@ func TestLLMMergerUsesImportMappingWithoutHTTP(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Import the committed prototype mapping by absolute path; the production
-	// merger must not mutate or copy it.
+	// Import a persisted mapping by absolute path; the production merger must
+	// not mutate or copy it. Load-time text cleanup changed the parsed source
+	// fingerprint, so the committed prototype mapping no longer matches these
+	// sources: a first merge with a pairing server persists a fresh one.
 	repoRoot, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)
@@ -533,11 +535,22 @@ func TestLLMMergerUsesImportMappingWithoutHTTP(t *testing.T) {
 	enPath := writeSubtitleFixture(t, dir, "Episode.eng.srt", string(en))
 	zhPath := writeSubtitleFixture(t, dir, "Episode.chs.srt", string(zh))
 
+	first := newLLMTestProcessor(t, llmMergerTestConfig(t, pairingHandler(t)))
+	first.probe = func(context.Context, string) (*executor.FFProbeOutput, error) { return nil, errors.New("no probe") }
+	firstCtx := &ProcessingContext{VideoPath: videoPath, EnglishSubPath: enPath, ChineseSubPath: zhPath, Metadata: map[string]interface{}{}}
+	if err := first.Process(context.Background(), firstCtx); err != nil {
+		t.Fatalf("first Process() error = %v", err)
+	}
+	mappingPath, _ := firstCtx.Metadata[MetadataLLMMappingPath].(string)
+	persisted, err := os.ReadFile(mappingPath)
+	if err != nil {
+		t.Fatalf("read persisted mapping: %v", err)
+	}
+
 	llm := llmMergerTestConfig(t, pairingHandler(t))
 	llm.BaseURL = server.URL + "/v1"
-	llm.MappingPath = filepath.Join(prototypeRoot, "alignment", "mapping.json")
+	llm.MappingPath = mappingPath
 	llm.CacheDir = t.TempDir()
-	llm.Model = "group/flash-models"
 	processor := newLLMTestProcessor(t, llm)
 	processor.probe = func(context.Context, string) (*executor.FFProbeOutput, error) { return nil, errors.New("no probe") }
 
@@ -602,6 +615,9 @@ func TestLLMMergerUsesImportMappingWithoutHTTP(t *testing.T) {
 	}
 	if string(originalZH) != string(zh) {
 		t.Fatal("Chinese source subtitle was modified")
+	}
+	if data, err := os.ReadFile(mappingPath); err != nil || string(data) != string(persisted) {
+		t.Fatalf("imported mapping changed: err=%v", err)
 	}
 }
 

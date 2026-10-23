@@ -1,6 +1,7 @@
 package subtitlellm
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -125,6 +126,7 @@ func TestBothLongLanguagesSwitchTogether(t *testing.T) {
 		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "我们现在应该离开 明天还可以再来", Plain: "我们现在应该离开\n明天还可以再来"}},
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	mapping = confirmAllSplits(t, bundle, mapping, cfg)
 	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 	if err != nil {
 		t.Fatal(err)
@@ -150,6 +152,7 @@ func TestLongChineseDoesNotRestartOnEveryEnglishSlice(t *testing.T) {
 		[]Cue{{ID: 1, Start: 1000, End: 7000, Display: "中文的第一部分 中文的第二部分", Plain: "中文的第一部分\n中文的第二部分"}},
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	mapping = confirmAllSplits(t, bundle, mapping, cfg)
 	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 	if err != nil {
 		t.Fatal(err)
@@ -287,6 +290,7 @@ func TestChineseSourceBreakWithWordTimingSyncSplits(t *testing.T) {
 		{Text: "get", StartMS: 383000, EndMS: 383300},
 		{Text: "thready.", StartMS: 383300, EndMS: 384176},
 	}}
+	mapping = confirmAllSplits(t, bundle, mapping, cfg)
 	output, err := RenderWithWordTimings(bundle, mapping, cfg, renderTestStyle(), 1920, 1080, words)
 	if err != nil {
 		t.Fatal(err)
@@ -321,11 +325,11 @@ func TestChineseSourceBreakIsNotForcedBelowTotalReadingTime(t *testing.T) {
 
 func TestSpeakerWrappingKeepsOriginalLineBreaks(t *testing.T) {
 	cfg := renderTestConfig()
-	cfg.ZhChars = 20
+	cfg.ZhChars = 12 // the flat line counts 15; each source line fits
 	plain := "- 什么？\n- 一个亚历克斯、一个瑞安"
 	bundle := makeBundle(
-		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "- What?   - An Alex, a Ryan.", Plain: "- What?\n- An Alex, a Ryan.", MultiSpeaker: true}},
-		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "- 什么？   - 一个亚历克斯、一个瑞安", Plain: plain, MultiSpeaker: true}},
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "- What? - An Alex, a Ryan.", Plain: "- What?\n- An Alex, a Ryan.", MultiSpeaker: true}},
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "- 什么？ - 一个亚历克斯、一个瑞安", Plain: plain, MultiSpeaker: true}},
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
 	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
@@ -335,5 +339,108 @@ func TestSpeakerWrappingKeepsOriginalLineBreaks(t *testing.T) {
 	events := parseDialogues(t, string(output))
 	if len(events) != 1 || !strings.Contains(events[0].text, strings.ReplaceAll(plain, "\n", `\N`)) {
 		t.Fatalf("speaker line was mechanically cut instead of restoring the source break: %+v", events)
+	}
+}
+
+func TestSplitChineseSourcesRollsBackFlashbackAfterGap(t *testing.T) {
+	type span struct{ start, end, zh int }
+	tests := []struct {
+		name    string
+		windows [][2]int
+		zh      []Cue
+		want    []span
+	}{
+		{
+			// Recorded case: the first Chinese cue ends 40ms after the
+			// English gap starts and the second starts 120ms after the gap.
+			// The first Chinese line used to flash back for 120ms.
+			name:    "cut just after a gap",
+			windows: [][2]int{{2646770, 2648270}, {2649900, 2651980}},
+			zh: []Cue{
+				{ID: 452, Start: 2646940, End: 2648310, Display: "在这张照片里的男人"},
+				{ID: 453, Start: 2650020, End: 2651900, Display: "除了四个以外 其他的都已确认死亡"},
+			},
+			want: []span{{2646770, 2648270, 452}, {2649900, 2651980, 453}},
+		},
+		{
+			// A Chinese cue that runs well into the gap is an intentional
+			// hold and keeps its source cut.
+			name:    "intentional hold over a gap",
+			windows: [][2]int{{1000, 3000}, {5000, 8000}},
+			zh: []Cue{
+				{ID: 1, Start: 1000, End: 4500, Display: "延伸入间隙中文"},
+				{ID: 2, Start: 5900, End: 8000, Display: "后部第二句中文"},
+			},
+			want: []span{{1000, 3000, 1}, {5000, 5900, 1}, {5900, 8000, 2}},
+		},
+		{
+			name:    "distant cut keeps source timing",
+			windows: [][2]int{{0, 2000}, {2000, 4000}},
+			zh: []Cue{
+				{ID: 1, Start: 0, End: 1000, Display: "第一句话"},
+				{ID: 2, Start: 1000, End: 4000, Display: "第二句话"},
+			},
+			want: []span{{0, 1000, 1}, {1000, 2000, 2}, {2000, 4000, 2}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var slices []block
+			for i, w := range tt.windows {
+				slices = append(slices, block{start: w[0], end: w[1], enIDs: []int{i + 1}, zhIDs: cueIDs(tt.zh)})
+			}
+			var got []span
+			for _, b := range splitChineseSources(slices, tt.zh, nil, nil) {
+				if len(b.zhIDs) != 1 {
+					t.Fatalf("expected one Chinese cue per slice, got %v", b.zhIDs)
+				}
+				got = append(got, span{b.start, b.end, b.zhIDs[0]})
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("slices = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCountedLength(t *testing.T) {
+	for in, want := range map[string]int{
+		"你好，世界！":            4,
+		"- A long - B line": 15,
+		"Hello, world.":     11,
+		"♪ la la ♪":         7,
+		"$20 million":       10,
+		"":                  0,
+	} {
+		if got := countedLength(in); got != want {
+			t.Errorf("countedLength(%q) = %d, want %d", in, got, want)
+		}
+	}
+}
+
+func TestLimitIndex(t *testing.T) {
+	runes := []rune("你好，世界！再见")
+	if got := limitIndex(runes, 4); string(runes[:got]) != "你好，世界！" {
+		t.Fatalf("limitIndex cut %q, want punctuation kept with the last counted character", string(runes[:got]))
+	}
+	if got := limitIndex(runes, 10); got != len(runes) {
+		t.Fatalf("limitIndex = %d, want whole text %d", got, len(runes))
+	}
+}
+
+// A line break never leaves a space at either end of a wrapped line.
+func TestWrapDropsSpacesAtLineBreaks(t *testing.T) {
+	for _, lines := range [][]string{
+		wrapBalancedZH("同意 - 而且阿尔-纳瓦兹改变了… - 女士 我们有线索", 20),
+		wrapLine("一二三四五六七八九十 一二三四五", "zh", 10),
+	} {
+		if len(lines) < 2 {
+			t.Fatalf("expected a wrapped line, got %q", lines)
+		}
+		for _, line := range lines {
+			if line != strings.TrimSpace(line) {
+				t.Fatalf("wrapped line keeps a space at a line break: %q in %q", line, lines)
+			}
+		}
 	}
 }

@@ -30,7 +30,7 @@ func importMapping(bundle Bundle, cfg config.LLMConfig) (Mapping, Audit, error) 
 		return Mapping{}, Audit{}, fmt.Errorf("parse mapping %q: %w", cfg.MappingPath, err)
 	}
 	allowed := map[string]bool{
-		"version": true, "source_fingerprint": true, "parameters": true, "groups": true, "fingerprint": true,
+		"version": true, "source_fingerprint": true, "parameters": true, "groups": true, "split_checks": true, "fingerprint": true,
 	}
 	for key := range top {
 		if !allowed[key] {
@@ -90,6 +90,7 @@ func importMapping(bundle Bundle, cfg config.LLMConfig) (Mapping, Audit, error) 
 		Conflicts:     []Group{},
 		Restored:      map[string][]int{"en": {}, "zh": {}},
 		WindowMissing: []WindowMissing{},
+		Pairing:       pairingStats(bundle, mapping.Groups),
 		Coverage:      Coverage{EN: len(bundle.EN), ZH: len(bundle.ZH)},
 		Provenance:    provenance,
 	}
@@ -215,7 +216,7 @@ func validateImportedGroups(mapping Mapping, bundle Bundle) error {
 		if group.Layer != LayerTop && group.Layer != LayerBottom {
 			return fmt.Errorf("group %d has invalid layer %q", index, group.Layer)
 		}
-		if group.Origin != OriginModel && group.Origin != OriginRestored {
+		if group.Origin != OriginModel && group.Origin != OriginRestored && group.Origin != OriginTiming {
 			return fmt.Errorf("group %d has invalid origin %q", index, group.Origin)
 		}
 		if len(group.ENIDs) == 0 && len(group.ZHIDs) == 0 {
@@ -223,6 +224,9 @@ func validateImportedGroups(mapping Mapping, bundle Bundle) error {
 		}
 		if group.Origin == OriginRestored && len(group.ENIDs)+len(group.ZHIDs) != 1 {
 			return fmt.Errorf("restored group %d must contain exactly one cue", index)
+		}
+		if group.Origin == OriginTiming && (len(group.ENIDs) == 0 || len(group.ZHIDs) == 0) {
+			return fmt.Errorf("timing group %d must contain both languages", index)
 		}
 		if reason := validateRowValues(group, tracks, MaxDistanceMS); reason != "" {
 			return fmt.Errorf("group %d: %s", index, reason)

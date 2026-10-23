@@ -90,6 +90,7 @@ func TestReview2408NToOneProtectionRequiresRealSplit(t *testing.T) {
 	cfg := fixtureConfig()
 	cfg.ZhChars = 8
 	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	mapping = confirmAllSplits(t, bundle, mapping, cfg)
 	_, events, err := renderWithAudits(bundle, mapping, cfg, fixtureStyle(), 1920, 1080, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -136,6 +137,7 @@ func TestReview2408OneToNProtectionRequiresRealSplit(t *testing.T) {
 	cfg := fixtureConfig()
 	cfg.EnChars = 30
 	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1, 2}, Layer: LayerBottom, Origin: OriginModel}})
+	mapping = confirmAllSplits(t, bundle, mapping, cfg)
 	_, events, err := renderWithAudits(bundle, mapping, cfg, fixtureStyle(), 1920, 1080, nil)
 	if err != nil {
 		t.Fatal(err)

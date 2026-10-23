@@ -2,8 +2,10 @@ package subtitle
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 type lineLanguage int
@@ -105,25 +107,69 @@ func normalizeCueLines(lines []string) []string {
 	return result
 }
 
-func isCueBilingual(lines []string) bool {
-	normalized := normalizeCueLines(lines)
+// subtitleTagPattern matches ASS override blocks and HTML-style tags. Their
+// letters ("{\an8}", "<i>") are formatting, not English text.
+var subtitleTagPattern = regexp.MustCompile(`\{[^}]*\}|<[^>]*>`)
 
-	hasCJKLine := false
-	hasLatinLine := false
-	hasMixedLine := false
+// lineLanguages reports which languages one subtitle line carries after
+// formatting tags are removed. A line without Chinese counts as English when
+// it has a Latin word of two or more letters. A line with Chinese counts as
+// English too only when at least two such words follow the Chinese text, so
+// "FBI来了" or "我们去找FBI" stay Chinese while "你好世界 Hello World" is both.
+func lineLanguages(line string) (chinese, english bool) {
+	text := subtitleTagPattern.ReplaceAllString(line, "")
+	if !containsCJK(text) {
+		return false, latinWords(text) >= 1
+	}
+	_, tail := splitMixedLine(text)
+	return true, latinWords(tail) >= 2
+}
 
-	for _, line := range normalized {
-		switch classifyLine(line) {
-		case langChinese:
-			hasCJKLine = true
-		case langEnglish:
-			hasLatinLine = true
-		case langMixed:
-			hasMixedLine = true
+// latinWords counts Latin words of at least two letters. Apostrophes stay
+// inside words ("I'm").
+func latinWords(s string) int {
+	count := 0
+	for _, field := range strings.FieldsFunc(s, func(r rune) bool {
+		return r != '\'' && !(unicode.IsLetter(r) && unicode.In(r, unicode.Latin))
+	}) {
+		if utf8.RuneCountInString(strings.Trim(field, "'")) >= 2 {
+			count++
 		}
 	}
+	return count
+}
 
-	return (hasCJKLine && hasLatinLine) || hasMixedLine
+// textLanguages combines lineLanguages over every line of a cue, including
+// lines joined with "\N".
+func textLanguages(lines ...string) (chinese, english bool) {
+	for _, line := range normalizeCueLines(lines) {
+		c, e := lineLanguages(line)
+		chinese = chinese || c
+		english = english || e
+	}
+	return chinese, english
+}
+
+func isCueBilingual(lines []string) bool {
+	chinese, english := textLanguages(lines...)
+	return chinese && english
+}
+
+// evenSample returns up to limit indexes spread over n items, so an opening
+// sequence or credits do not decide the result for the whole file.
+func evenSample(n, limit int) []int {
+	if n > limit {
+		indexes := make([]int, limit)
+		for i := range indexes {
+			indexes[i] = i * n / limit
+		}
+		return indexes
+	}
+	indexes := make([]int, n)
+	for i := range indexes {
+		indexes[i] = i
+	}
+	return indexes
 }
 
 func detectDualLanguageSRT(content string) bool {
@@ -132,19 +178,15 @@ func detectDualLanguageSRT(content string) bool {
 		return false
 	}
 
-	sampleSize := len(cues)
-	if sampleSize > 30 {
-		sampleSize = 30
-	}
-
+	sample := evenSample(len(cues), 30)
 	bilingualCount := 0
-	for _, cue := range cues[:sampleSize] {
-		if isCueBilingual(cue.lines) {
+	for _, i := range sample {
+		if isCueBilingual(cues[i].lines) {
 			bilingualCount++
 		}
 	}
 
-	ratio := float64(bilingualCount) / float64(sampleSize)
+	ratio := float64(bilingualCount) / float64(len(sample))
 	return ratio >= dualLanguageThreshold
 }
 
@@ -201,20 +243,19 @@ func detectDualLanguageASS(content string) bool {
 		return false
 	}
 
-	sampleSize := len(dialogues)
-	if sampleSize > 60 {
-		sampleSize = 60
-	}
+	sample := evenSample(len(dialogues), 60)
 
 	// Pattern 1: multiple styles serving different languages
 	styleCJKCount := make(map[string]int)
 	styleLatinCount := make(map[string]int)
 
-	for _, d := range dialogues[:sampleSize] {
-		if containsCJK(d.text) {
+	for _, i := range sample {
+		d := dialogues[i]
+		chinese, english := textLanguages(d.text)
+		if chinese {
 			styleCJKCount[d.style]++
 		}
-		if containsLatin(d.text) && !containsCJK(d.text) {
+		if english && !chinese {
 			styleLatinCount[d.style]++
 		}
 	}
@@ -245,27 +286,17 @@ func detectDualLanguageASS(content string) bool {
 
 	// Pattern 2: single style with \N-separated bilingual text
 	bilingualCount := 0
-	for _, d := range dialogues[:sampleSize] {
+	for _, i := range sample {
+		d := dialogues[i]
 		if !strings.Contains(d.text, "\\N") {
 			continue
 		}
-		parts := strings.Split(d.text, "\\N")
-		hasCJK := false
-		hasLatin := false
-		for _, p := range parts {
-			if containsCJK(p) {
-				hasCJK = true
-			}
-			if containsLatin(p) {
-				hasLatin = true
-			}
-		}
-		if hasCJK && hasLatin {
+		if chinese, english := textLanguages(d.text); chinese && english {
 			bilingualCount++
 		}
 	}
 
-	ratio := float64(bilingualCount) / float64(sampleSize)
+	ratio := float64(bilingualCount) / float64(len(sample))
 	return ratio >= dualLanguageThreshold
 }
 

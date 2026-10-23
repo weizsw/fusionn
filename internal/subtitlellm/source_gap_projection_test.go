@@ -246,54 +246,61 @@ func TestCounterexample_CrossSliceContinuousHoldPreserved(t *testing.T) {
 	}
 }
 
-// TestCounterexample_HoldExtendingIntoGapPreserved verifies requirement ①:
-// when a Chinese cue's source end extends into the English gap (cues[i].End > gapStart),
-// it is an intentional hold that covers the gap, so it is NOT treated as having
-// finished before the gap and is not rolled back.
+// TestCounterexample_HoldExtendingIntoGapPreserved verifies that when a
+// Chinese cue's source end extends into the English gap (cues[i].End >
+// gapStart), it is an intentional hold that covers the gap, so it is NOT rolled
+// back. A next Chinese cue that starts within 500ms of the English boundary
+// switches together with the English instead of leaving a short hold.
 func TestCounterexample_HoldExtendingIntoGapPreserved(t *testing.T) {
-	cfg := renderTestConfig()
-	cfg.ZhChars = 10
-	bundle := makeBundle(
-		[]Cue{
-			{ID: 1, Start: 1000, End: 3000, Display: "First english clause."},
-			{ID: 2, Start: 5000, End: 8000, Display: "Second english clause."},
-		},
-		[]Cue{
-			// ZH1 source extends to 4500 (inside the 3000..5000 gap).
-			{ID: 1, Start: 1000, End: 4500, Display: "延伸入间隙中文"},
-			{ID: 2, Start: 5100, End: 8000, Display: "后部第二句中文"},
-		},
-	)
-	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1, 2}, Layer: LayerBottom, Origin: OriginModel}})
-	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
-	if err != nil {
-		t.Fatal(err)
+	type span struct {
+		start, end int
+		zh         string
 	}
-	events := parseDialogues(t, string(output))
-	for i, ev := range events {
-		t.Logf("HoldExtending event[%d]: [%d..%d] text=%q", i, ev.start, ev.end, ev.text)
-	}
-
-	// 1. Natural gap (3000..5000) must remain blank (no interval intersection).
-	for _, ev := range events {
-		if eventOverlapsGap(ev, 3000, 5000) {
-			t.Fatalf("gap (3000..5000) was intersected by event: [%d..%d] text=%q", ev.start, ev.end, ev.text)
-		}
-	}
-
-	// 2. Observable invariant: ZH1 was preserved in the post-gap window from 5000 to 5100,
-	// followed by ZH2 from 5100 to 8000. It was NOT rolled back to 5000.
-	if len(events) != 3 {
-		t.Fatalf("expected exactly 3 dialogue events, got %d: %+v", len(events), events)
-	}
-	if events[0].start != 1000 || events[0].end != 3000 || !strings.Contains(events[0].text, "延伸入间隙中文") {
-		t.Fatalf("unexpected event[0]: [%d..%d] text=%q", events[0].start, events[0].end, events[0].text)
-	}
-	if events[1].start != 5000 || events[1].end != 5100 || !strings.Contains(events[1].text, "延伸入间隙中文") {
-		t.Fatalf("unexpected event[1] (expected ZH1 preserved in 5000..5100): [%d..%d] text=%q", events[1].start, events[1].end, events[1].text)
-	}
-	if events[2].start != 5100 || events[2].end != 8000 || !strings.Contains(events[2].text, "后部第二句中文") {
-		t.Fatalf("unexpected event[2] (expected ZH2 starting at 5100): [%d..%d] text=%q", events[2].start, events[2].end, events[2].text)
+	for _, tt := range []struct {
+		name    string
+		zhStart int // native start of the second Chinese cue
+		want    []span
+	}{
+		// 100ms after the English boundary: the switch snaps to 5000.
+		{name: "near_switch_snaps", zhStart: 5100, want: []span{{1000, 3000, "延伸入间隙中文"}, {5000, 8000, "后部第二句中文"}}},
+		// 1200ms after it: ZH1 is preserved in 5000..6200, then ZH2 follows.
+		{name: "long_hold_preserved", zhStart: 6200, want: []span{{1000, 3000, "延伸入间隙中文"}, {5000, 6200, "延伸入间隙中文"}, {6200, 8000, "后部第二句中文"}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := renderTestConfig()
+			cfg.ZhChars = 10
+			bundle := makeBundle(
+				[]Cue{
+					{ID: 1, Start: 1000, End: 3000, Display: "First english clause."},
+					{ID: 2, Start: 5000, End: 8000, Display: "Second english clause."},
+				},
+				[]Cue{
+					// ZH1 source extends to 4500 (inside the 3000..5000 gap).
+					{ID: 1, Start: 1000, End: 4500, Display: "延伸入间隙中文"},
+					{ID: 2, Start: tt.zhStart, End: 8000, Display: "后部第二句中文"},
+				},
+			)
+			mapping := makeMapping(bundle, []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1, 2}, Layer: LayerBottom, Origin: OriginModel}})
+			output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+			if err != nil {
+				t.Fatal(err)
+			}
+			events := parseDialogues(t, string(output))
+			// The natural gap (3000..5000) must remain blank.
+			for _, ev := range events {
+				if eventOverlapsGap(ev, 3000, 5000) {
+					t.Fatalf("gap (3000..5000) was intersected by event: [%d..%d] text=%q", ev.start, ev.end, ev.text)
+				}
+			}
+			if len(events) != len(tt.want) {
+				t.Fatalf("expected %d dialogue events, got %d: %+v", len(tt.want), len(events), events)
+			}
+			for i, w := range tt.want {
+				if events[i].start != w.start || events[i].end != w.end || !strings.Contains(events[i].text, w.zh) {
+					t.Fatalf("event[%d] = [%d..%d] %q, want [%d..%d] with %s", i, events[i].start, events[i].end, events[i].text, w.start, w.end, w.zh)
+				}
+			}
+		})
 	}
 }
 

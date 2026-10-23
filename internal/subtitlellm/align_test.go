@@ -176,8 +176,38 @@ func TestAlignRequestShape(t *testing.T) {
 	if captured["response_format"].(map[string]any)["type"] != "json_object" {
 		t.Fatalf("response_format = %v", captured["response_format"])
 	}
-	if captured["max_tokens"].(float64) != maxTokens {
-		t.Fatalf("max_tokens = %v", captured["max_tokens"])
+	if _, ok := captured["max_tokens"]; ok {
+		t.Fatalf("max_tokens sent when unset: %v", captured["max_tokens"])
+	}
+}
+
+func TestBuildPayloadSendsMaxTokensOnlyWhenSet(t *testing.T) {
+	cfg := testConfig(t, "http://unused/v1")
+	for _, tc := range []struct {
+		maxTokens int
+		want      bool
+	}{{0, false}, {32000, true}} {
+		cfg.MaxTokens = tc.maxTokens
+		payload, value, err := buildPayload(window{}, cfg)
+		if err != nil {
+			t.Fatalf("buildPayload() error = %v", err)
+		}
+		body, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var sent map[string]any
+		if err := json.Unmarshal(body, &sent); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		_, inBody := sent["max_tokens"]
+		_, inKey := value["max_tokens"]
+		if inBody != tc.want || inKey != tc.want {
+			t.Fatalf("max_tokens=%d: in body %v, in cache key %v, want %v", tc.maxTokens, inBody, inKey, tc.want)
+		}
+		if tc.want && sent["max_tokens"].(float64) != float64(tc.maxTokens) {
+			t.Fatalf("max_tokens = %v, want %d", sent["max_tokens"], tc.maxTokens)
+		}
 	}
 }
 
@@ -470,9 +500,18 @@ func TestAlignInvalidMapsAreQuarantinedAndRestored(t *testing.T) {
 	if len(audit.Rejected) != 6 {
 		t.Fatalf("rejected = %d (%+v), want 6", len(audit.Rejected), audit.Rejected)
 	}
-	// One accepted pair plus one restored group per remaining source cue.
-	if len(mapping.Groups) != 7 {
-		t.Fatalf("groups = %d, want 7", len(mapping.Groups))
+	// One accepted pair. The other cues are restored, then paired by timing
+	// because each EN cue overlaps its ZH cue exactly.
+	if len(audit.Restored["en"]) != 3 || len(audit.Restored["zh"]) != 3 {
+		t.Fatalf("restored = %v, want 3 EN and 3 ZH", audit.Restored)
+	}
+	if len(mapping.Groups) != 4 {
+		t.Fatalf("groups = %d, want 4", len(mapping.Groups))
+	}
+	for _, group := range mapping.Groups[1:] {
+		if group.Origin != OriginTiming {
+			t.Fatalf("group %+v, want timing origin", group)
+		}
 	}
 	reasons := map[string]bool{}
 	for _, rejected := range audit.Rejected {
@@ -570,9 +609,13 @@ func TestAlignDuplicateAcrossRowsQuarantinesBoth(t *testing.T) {
 	if len(audit.Rejected) != 2 {
 		t.Fatalf("rejected = %+v", audit.Rejected)
 	}
+	// Both rows are quarantined; the restored cues fall back to timing pairs.
+	if len(audit.Restored["en"]) != 2 || len(audit.Restored["zh"]) != 2 {
+		t.Fatalf("restored = %v, want 2 EN and 2 ZH", audit.Restored)
+	}
 	for _, group := range mapping.Groups {
-		if group.Origin != OriginRestored {
-			t.Fatalf("expected only restored groups, got %+v", group)
+		if group.Origin == OriginModel {
+			t.Fatalf("expected no model groups, got %+v", group)
 		}
 	}
 	assertCoverage(t, mapping, bundle)
@@ -1087,35 +1130,32 @@ func TestAlignMixedMultiWindowPreservesSuccessfulEdgesAndRestoresFailedCues(t *t
 		t.Error("1:2 non-1:1 alignment edge was not preserved")
 	}
 
-	// Verify Window 1 cues (4, 5) were restored as single-sided groups
+	// Verify Window 1 cues (4, 5) were restored, then paired by timing
+	if !reflect.DeepEqual(audit.Restored["en"], []int{4, 5}) || !reflect.DeepEqual(audit.Restored["zh"], []int{4, 5}) {
+		t.Errorf("restored = %v, want EN and ZH [4 5]", audit.Restored)
+	}
 	for _, id := range []int{4, 5} {
-		var enRestored, zhRestored bool
+		paired := false
 		for _, g := range mapping.Groups {
-			if reflect.DeepEqual(g.ENIDs, []int{id}) && len(g.ZHIDs) == 0 {
-				enRestored = true
-				if g.Origin != OriginRestored {
-					t.Errorf("EN cue %d origin = %s, want %s", id, g.Origin, OriginRestored)
-				}
-			}
-			if reflect.DeepEqual(g.ZHIDs, []int{id}) && len(g.ENIDs) == 0 {
-				zhRestored = true
-				if g.Origin != OriginRestored {
-					t.Errorf("ZH cue %d origin = %s, want %s", id, g.Origin, OriginRestored)
+			if reflect.DeepEqual(g.ENIDs, []int{id}) && reflect.DeepEqual(g.ZHIDs, []int{id}) {
+				paired = true
+				if g.Origin != OriginTiming {
+					t.Errorf("cue %d origin = %s, want %s", id, g.Origin, OriginTiming)
 				}
 			}
 		}
-		if !enRestored {
-			t.Errorf("EN cue %d was not restored", id)
-		}
-		if !zhRestored {
-			t.Errorf("ZH cue %d was not restored", id)
+		if !paired {
+			t.Errorf("cue %d was not paired by timing", id)
 		}
 	}
 
 	assertCoverage(t, mapping, bundle)
 }
 
-func TestAlignFailedWindowRestoresExactOriginalTimingAndOrder(t *testing.T) {
+// TestAlignFailedWindowFallsBackToTimingPairs verifies a failed window pairs
+// overlapping cues on English timing and keeps the rest on exact original
+// timing and order.
+func TestAlignFailedWindowFallsBackToTimingPairs(t *testing.T) {
 	en := []Cue{
 		{ID: 1, Start: 1000, End: 2500, OriginalStart: 1000, OriginalEnd: 2500, Raw: "en1", Plain: "en1", Display: "en1", Style: "Default", Alignment: 2},
 		{ID: 2, Start: 3000, End: 4500, OriginalStart: 3000, OriginalEnd: 4500, Raw: "en2", Plain: "en2", Display: "en2", Style: "Default", Alignment: 2},
@@ -1124,7 +1164,7 @@ func TestAlignFailedWindowRestoresExactOriginalTimingAndOrder(t *testing.T) {
 	zh := []Cue{
 		{ID: 1, Start: 1100, End: 2400, OriginalStart: 1100, OriginalEnd: 2400, Raw: "zh1", Plain: "zh1", Display: "zh1", Style: "Default", Alignment: 2},
 		{ID: 2, Start: 3100, End: 4600, OriginalStart: 3100, OriginalEnd: 4600, Raw: "zh2", Plain: "zh2", Display: "zh2", Style: "Default", Alignment: 2},
-		{ID: 3, Start: 5200, End: 6700, OriginalStart: 5200, OriginalEnd: 6700, Raw: "zh3", Plain: "zh3", Display: "zh3", Style: "Default", Alignment: 2},
+		{ID: 3, Start: 7000, End: 8200, OriginalStart: 7000, OriginalEnd: 8200, Raw: "zh3", Plain: "zh3", Display: "zh3", Style: "Default", Alignment: 2},
 	}
 	bundle := testBundle(t, en, zh)
 
@@ -1182,21 +1222,19 @@ func TestAlignFailedWindowRestoresExactOriginalTimingAndOrder(t *testing.T) {
 	}
 
 	dialogues := parseDialogues(t, string(rendered))
-	if len(dialogues) != 6 {
-		t.Fatalf("dialogues count = %d, want 6 (3 EN + 3 ZH)", len(dialogues))
+	if len(dialogues) != 4 {
+		t.Fatalf("dialogues count = %d, want 4 (2 timing pairs + EN 3 + ZH 3)", len(dialogues))
 	}
 
 	expectedTimings := []struct {
 		start int
 		end   int
-		text  string
+		texts []string
 	}{
-		{start: 1000, end: 2500, text: "en1"},
-		{start: 1100, end: 2400, text: "zh1"},
-		{start: 3000, end: 4500, text: "en2"},
-		{start: 3100, end: 4600, text: "zh2"},
-		{start: 5000, end: 6500, text: "en3"},
-		{start: 5200, end: 6700, text: "zh3"},
+		{start: 1000, end: 2500, texts: []string{"zh1", "en1"}},
+		{start: 3000, end: 4500, texts: []string{"zh2", "en2"}},
+		{start: 5000, end: 6500, texts: []string{"en3"}},
+		{start: 7000, end: 8200, texts: []string{"zh3"}},
 	}
 
 	for i, exp := range expectedTimings {
@@ -1204,8 +1242,10 @@ func TestAlignFailedWindowRestoresExactOriginalTimingAndOrder(t *testing.T) {
 		if d.start != exp.start || d.end != exp.end {
 			t.Errorf("dialogue [%d] timing = %d-%d, want %d-%d", i, d.start, d.end, exp.start, exp.end)
 		}
-		if !strings.Contains(d.text, exp.text) {
-			t.Errorf("dialogue [%d] text = %q, want text containing %q", i, d.text, exp.text)
+		for _, text := range exp.texts {
+			if !strings.Contains(d.text, text) {
+				t.Errorf("dialogue [%d] text = %q, want text containing %q", i, d.text, text)
+			}
 		}
 	}
 

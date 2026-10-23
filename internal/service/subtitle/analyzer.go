@@ -372,19 +372,44 @@ func isSDHByTitle(title string) bool {
 	return false
 }
 
-// detectChineseSubtitle finds the best Chinese subtitle track.
+// detectChineseSubtitle finds the best Chinese subtitle track. Complete
+// dialogue tracks come first: the English completeness penalties (forced,
+// SDH, far fewer events or bytes than the largest Chinese track) apply here
+// too, so a Simplified signs-only track does not beat a full Traditional one.
+// Among equally complete tracks Simplified beats Traditional beats unknown,
+// then stream order decides.
 func (a *Analyzer) detectChineseSubtitle(streams []executor.StreamInfo) *Track {
-	var best *Track
-
+	type candidate struct {
+		track         *Track
+		stream        executor.StreamInfo
+		frames, bytes int
+	}
+	var candidates []candidate
+	maxFrames, maxBytes := 0, 0
 	for _, stream := range streams {
 		track := a.matchChineseTrack(stream)
-		if track != nil {
-			if best == nil || track.Priority < best.Priority {
-				best = track
-			}
+		if track == nil {
+			continue
 		}
+		frames, _ := getFrameCount(stream)
+		bytes, _ := getByteCount(stream)
+		candidates = append(candidates, candidate{track: track, stream: stream, frames: frames, bytes: bytes})
+		maxFrames = max(maxFrames, frames)
+		maxBytes = max(maxBytes, bytes)
 	}
 
+	var best *Track
+	bestPenalty := 0
+	for _, c := range candidates {
+		penalty := scoreEnglishTrack(c.stream, c.track.Title, c.frames, c.bytes, maxFrames, maxBytes, len(candidates))
+		if best == nil || penalty < bestPenalty || (penalty == bestPenalty && c.track.Priority < best.Priority) {
+			best, bestPenalty = c.track, penalty
+		}
+	}
+	if len(candidates) > 1 {
+		logger.Indent().Infof("Selected Chinese: index=%d, title=%q, penalty=%d, priority=%d (from %d candidates)",
+			best.Index, best.Title, bestPenalty, best.Priority, len(candidates))
+	}
 	return best
 }
 

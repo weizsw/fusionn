@@ -118,12 +118,18 @@ func execute(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if bundle.ZHShiftMS != 0 {
+		fmt.Fprintf(os.Stderr, "Shifted Chinese subtitles by %+dms to match English timing\n", bundle.ZHShiftMS)
+	}
 	mapping, audit, err := subtitlellm.NewEngine().Align(ctx, bundle, cfg.Subtitle.LLM)
 	if err != nil {
 		return err
 	}
 	if len(audit.FailedWindows) > 0 {
-		fmt.Fprintf(os.Stderr, "Warning: LLM alignment partially failed (%d windows); fell back to native timing and cue order for failed windows\n", len(audit.FailedWindows))
+		fmt.Fprintf(os.Stderr, "Warning: LLM alignment partially failed (%d windows); fell back to timing-based pairing for failed windows\n", len(audit.FailedWindows))
+	}
+	if audit.Pairing.Low() {
+		fmt.Fprintf(os.Stderr, "Warning: only %.0f%% of English dialogue has a Chinese partner; check that the Chinese subtitle matches this video\n", 100*audit.Pairing.ENRatio())
 	}
 	words, wordErr := subtitlellm.AlignWords(ctx, *video, bundle, cfg.Subtitle.LLM)
 	if err := ctx.Err(); err != nil {
@@ -160,5 +166,8 @@ func execute(ctx context.Context) error {
 		statusNote = fmt.Sprintf(", fallback_windows: %d", len(audit.FailedWindows))
 	}
 	fmt.Printf("ASS: %s (LLM HTTP requests: %d, cache hits: %d, word timing results: %d%s)\n", filepath.Join(*out, "bilingual.ass"), audit.HTTPAttempts, audit.CacheHits, len(words), statusNote)
+	p := audit.Pairing
+	fmt.Printf("Pairing: en %d/%d (%.1f%%), zh %d/%d (%.1f%%), timing-paired en %d / zh %d\n",
+		p.ENPaired, p.ENTotal, 100*p.ENRatio(), p.ZHPaired, p.ZHTotal, 100*p.ZHRatio(), len(audit.TimingPaired["en"]), len(audit.TimingPaired["zh"]))
 	return nil
 }

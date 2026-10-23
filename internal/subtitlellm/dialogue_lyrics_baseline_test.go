@@ -276,7 +276,7 @@ func TestDialogue_G26Real0131OverCapChineseKeepsThreeLines(t *testing.T) {
 			{ID: 2, Start: 92885, End: 94052, Plain: "Please stop.", Display: "Please stop."},
 		},
 		ZH: []Cue{
-			{ID: 1, Start: 91759, End: 94052, Plain: "- 杀死我的朋友和家人的人…\n- 不要！", Display: "- 杀死我的朋友和家人的人…   - 不要！", MultiSpeaker: true},
+			{ID: 1, Start: 91759, End: 94052, Plain: "- 杀死我的朋友和家人的人…\n- 不要！", Display: "- 杀死我的朋友和家人的人… - 不要！", MultiSpeaker: true},
 		},
 	}
 	digest, err := bundleDigest(bundle)
@@ -297,7 +297,9 @@ func TestDialogue_G26Real0131OverCapChineseKeepsThreeLines(t *testing.T) {
 	}
 	mapping.Fingerprint = md
 
-	cfg := config.LLMConfig{EnChars: 65, ZhChars: 20, EnGapMS: 400, ZhGapMS: 500, SpanMS: 5500, FillGapMS: 500}
+	// The flat Chinese line counts 16 (punctuation does not count), so a cap
+	// of 15 keeps this real two-speaker cue over the cap.
+	cfg := config.LLMConfig{EnChars: 65, ZhChars: 15, EnGapMS: 400, ZhGapMS: 500, SpanMS: 5500, FillGapMS: 500}
 	result, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)

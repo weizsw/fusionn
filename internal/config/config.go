@@ -85,6 +85,7 @@ type LLMConfig struct {
 	ReasoningEffort string `mapstructure:"reasoning_effort"`
 	ResponseFormat  string `mapstructure:"response_format"` // "json_object", "json_schema", or "none"
 	TimeoutSeconds  int    `mapstructure:"timeout_seconds"`
+	MaxTokens       int    `mapstructure:"max_tokens"` // Optional output cap per window, reasoning included; 0 omits it
 
 	// Concurrency and retries
 	Workers int `mapstructure:"workers"`
@@ -388,6 +389,9 @@ func (c *LLMConfig) validate() error {
 	if c.TimeoutSeconds <= 0 {
 		return fmt.Errorf("subtitle.llm.timeout_seconds must be positive")
 	}
+	if c.MaxTokens < 0 {
+		return fmt.Errorf("subtitle.llm.max_tokens must not be negative")
+	}
 	if c.Workers < 1 {
 		return fmt.Errorf("subtitle.llm.workers must be at least 1")
 	}
@@ -572,9 +576,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("subtitle.llm.model", "")
 	v.SetDefault("subtitle.llm.api_key", "")
 	v.SetDefault("subtitle.llm.api_key_env", "")
-	v.SetDefault("subtitle.llm.reasoning_effort", "")
+	v.SetDefault("subtitle.llm.reasoning_effort", "low")
 	v.SetDefault("subtitle.llm.response_format", ResponseFormatJSONObject)
-	v.SetDefault("subtitle.llm.timeout_seconds", 180)
+	v.SetDefault("subtitle.llm.timeout_seconds", 300)
+	v.SetDefault("subtitle.llm.max_tokens", 0)
 	v.SetDefault("subtitle.llm.workers", 3)
 	v.SetDefault("subtitle.llm.retries", 1)
 	v.SetDefault("subtitle.llm.window_seconds", 210)

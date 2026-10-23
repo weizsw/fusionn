@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,7 +48,6 @@ semantic group at the core boundary when its other cues are present in context.
 
 const (
 	cacheNamespace = "subtitlellm-v1"
-	maxTokens      = 16000
 	groupSpanMS    = 30000
 )
 
@@ -92,7 +92,7 @@ type chatMessage struct {
 type requestPayload struct {
 	Model           string          `json:"model"`
 	Messages        []chatMessage   `json:"messages"`
-	MaxTokens       int             `json:"max_tokens"`
+	MaxTokens       int             `json:"max_tokens,omitempty"`
 	ResponseFormat  json.RawMessage `json:"response_format,omitempty"`
 	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
 }
@@ -168,15 +168,16 @@ type fetchedWindow struct {
 
 // Align produces a validated ID mapping for the bundle. Subtitle text is never
 // taken from model output: every group refers to source cue IDs, and any cue
-// the model left out is restored one-sided at its original time.
+// the model left out is restored at its original time. Restored dialogue is
+// then paired by time overlap where possible (OriginTiming groups).
 //
 // When window requests fail after configured retries or return malformed
-// responses, Align falls back to native timing and cue order for those windows,
-// preserving all successful model pairings and recording failed windows in
-// Audit. Align returns an error only for fatal conditions such as context
-// cancellation, invalid configuration or source tracks, or cache I/O failures.
-// An explicitly configured MappingPath is imported and validated instead of
-// calling the model.
+// responses, Align restores the cues of those windows and pairs them by
+// timing, preserving all successful model pairings and recording failed
+// windows in Audit. Align returns an error only for fatal conditions such as
+// context cancellation, invalid configuration or source tracks, or cache I/O
+// failures. An explicitly configured MappingPath is imported and validated
+// instead of calling the model.
 func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig) (Mapping, Audit, error) {
 	if err := validateLLMConfig(cfg); err != nil {
 		return Mapping{}, Audit{}, err
@@ -308,6 +309,12 @@ func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig)
 	audit.Conflicts = reconcileAudit.Conflicts
 	audit.ContextDuplicates = reconcileAudit.ContextDuplicates
 	audit.Restored = reconcileAudit.Restored
+	groups, audit.TimingPaired = pairRestoredByTiming(bundle, groups)
+	audit.Pairing = pairingStats(bundle, groups)
+	splitChecks, splitAudit, splitRequests, splitHits := e.checkSplits(ctx, bundle, groups, cfg, cacheDir)
+	audit.SplitChecks = splitAudit
+	httpAttempts += splitRequests
+	audit.CacheHits += splitHits
 
 	mapping := Mapping{
 		Version:           Version,
@@ -321,7 +328,8 @@ func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig)
 			ResponseFormat:    cfg.ResponseFormat,
 			SchemaEnforcement: schemaEnforcement,
 		},
-		Groups: groups,
+		Groups:      groups,
+		SplitChecks: splitChecks,
 	}
 	fingerprint, err := mappingDigest(mapping)
 	if err != nil {
@@ -666,36 +674,44 @@ func buildPayload(w window, cfg config.LLMConfig) (requestPayload, map[string]an
 	if err != nil {
 		return requestPayload{}, nil, err
 	}
+	return chatPayload(cfg, prompt, string(userContent), "subtitle_mapping", schemaJSON)
+}
+
+// chatPayload builds one chat request and the canonical value used for its
+// cache key. The response format follows cfg.ResponseFormat.
+func chatPayload(cfg config.LLMConfig, system, user, schemaName, schema string) (requestPayload, map[string]any, error) {
 	payload := requestPayload{
 		Model: cfg.Model,
 		Messages: []chatMessage{
-			{Role: "system", Content: prompt},
-			{Role: "user", Content: string(userContent)},
+			{Role: "system", Content: system},
+			{Role: "user", Content: user},
 		},
-		MaxTokens:       maxTokens,
+		MaxTokens:       cfg.MaxTokens,
 		ReasoningEffort: cfg.ReasoningEffort,
 	}
 	value := map[string]any{
 		"model": cfg.Model,
 		"messages": []any{
-			map[string]any{"role": "system", "content": prompt},
-			map[string]any{"role": "user", "content": string(userContent)},
+			map[string]any{"role": "system", "content": system},
+			map[string]any{"role": "user", "content": user},
 		},
-		"max_tokens": maxTokens,
+	}
+	if cfg.MaxTokens > 0 {
+		value["max_tokens"] = cfg.MaxTokens
 	}
 	switch cfg.ResponseFormat {
 	case config.ResponseFormatJSONObject:
 		payload.ResponseFormat = json.RawMessage(`{"type":"json_object"}`)
 		value["response_format"] = map[string]any{"type": "json_object"}
 	case config.ResponseFormatJSONSchema:
-		payload.ResponseFormat = json.RawMessage(`{"type":"json_schema","json_schema":{"name":"subtitle_mapping","strict":true,"schema":` + schemaJSON + `}}`)
-		var schema any
-		if err := json.Unmarshal([]byte(schemaJSON), &schema); err != nil {
+		payload.ResponseFormat = json.RawMessage(`{"type":"json_schema","json_schema":{"name":"` + schemaName + `","strict":true,"schema":` + schema + `}}`)
+		var parsed any
+		if err := json.Unmarshal([]byte(schema), &parsed); err != nil {
 			return requestPayload{}, nil, err
 		}
 		value["response_format"] = map[string]any{
 			"type":        "json_schema",
-			"json_schema": map[string]any{"name": "subtitle_mapping", "strict": true, "schema": schema},
+			"json_schema": map[string]any{"name": schemaName, "strict": true, "schema": parsed},
 		}
 	}
 	if cfg.ReasoningEffort != "" {
@@ -798,6 +814,19 @@ func writeCacheRecord(path string, record *cacheRecord) error {
 
 // requestWindow performs one HTTP attempt and validates the response envelope.
 func (e *Engine) requestWindow(ctx context.Context, client *http.Client, endpoint, apiKey string, body []byte, w window) (*attemptRecord, bool, error) {
+	attempt, retryable, err := postChat(ctx, client, endpoint, apiKey, body)
+	if err != nil {
+		return attempt, retryable, err
+	}
+	if _, _, err := validateResponse(json.RawMessage(attempt.Content), w, MaxDistanceMS); err != nil {
+		return attempt, true, err
+	}
+	return attempt, false, nil
+}
+
+// postChat performs one HTTP attempt and checks the chat completion envelope.
+// The bool reports whether a failed attempt may be retried.
+func postChat(ctx context.Context, client *http.Client, endpoint, apiKey string, body []byte) (*attemptRecord, bool, error) {
 	started := time.Now()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -845,9 +874,6 @@ func (e *Engine) requestWindow(ctx context.Context, client *http.Client, endpoin
 	attempt.Content = *choice.Message.Content
 	if choice.FinishReason != "stop" {
 		return attempt, true, fmt.Errorf("incomplete model response (finish_reason %q)", choice.FinishReason)
-	}
-	if _, _, err := validateResponse(json.RawMessage(attempt.Content), w, MaxDistanceMS); err != nil {
-		return attempt, true, err
 	}
 	return attempt, false, nil
 }
@@ -1133,7 +1159,9 @@ type reconcileResult struct {
 
 // reconcile attributes each valid group to the window owning its first cue,
 // quarantines groups whose IDs are observed with contradictory members or layers,
-// and restores every unused cue one-sided. A differing observation from an
+// and restores every unused cue one-sided. Windows that return exactly the same
+// members and differ only in layer agree on the pairing; the owner window's
+// layer is kept. A differing observation from an
 // overlapping window does NOT veto a complete owner candidate if it is proved to
 // be merely an exact projection under input truncation.
 func reconcile(bundle Bundle, batches []batch, coreMS int) ([]Group, reconcileResult) {
@@ -1242,7 +1270,7 @@ func reconcile(bundle Bundle, batches []batch, coreMS int) ([]Group, reconcileRe
 					key := [2]any{lang, id}
 					for _, obs := range idObservations[key] {
 						obsSig := signature(obs.row)
-						if obsSig == rowSig {
+						if obsSig == rowSig || sameMembers(obs.row, row) {
 							continue
 						}
 						if cg, ok := fineToCoarse[rowSig]; ok {
@@ -1421,6 +1449,12 @@ func trackOrder(bundle Bundle, lang string) []int {
 		ids[i] = cue.ID
 	}
 	return ids
+}
+
+// sameMembers reports whether two groups contain exactly the same cues.
+// Validated rows keep IDs in track order, so slices compare directly.
+func sameMembers(a, b Group) bool {
+	return slices.Equal(a.ENIDs, b.ENIDs) && slices.Equal(a.ZHIDs, b.ZHIDs)
 }
 
 func firstStart(tracks map[string]map[int]Cue, row Group) int {

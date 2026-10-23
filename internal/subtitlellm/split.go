@@ -78,6 +78,8 @@ type displayPlan struct {
 	protected  bool
 	windows    [][2]int
 	pieces     []textPiece
+	// wordTimed reports that the pieces were cut at word timings.
+	wordTimed bool
 }
 
 func displayKey(group int, ids []int, top bool) string {
@@ -109,8 +111,10 @@ func sourceLines(plain string) []string {
 
 // trySyncSplit attempts synchronized temporal splitting at original line
 // boundaries when native Chinese and English both have two meaningful lines.
-// It requires >= 1.2s per fragment on the real candidate timestamps.
-func trySyncSplit(b block, enCue, zhCue Cue, words WordTimings) ([]block, bool) {
+// It requires >= 1.2s per fragment on the real candidate timestamps. Lines
+// that fit side by side stay together, because the source shows them at once,
+// and a split needs a confirmed order check.
+func trySyncSplit(b block, enCue, zhCue Cue, words WordTimings, cfg config.LLMConfig, checks *splitChecks) ([]block, bool) {
 	enText, enMulti := sideSpeakerEvidence(b.enText, b.enSeparatedRole, enCue, true)
 	enDisplay := enCue.Display
 	if b.enSeparatedRole && b.enText != nil {
@@ -125,8 +129,14 @@ func trySyncSplit(b block, enCue, zhCue Cue, words WordTimings) ([]block, bool) 
 	if len(enLines) != 2 || len(zhLines) != 2 {
 		return nil, false
 	}
+	if countedLength(strings.Join(enLines, " ")) <= cfg.EnChars && countedLength(strings.Join(zhLines, " ")) <= cfg.ZhChars {
+		return nil, false
+	}
 	totalDuration := roundCentiseconds(b.end) - roundCentiseconds(b.start)
-	if totalDuration < 2*minSyncFragmentMS {
+	// Ask before checking the duration or searching for a cut: Align asks
+	// without word timings, which can make a cut possible at render time, and
+	// the answer also gates the last-resort top/bottom partition.
+	if !checks.confirmed(zhLines, enLines) || totalDuration < 2*minSyncFragmentMS {
 		return nil, false
 	}
 	var cut int
@@ -181,19 +191,57 @@ func trySyncSplit(b block, enCue, zhCue Cue, words WordTimings) ([]block, bool) 
 	return []block{b1, b2}, true
 }
 
+// oneToNParts pairs the parts of a long English line with the Chinese cues of
+// a 1:N group, one part per cue, when the order check confirms the pairs.
+// Word timings place the cuts when available; otherwise the Chinese cue
+// starts do, so both languages switch at the same moment. It returns the
+// English parts and the block bounds, or nil.
+func oneToNParts(enCue Cue, zs []Cue, options [][]string, words WordTimings, checks *splitChecks) ([]string, []int) {
+	chinese := make([]string, len(zs))
+	for i, cue := range zs {
+		chinese[i] = cue.Display
+	}
+	for _, parts := range options {
+		if len(parts) != len(zs) || !checks.confirmed(chinese, parts) {
+			continue
+		}
+		cuts := wordCuts(enCue.Display, parts, words[enCue.ID])
+		if len(cuts) != len(parts)-1 {
+			cuts = nil
+			for _, cue := range zs[1:] {
+				cuts = append(cuts, cue.Start)
+			}
+		}
+		bounds := append(append([]int{enCue.Start}, cuts...), enCue.End)
+		readable := true
+		for i := 0; i+1 < len(bounds); i++ {
+			readable = readable && roundCentiseconds(bounds[i+1])-roundCentiseconds(bounds[i]) >= minFallbackFragmentMS
+		}
+		if readable {
+			return parts, bounds
+		}
+	}
+	return nil, nil
+}
+
 // splitLongBlocks plans held text once across all of its existing slices.
 // Projecting both language plans onto each slice preserves source gaps and
 // overlaps, and lets a short translation stay unchanged across new cuts.
-func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, words WordTimings) []block {
+func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, words WordTimings, checks *splitChecks) []block {
 	var syncSplitResult []block
 	var remaining []block
 
 	for _, b := range blocks {
+		// buildBlocks already split these blocks part by part.
+		if b.strategy == strategyTimedSplit {
+			syncSplitResult = append(syncSplitResult, b)
+			continue
+		}
 		// Only true 1:1 mapping groups can undergo 2+2 synchronized splitting.
 		// Slices of N:1, 1:N, or M:N groups must retain unified group planning.
 		if b.strategy == strategyOneToOne && len(b.enIDs) == 1 && len(b.zhIDs) == 1 {
 			enCue, zhCue := en[b.enIDs[0]], zh[b.zhIDs[0]]
-			if synced, ok := trySyncSplit(b, enCue, zhCue, words); ok {
+			if synced, ok := trySyncSplit(b, enCue, zhCue, words, cfg, checks); ok {
 				syncSplitResult = append(syncSplitResult, synced...)
 				continue
 			}
@@ -204,7 +252,7 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 	plans := func(index map[int]Cue, english bool) map[string]*displayPlan {
 		result := map[string]*displayPlan{}
 		for _, b := range remaining {
-			ids, separator := b.zhIDs, "　"
+			ids, separator := b.zhIDs, " "
 			if english {
 				ids, separator = b.enIDs, " "
 			}
@@ -242,9 +290,9 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 					if !enMulti && !zhMulti {
 						if len(enLines) == 2 && len(zhLines) == 2 {
 							enMerged := strings.Join(enLines, " ")
-							zhMerged := strings.Join(zhLines, "　")
-							enOver := utf8.RuneCountInString(enMerged) > cfg.EnChars
-							zhOver := utf8.RuneCountInString(zhMerged) > cfg.ZhChars
+							zhMerged := strings.Join(zhLines, " ")
+							enOver := countedLength(enMerged) > cfg.EnChars
+							zhOver := countedLength(zhMerged) > cfg.ZhChars
 							if !enOver && !zhOver {
 								isProtected = true
 							} else if english && !enOver {
@@ -272,14 +320,18 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 		}
 		return result
 	}
-	enPlans, zhPlans := plans(en, true), plans(zh, false)
+	enPlans := plans(en, true)
 	for _, p := range enPlans {
 		var timing []WordTiming
 		if len(p.ids) == 1 {
 			timing = words[p.ids[0]]
 		}
-		planFragments(p, cfg.EnChars, "en", timing, nil)
+		planFragments(p, cfg.EnChars, "en", timing, nil, nil)
+		if p.wordTimed {
+			moveSwitchesToWordCuts(remaining, p)
+		}
 	}
+	zhPlans := plans(zh, false)
 	for _, p := range zhPlans {
 		var english []textPiece
 		for _, e := range enPlans {
@@ -288,7 +340,7 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 			}
 		}
 		sort.Slice(english, func(i, j int) bool { return english[i].start < english[j].start })
-		planFragments(p, cfg.ZhChars, "zh", nil, english)
+		planFragments(p, cfg.ZhChars, "zh", nil, english, checks)
 	}
 
 	var result []block
@@ -339,20 +391,30 @@ func pieceAt(pieces []textPiece, at int) *string {
 	return nil
 }
 
-func planFragments(p *displayPlan, limit int, lang string, words []WordTiming, english []textPiece) {
+func planFragments(p *displayPlan, limit int, lang string, words []WordTiming, english []textPiece, checks *splitChecks) {
 	if p.protected {
 		return
 	}
+	if lang == "zh" {
+		if segments := substantialSegments(english, p.start, p.end); len(segments) >= 2 {
+			followSegments(p, segments, checks)
+			return
+		}
+	}
 	for _, texts := range textOptions(p.text, p.plain, limit, lang) {
 		var candidates [][]int
+		wordCandidate := false
+		proportional := proportionalCuts(texts, p.start, p.end)
 		if lang == "en" {
 			if cuts := wordCuts(p.text, texts, words); cuts != nil {
 				candidates = append(candidates, cuts)
+				wordCandidate = true
+			} else if snapped := snapToSwitches(proportional, chineseSwitches(p.windows)); snapped != nil {
+				// A cut estimated from text length moves to a nearby
+				// Chinese switch, which a person timed by ear.
+				candidates = append(candidates, snapped)
 			}
-		} else if cuts := sharedCuts(english, len(texts), p.start, p.end); cuts != nil {
-			candidates = append(candidates, cuts)
 		}
-		proportional := proportionalCuts(texts, p.start, p.end)
 		if lang == "zh" && roundCentiseconds(p.end)-roundCentiseconds(p.start) >= len(texts)*minFallbackFragmentMS {
 			// Keep the chosen text boundaries when minimum reading times fit.
 			earliest := roundCentiseconds(p.start) + minFallbackFragmentMS
@@ -363,7 +425,7 @@ func planFragments(p *displayPlan, limit int, lang string, words []WordTiming, e
 			}
 		}
 		candidates = append(candidates, proportional)
-		for _, cuts := range candidates {
+		for c, cuts := range candidates {
 			bounds := append([]int{p.start}, cuts...)
 			bounds = append(bounds, p.end)
 			parts := make([]textPiece, len(texts))
@@ -372,9 +434,137 @@ func planFragments(p *displayPlan, limit int, lang string, words []WordTiming, e
 			}
 			if readablePieces(parts, p.windows) {
 				p.pieces = parts
+				p.wordTimed = wordCandidate && c == 0
 				return
 			}
 		}
+	}
+}
+
+// chineseSwitches returns the times inside an English plan where the Chinese
+// changes while the English stays: the joins of its contiguous windows.
+// Blocks of one English text meet only where the Chinese side changes.
+func chineseSwitches(windows [][2]int) []int {
+	sorted := append([][2]int(nil), windows...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i][0] < sorted[j][0] })
+	var result []int
+	for i := 1; i < len(sorted); i++ {
+		if sorted[i][0] == sorted[i-1][1] {
+			result = append(result, sorted[i][0])
+		}
+	}
+	return result
+}
+
+// nearestSwitch returns the switch within snapToleranceMS of cut, other than
+// cut itself, or -1.
+func nearestSwitch(cut int, switches []int) int {
+	best := -1
+	for _, at := range switches {
+		distance := absInt(at - cut)
+		if at != cut && distance <= snapToleranceMS && (best < 0 || distance < absInt(best-cut)) {
+			best = at
+		}
+	}
+	return best
+}
+
+// snapToSwitches moves each cut to its nearest Chinese switch within
+// snapToleranceMS, keeping the cuts in order. It returns nil when no cut
+// moves.
+func snapToSwitches(cuts, switches []int) []int {
+	snapped := append([]int(nil), cuts...)
+	moved := false
+	for i, cut := range cuts {
+		at := nearestSwitch(cut, switches)
+		if at < 0 || (i > 0 && at <= snapped[i-1]) || (i+1 < len(cuts) && at >= cuts[i+1]) {
+			continue
+		}
+		snapped[i], moved = at, true
+	}
+	if !moved {
+		return nil
+	}
+	return snapped
+}
+
+// moveSwitchesToWordCuts moves each Chinese switch inside an English plan cut
+// at word timings to the word cut within snapToleranceMS, so both languages
+// switch together where the words break. A move that leaves either side
+// shorter than minFallbackFragmentMS is skipped.
+func moveSwitchesToWordCuts(blocks []block, p *displayPlan) {
+	key := displayKey(p.group, p.ids, p.top)
+	switches := chineseSwitches(p.windows)
+	for _, piece := range p.pieces[1:] {
+		at := nearestSwitch(piece.start, switches)
+		if at < 0 {
+			continue
+		}
+		before, after := -1, -1
+		for i, b := range blocks {
+			if displayKey(b.group, b.enIDs, b.top) != key {
+				continue
+			}
+			if b.end == at {
+				before = i
+			}
+			if b.start == at {
+				after = i
+			}
+		}
+		if before < 0 || after < 0 ||
+			piece.start-blocks[before].start < minFallbackFragmentMS ||
+			blocks[after].end-piece.start < minFallbackFragmentMS {
+			continue
+		}
+		blocks[before].end, blocks[after].start = piece.start, piece.start
+	}
+}
+
+// substantialSegments returns the English pieces that are at least half inside
+// [start, end): the English parts shown under one Chinese text.
+func substantialSegments(english []textPiece, start, end int) []textPiece {
+	var result []textPiece
+	for _, piece := range english {
+		overlap := min(end, piece.end) - max(start, piece.start)
+		if overlap > 0 && 2*overlap >= piece.end-piece.start {
+			result = append(result, piece)
+		}
+	}
+	return result
+}
+
+// followSegments plans Chinese text that is shown over several English parts.
+// The Chinese text splits only at its own source line breaks, one line per
+// English part, switching at the English part starts, and only when the order
+// check confirms the pairs. A generated cut could fall inside a word.
+// Otherwise it stays whole: a Chinese part next to the wrong English part is
+// worse than a long line.
+func followSegments(p *displayPlan, segments []textPiece, checks *splitChecks) {
+	texts := sourceLines(p.plain)
+	if len(texts) != len(segments) {
+		return
+	}
+	english := make([]string, len(segments))
+	parts := make([]textPiece, len(texts))
+	for i, text := range texts {
+		english[i] = segments[i].text
+		start, end := p.start, p.end
+		if i > 0 {
+			start = segments[i].start
+		}
+		if i+1 < len(texts) {
+			end = segments[i+1].start
+		}
+		if start >= end {
+			return
+		}
+		parts[i] = textPiece{start: start, end: end, text: text}
+	}
+	// Ask before the timing check: Align asks without word timings, which can
+	// change the English part starts at render time.
+	if checks.confirmed(texts, english) && readablePieces(parts, p.windows) {
+		p.pieces = parts
 	}
 }
 
@@ -385,10 +575,54 @@ func sourceSingleLine(plain string) bool {
 	return plain != "" && !strings.ContainsAny(plain, "\r\n")
 }
 
+// countedLength is the length checked against zh_chars and en_chars.
+// Punctuation and symbols do not count; spaces and every other character do.
+func countedLength(text string) int {
+	n := 0
+	for _, r := range text {
+		if countsTowardLimit(r) {
+			n++
+		}
+	}
+	return n
+}
+
+func countsTowardLimit(r rune) bool {
+	return !unicode.IsPunct(r) && !unicode.IsSymbol(r)
+}
+
+// countedPrefix returns p with p[i] = countedLength(string(runes[:i])).
+func countedPrefix(runes []rune) []int {
+	p := make([]int, len(runes)+1)
+	for i, r := range runes {
+		p[i+1] = p[i]
+		if countsTowardLimit(r) {
+			p[i+1]++
+		}
+	}
+	return p
+}
+
+// limitIndex returns the largest rune index i such that runes[:i] counts at
+// most limit characters, so punctuation after the last counted character
+// stays with it.
+func limitIndex(runes []rune, limit int) int {
+	count := 0
+	for i, r := range runes {
+		if countsTowardLimit(r) {
+			if count == limit {
+				return i
+			}
+			count++
+		}
+	}
+	return len(runes)
+}
+
 // textOptions keeps original single lines. It considers source line breaks
 // when the flattened multiline text exceeds the configured limit.
 func textOptions(text, plain string, limit int, lang string) [][]string {
-	if limit <= 0 || utf8.RuneCountInString(text) <= limit || sourceSingleLine(plain) {
+	if limit <= 0 || countedLength(text) <= limit || sourceSingleLine(plain) {
 		return nil
 	}
 	var result [][]string
@@ -406,7 +640,7 @@ func textOptions(text, plain string, limit int, lang string) [][]string {
 
 func partsFit(parts []string, limit int) bool {
 	for _, part := range parts {
-		if strings.TrimSpace(part) == "" || utf8.RuneCountInString(part) > limit {
+		if strings.TrimSpace(part) == "" || countedLength(part) > limit {
 			return false
 		}
 	}
@@ -414,13 +648,13 @@ func partsFit(parts []string, limit int) bool {
 }
 
 func balancedParts(text string, limit int, lang string) []string {
-	count := (utf8.RuneCountInString(text) + limit - 1) / limit
+	count := (countedLength(text) + limit - 1) / limit
 	maxParts := utf8.RuneCountInString(text)
 	if lang == "en" {
 		fields := strings.Fields(text)
 		maxParts = len(fields)
 		for _, field := range fields {
-			if utf8.RuneCountInString(field) > limit {
+			if countedLength(field) > limit {
 				return nil
 			}
 		}
@@ -437,10 +671,14 @@ func balancedPartCount(text string, limit, count int, lang string) []string {
 	runes := []rune(text)
 	var result []string
 	for remaining := count; remaining > 1; remaining-- {
-		low, high := max(1, len(runes)-(remaining-1)*limit), min(limit, len(runes)-1)
-		target := len(runes) / remaining
+		counted := countedPrefix(runes)
+		total := counted[len(runes)]
+		target := total / remaining
 		best, score := -1, int(^uint(0)>>1)
-		for i := low; i <= high; i++ {
+		for i := 1; i < len(runes); i++ {
+			if counted[i] > limit || total-counted[i] > (remaining-1)*limit {
+				continue
+			}
 			if !isSafeCutIndex(runes, i) {
 				continue
 			}
@@ -450,7 +688,7 @@ func balancedPartCount(text string, limit, count int, lang string) []string {
 			if strings.ContainsRune("，。！？；：、…）】》”’", runes[i]) || unicode.IsMark(runes[i]) {
 				continue
 			}
-			s := absInt(i-target) * 4
+			s := absInt(counted[i]-target) * 4
 			if strings.ContainsRune(",.;:!?，。！？；：、", runes[i-1]) {
 				s -= 12
 			} else if unicode.IsSpace(runes[i-1]) || unicode.IsSpace(runes[i]) {
@@ -573,48 +811,6 @@ func wordCuts(text string, parts []string, words []WordTiming) []int {
 	return cuts
 }
 
-// sharedCuts reuses existing, ordered, non-overlapping English source piece
-// boundaries as cuts for the Chinese plan.
-//
-// Two cases, kept deliberately distinct so the existing contiguous rule is
-// unchanged:
-//   - Contiguous English slices (every end == next start): the plan's own outer
-//     bounds must match the English span exactly, as before.
-//   - Slices separated by a real source gap (end < next start): the shared cut is
-//     the next cue's start, so each Chinese source line follows its own English
-//     counterpart instead of replaying inside the following English window. Only
-//     the inner cut positions matter here; each must stay strictly inside the
-//     plan's own source range.
-//
-// Overlapping slices, a count mismatch, and a cut outside the plan's source range
-// are rejected in both cases.
-func sharedCuts(english []textPiece, count, start, end int) []int {
-	if len(english) != count {
-		return nil
-	}
-	gapped := false
-	for i := 1; i < len(english); i++ {
-		if english[i-1].end > english[i].start {
-			return nil
-		}
-		if english[i-1].end < english[i].start {
-			gapped = true
-		}
-	}
-	if !gapped && (english[0].start != start || english[len(english)-1].end != end) {
-		return nil
-	}
-	var cuts []int
-	for i := 1; i < len(english); i++ {
-		cut := english[i].start
-		if cut <= start || cut >= end {
-			return nil
-		}
-		cuts = append(cuts, cut)
-	}
-	return cuts
-}
-
 func readablePieces(parts []textPiece, windows [][2]int) bool {
 	return readablePiecesWithFloor(parts, windows, minFallbackFragmentMS)
 }
@@ -648,10 +844,16 @@ func readablePiecesWithFloor(parts []textPiece, windows [][2]int, floorMS int) b
 	return true
 }
 
+// holdToleranceMS is how far a Chinese cue may run into an English gap and
+// still count as finished at the gap. Shorter overruns are timing noise
+// between the tracks, not an intentional hold over the gap.
+const holdToleranceMS = 300
+
 // adjustCutsForSourceGaps rolls back candidate cut points that land just after an
 // English source gap when the earlier Chinese cue already finished at or before the
-// gap (cues[i].End <= gapStart) and already had sufficient reading time in the
-// prior window, preventing unreadable flashback tails from projecting across the gap.
+// gap (cues[i].End <= gapStart + holdToleranceMS) and already had sufficient reading
+// time in the prior window, preventing unreadable flashback tails from projecting
+// across the gap.
 func adjustCutsForSourceGaps(cuts []int, cues []Cue, windows [][2]int) []int {
 	if len(cuts) == 0 || len(windows) < 2 {
 		return cuts
@@ -677,7 +879,7 @@ func adjustCutsForSourceGaps(cuts []int, cues []Cue, windows [][2]int) []int {
 				}
 				priorDuration := roundCentiseconds(gapStart) - roundCentiseconds(cueVisibleStart)
 				tailDuration := roundCentiseconds(cut) - roundCentiseconds(gapEnd)
-				if cues[i].End <= gapStart && priorDuration >= minFallbackFragmentMS && tailDuration < minFallbackFragmentMS {
+				if cues[i].End <= gapStart+holdToleranceMS && priorDuration >= minFallbackFragmentMS && tailDuration < minFallbackFragmentMS {
 					newCut := gapEnd
 					if (i == 0 || newCut > adjusted[i-1]) && (i+1 == len(adjusted) || newCut < adjusted[i+1]) {
 						adjusted[i] = newCut
@@ -690,10 +892,18 @@ func adjustCutsForSourceGaps(cuts []int, cues []Cue, windows [][2]int) []int {
 	return adjusted
 }
 
+// snapToleranceMS is how far a Chinese cut may move to switch together with
+// the nearest English cue start. Up to snapCheckedToleranceMS it moves only
+// when the order check confirms that both tracks break at the same place.
+const (
+	snapToleranceMS        = 500
+	snapCheckedToleranceMS = 1000
+)
+
 // splitChineseSources restores source fragments inside the English outer
 // bounds. Invalid or unreadably short source cuts use proportional timing.
 // If any source would become invisible in an English gap, retain the hold.
-func splitChineseSources(slices []block, cues []Cue) []block {
+func splitChineseSources(slices []block, cues []Cue, en map[int]Cue, checks *splitChecks) []block {
 	start, end := slices[0].start, slices[0].end
 	var windows [][2]int
 	for _, b := range slices {
@@ -707,9 +917,13 @@ func splitChineseSources(slices []block, cues []Cue) []block {
 			cuts = append(cuts, cue.Start)
 		}
 	}
+	snapped := snapCuts(cuts, slices, cues, en, checks)
 	cuts = adjustCutsForSourceGaps(cuts, cues, windows)
 	proportional := adjustCutsForSourceGaps(proportionalCuts(texts, start, end), cues, windows)
-	for _, candidate := range [][]int{cuts, proportional} {
+	for _, candidate := range [][]int{snapped, cuts, proportional} {
+		if len(candidate) != len(cues)-1 {
+			continue
+		}
 		bounds := append([]int{start}, candidate...)
 		bounds = append(bounds, end)
 		pieces := make([]textPiece, len(cues))
@@ -734,4 +948,37 @@ func splitChineseSources(slices []block, cues []Cue) []block {
 		return result
 	}
 	return slices
+}
+
+// snapCuts moves each Chinese cut to the nearest English cue start inside the
+// group, so both languages switch together. It returns nil when no cut moves.
+func snapCuts(cuts []int, slices []block, cues []Cue, en map[int]Cue, checks *splitChecks) []int {
+	snapped := append([]int(nil), cuts...)
+	moved := false
+	for i, cut := range cuts {
+		best := -1
+		for s := 1; s < len(slices); s++ {
+			if best < 0 || absInt(slices[s].start-cut) < absInt(slices[best].start-cut) {
+				best = s
+			}
+		}
+		if best < 0 || slices[best].start == cut {
+			continue
+		}
+		target, distance := slices[best].start, absInt(slices[best].start-cut)
+		if distance > snapCheckedToleranceMS || (i > 0 && target <= snapped[i-1]) || (i+1 < len(cuts) && target >= cuts[i+1]) {
+			continue
+		}
+		if distance > snapToleranceMS {
+			before, after := en[slices[best-1].enIDs[0]], en[slices[best].enIDs[0]]
+			if !checks.confirmed([]string{cues[i].Display, cues[i+1].Display}, []string{before.Display, after.Display}) {
+				continue
+			}
+		}
+		snapped[i], moved = target, true
+	}
+	if !moved {
+		return nil
+	}
+	return snapped
 }

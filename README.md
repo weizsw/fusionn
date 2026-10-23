@@ -159,7 +159,9 @@ subtitle:
     model: "group/auto-gfmodel"
     api_key_env: "" # name of an environment variable, never a key value
     response_format: "json_object" # json_object | json_schema | none
-    timeout_seconds: 180
+    reasoning_effort: "low" # "" omits the parameter
+    timeout_seconds: 300
+    max_tokens: 0 # optional per-window output cap, reasoning included; 0 omits it
     workers: 3
     retries: 1
     window_seconds: 210
@@ -174,11 +176,14 @@ subtitle:
 Use `http://127.0.0.1:3425/v1` when fusionn runs on the host. Linux containers need a reachable host address instead of `host.docker.internal`.
 
 - **Windows and context.** Subtitles are cut into 210-second windows with 15 seconds of context overlap. A cue belongs to the window containing its start time and is never split.
-- **Validation.** Every group is checked locally before use: reused or unknown IDs, non-integer IDs, empty groups, groups over the 8-second cross-language distance limit, top/bottom layer conflicts and bilingual span over 30 seconds are rejected. Lines the model dropped are restored on their original timing.
+- **Validation.** Every group is checked locally before use: reused or unknown IDs, non-integer IDs, empty groups, groups over the 8-second cross-language distance limit, top/bottom layer conflicts and bilingual span over 30 seconds are rejected. Dialogue the model dropped, or that sat in a failed window, is paired by time overlap (`origin: timing`); the rest is restored on its original timing.
+- **Offset and pairing check.** Before alignment, a clear global offset of the Chinese track (0.5 seconds or more, up to 3 minutes) is detected and removed. Each run logs the share of English dialogue that has a Chinese partner and warns below 60%, which usually means the Chinese subtitle belongs to another cut or episode.
 - **Key handling.** `api_key_env` names an environment variable and takes precedence over the inline `api_key`. If the named variable is unset, startup fails loudly rather than silently falling back to plaintext.
 - **Cache.** Successful mappings are stored under `cache_dir/subtitlellm-v1/`. The key covers the source text, model, endpoint, request payload and window settings, but not the style or the key, so re-styling an episode costs no model request. Caches contain full subtitle text: keep the directory readable only by the account running fusionn.
 - **Offline import.** `mapping_path` loads an existing mapping file without contacting a model. It is validated against a sibling `sources.json` and fails on a fingerprint mismatch instead of searching for a different source file.
 - **Limits.** `en_chars` and `zh_chars` bound short-sentence joins and flag long cues for time splitting. A cue that was already a single line in the source is kept whole even above the limit; only its display may wrap.
+- **Counting and cleanup.** The limits count letters, digits and spaces. Punctuation and symbols do not count. Source text is cleaned when it is loaded, before alignment: a run of spaces (full-width spaces included) becomes one half-width space, and a speaker dash at the start of a line becomes `- `. Other symbols stay. Joined lines are separated by one half-width space. The cleanup changes the source fingerprint, so older caches and mappings do not match and are made again.
+- **Split checks.** A cue is split only when a line does not fit. When the English shows in several parts, the Chinese follows at its own line breaks only after a second small LLM request confirms that each Chinese part translates the English part shown with it; otherwise the Chinese stays whole. A Chinese switch within 0.5 s of an English switch moves to it, and within 1 s only when the check confirms the same break. This also covers the break inside a long English cue: with word timing the Chinese switch moves to the word break; without it the English break, which is only estimated from text length, moves to the Chinese switch. Answers are stored as `split_checks` in `mapping.json`; a failed check keeps the Chinese whole.
 
 ### DuoSubs engine (legacy)
 

@@ -28,8 +28,11 @@ func (p *DualLanguageProcessor) Name() string {
 	return ProcessorNameDualLanguage
 }
 
+// ShouldRun checks Bazarr files and extracted embedded tracks. Both can
+// already be bilingual (for example a "简英双语" track); merging English into
+// them would show the English text twice.
 func (p *DualLanguageProcessor) ShouldRun(pctx *ProcessingContext) bool {
-	return pctx.ChineseSubSource == ChineseSourceBazarr &&
+	return (pctx.ChineseSubSource == ChineseSourceBazarr || pctx.ChineseSubSource == ChineseSourceExtracted) &&
 		pctx.ChineseSubPath != "" &&
 		pctx.MergedSubPath == ""
 }

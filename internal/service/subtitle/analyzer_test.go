@@ -248,6 +248,40 @@ func TestDetectChineseSubtitle_SkipsBitmapOnlySubtitle(t *testing.T) {
 	}
 }
 
+func chineseStream(index int, title string, disposition map[string]int, frames, bytes string) executor.StreamInfo {
+	stream := makeStream(index, title, disposition, frames, bytes)
+	stream.Tags["language"] = "chi"
+	return stream
+}
+
+func TestDetectChineseSubtitle_PrefersCompleteTrack(t *testing.T) {
+	a := newAnalyzer()
+	tests := []struct {
+		name    string
+		streams []executor.StreamInfo
+		want    int
+	}{
+		{"simplified beats traditional when both are complete",
+			[]executor.StreamInfo{chineseStream(3, "繁體", nil, "900", "30000"), chineseStream(4, "简体", nil, "880", "29000")}, 4},
+		{"full traditional beats forced simplified",
+			[]executor.StreamInfo{chineseStream(3, "简体", map[string]int{"forced": 1}, "40", "1200"), chineseStream(4, "繁體", nil, "900", "30000")}, 4},
+		{"full simplified beats signs-only simplified",
+			[]executor.StreamInfo{chineseStream(3, "简体 Signs", nil, "40", "1200"), chineseStream(5, "简体", nil, "900", "30000")}, 5},
+		{"far fewer events ranks lower without other metadata",
+			[]executor.StreamInfo{chineseStream(3, "简体", nil, "60", "2000"), chineseStream(4, "简体", nil, "900", "30000")}, 4},
+		{"stream order breaks ties",
+			[]executor.StreamInfo{chineseStream(3, "简体", nil, "", ""), chineseStream(4, "简体", nil, "", "")}, 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			track := a.detectChineseSubtitle(tt.streams)
+			if track == nil || track.Index != tt.want {
+				t.Fatalf("selected %+v, want index %d", track, tt.want)
+			}
+		})
+	}
+}
+
 func TestDetectEnglishSubtitle_FallbackToSDHOverForced(t *testing.T) {
 	a := newAnalyzer()
 

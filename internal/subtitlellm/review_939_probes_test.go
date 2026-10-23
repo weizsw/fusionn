@@ -194,21 +194,38 @@ func TestReview939JoinedCounterpartKeepsProjectedNativeBoundary(t *testing.T) {
 		review939Cue(2, 3500, 5000, "First reply.", false),
 		review939Cue(3, 5000, 7000, "Second reply.", false),
 	}
-	zs := []Cue{
-		review939Cue(1, 1000, 4000, "开始的陈述", false),
-		review939Cue(2, 4000, 7000, "- 好\n- 不", true),
-	}
-	b, m := review939Inputs(t, es, zs, []Group{review939Group([]int{1, 2, 3}, []int{1, 2})})
-	_, events, err := renderWithAudits(b, m, review939Config(), renderTestStyle(), 1920, 1080, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range events {
-		for _, id := range e.zhIDs {
-			if id == 2 && e.assStart < 4000 {
-				t.Fatalf("joining original EN cues widened projected range and revealed next Chinese source early: %+v", e)
+	for _, tt := range []struct {
+		name    string
+		zhStart int // native start of the second Chinese cue
+		want    int // where the second Chinese cue may first appear
+	}{
+		// 500ms from the English boundary at 3500: the switch snaps to it.
+		{name: "snaps_within_500ms", zhStart: 4000, want: 3500},
+		// 750ms from the English boundary and not checked: it stays native.
+		{name: "unchecked_750ms_stays_native", zhStart: 4250, want: 4250},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			zs := []Cue{
+				review939Cue(1, 1000, tt.zhStart, "开始的陈述", false),
+				review939Cue(2, tt.zhStart, 7000, "- 好\n- 不", true),
 			}
-		}
+			b, m := review939Inputs(t, es, zs, []Group{review939Group([]int{1, 2, 3}, []int{1, 2})})
+			_, events, err := renderWithAudits(b, m, review939Config(), renderTestStyle(), 1920, 1080, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			first := -1
+			for _, e := range events {
+				for _, id := range e.zhIDs {
+					if id == 2 && (first < 0 || e.assStart < first) {
+						first = e.assStart
+					}
+				}
+			}
+			if first != tt.want {
+				t.Fatalf("second Chinese cue first appears at %d, want %d (joined English cues must not widen it): %+v", first, tt.want, events)
+			}
+		})
 	}
 }
 
