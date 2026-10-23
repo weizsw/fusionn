@@ -44,7 +44,7 @@ func TestGateFinalASSFloorAllowsNaturalCut(t *testing.T) {
 	}
 }
 
-// A label that must move off bottom speech must not drag neighbouring labels
+// A label that must move off bottom speech must not drag neighboring labels
 // that sit on another source side.
 func TestRunsBreakOnRawSourceSideChange(t *testing.T) {
 	noWidthMeasurer(t)
