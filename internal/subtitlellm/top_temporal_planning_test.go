@@ -940,7 +940,11 @@ func TestTopTemporal_RecordedE01_DetailedDiffAudit(t *testing.T) {
 
 // TestTopTemporal_MultiSpeakerTopProtected verifies that a top cue with
 // MultiSpeaker=true is never split temporally even if it has 2 lines and
-// duration exceeds the sync floor.
+// duration exceeds the sync floor. It verifies both established paths:
+//  1. Reliable font width path: merges into a single TopDefault event.
+//  2. Unreliable font width path (e.g. headless Linux CI without native fonts):
+//     safely falls back to top/bottom spatial partition, covering the full
+//     original duration concurrently without temporal split.
 func TestTopTemporal_MultiSpeakerTopProtected(t *testing.T) {
 	cfg := renderTestConfig()
 	cfg.EnChars = 65
@@ -952,18 +956,62 @@ func TestTopTemporal_MultiSpeakerTopProtected(t *testing.T) {
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerTop, Origin: OriginModel, Kind: KindDialogue}})
 
-	out, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
-	if err != nil {
-		t.Fatal(err)
-	}
-	events := parseDialogues(t, string(out))
-	if len(events) != 1 {
-		t.Fatalf("multi-speaker top cue must not be split, got %d events", len(events))
-	}
-	if events[0].style != "TopDefault" {
-		t.Errorf("style = %q, want TopDefault", events[0].style)
-	}
-	assertGlyphs(t, events[0].text, "- 第一位说话人- 第二位说话人- First speaker- Second speaker")
+	t.Run("measurable_font_merges_lines_without_temporal_split", func(t *testing.T) {
+		prior := fontWidthMeasurerOverride
+		fontWidthMeasurerOverride = func(string, string, float64, int, float64, bool) (float64, bool) { return 200, true }
+		t.Cleanup(func() { fontWidthMeasurerOverride = prior })
+
+		out, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+		if err != nil {
+			t.Fatal(err)
+		}
+		events := parseDialogues(t, string(out))
+		if len(events) != 1 {
+			t.Fatalf("measurable font should merge lines to 1 event, got %d", len(events))
+		}
+		if events[0].start != 1000 || events[0].end != 6000 {
+			t.Errorf("event timing = [%d..%d], want [1000..6000]", events[0].start, events[0].end)
+		}
+		if events[0].style != "TopDefault" {
+			t.Errorf("style = %q, want TopDefault", events[0].style)
+		}
+		assertGlyphs(t, events[0].text, "- 第一位说话人- 第二位说话人- First speaker- Second speaker")
+	})
+
+	t.Run("unmeasurable_font_partitions_top_and_bottom_without_temporal_split", func(t *testing.T) {
+		prior := fontWidthMeasurerOverride
+		fontWidthMeasurerOverride = func(string, string, float64, int, float64, bool) (float64, bool) { return 0, false }
+		t.Cleanup(func() { fontWidthMeasurerOverride = prior })
+
+		out, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+		if err != nil {
+			t.Fatal(err)
+		}
+		events := parseDialogues(t, string(out))
+		if len(events) != 2 {
+			t.Fatalf("unmeasurable font should partition into 2 events, got %d", len(events))
+		}
+		for i, ev := range events {
+			if ev.start != 1000 || ev.end != 6000 {
+				t.Errorf("event[%d] timing = [%d..%d], want [1000..6000] (no temporal split)", i, ev.start, ev.end)
+			}
+		}
+		if events[0].style != "TopDefault" {
+			t.Errorf("events[0].style = %q, want TopDefault (first speaker at top)", events[0].style)
+		}
+		if events[1].style != "Default" {
+			t.Errorf("events[1].style = %q, want Default (second speaker at bottom)", events[1].style)
+		}
+		assertGlyphs(t, events[0].text, "- 第一位说话人- First speaker")
+		assertGlyphs(t, events[1].text, "- 第二位说话人- Second speaker")
+
+		if strings.Contains(events[0].text, "第二位") || strings.Contains(events[0].text, "Second") {
+			t.Errorf("events[0] must not contain second speaker text: %s", events[0].text)
+		}
+		if strings.Contains(events[1].text, "第一位") || strings.Contains(events[1].text, "First") {
+			t.Errorf("events[1] must not contain first speaker text: %s", events[1].text)
+		}
+	})
 }
 
 // TestTopTemporal_EnhancedE01_DetailedAudit audits the real official baseline
