@@ -31,11 +31,16 @@ subtitle:
     # api_key_env names an environment variable and takes precedence over api_key.
     api_key: ""
     api_key_env: "" # e.g. "FUSIONN_SUBTITLE_LLM_API_KEY"
-    # Optional; empty means the parameter is not sent. Support depends on the
-    # model/route and is not verified by fusionn.
-    reasoning_effort: "" # e.g. "low", "medium", "high"
+    # Default "low": shorter reasoning and faster answers. Set "" to omit the
+    # parameter for models that reject it.
+    reasoning_effort: "low" # e.g. "low", "medium", "high"
     response_format: "json_object" # "json_object", "json_schema", or "none"
-    timeout_seconds: 180
+    timeout_seconds: 300
+    # Optional output token cap per window, reasoning included. 0 (default)
+    # omits the parameter so the provider default applies. A window that hits
+    # the cap fails with finish_reason "length" and falls back to timing-only
+    # pairing; reasoning models can need more than 16000.
+    max_tokens: 0
 
     # Concurrent window requests and per-request retries (0 = no retry).
     workers: 3
@@ -54,8 +59,8 @@ subtitle:
     mapping_path: ""
 
     # Display limits also constrain short joins. Long source cues use time slices.
-    en_chars: 65    # target English characters per displayed fragment
-    zh_chars: 20    # target Chinese characters; omitted values default to 25
+    en_chars: 65    # target English characters per displayed fragment (punctuation does not count)
+    zh_chars: 20    # target Chinese characters (punctuation does not count); omitted values default to 25
     en_gap_ms: 400  # max English gap to join sentences
     zh_gap_ms: 500  # max Chinese gap to join sentences
     span_ms: 5500   # max joined speech span

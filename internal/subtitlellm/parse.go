@@ -30,7 +30,13 @@ func LoadSources(enPath, zhPath string) (Bundle, error) {
 	if err != nil {
 		return Bundle{}, fmt.Errorf("parse Chinese subtitles %q: %w", zhPath, err)
 	}
-	bundle := Bundle{Version: Version, EN: en, ZH: zh}
+	// English comes from the video and is the timing reference; a Chinese
+	// track from another release may be offset by a constant amount.
+	shift := estimateZHShift(en, zh)
+	if shift != 0 {
+		zh = shiftCues(zh, shift)
+	}
+	bundle := Bundle{Version: Version, EN: en, ZH: zh, ZHShiftMS: shift}
 	fingerprint, err := bundleDigest(bundle)
 	if err != nil {
 		return Bundle{}, err
@@ -361,6 +367,27 @@ var (
 
 // buildCue derives plain/display/native placement from a raw cue exactly like
 // the prototype read_track function.
+// speakerMarks are the dashes that open a speaker's line.
+const speakerMarks = "-－–—"
+
+// cleanLine is the subtitle cleanup applied before alignment. Any run of
+// spaces (including full-width spaces) becomes one half-width space, and a
+// leading speaker dash becomes "- ". Other characters stay unchanged.
+func cleanLine(line string) string {
+	line = strings.Join(strings.Fields(line), " ")
+	mark, size := utf8.DecodeRuneInString(line)
+	if line == "" || !strings.ContainsRune(speakerMarks, mark) {
+		return line
+	}
+	rest := strings.TrimPrefix(line[size:], " ")
+	next, _ := utf8.DecodeRuneInString(rest)
+	// "--", "——" and "-5" are not speaker marks.
+	if rest == "" || strings.ContainsRune(speakerMarks, next) || unicode.IsDigit(next) {
+		return line
+	}
+	return "- " + rest
+}
+
 func buildCue(id int, cue rawCue, style styleInfo, playResX, playResY float64) Cue {
 	alignment := style.alignment
 	native := assNativeAlign.FindAllStringSubmatch(cue.text, -1)
@@ -393,7 +420,15 @@ func buildCue(id int, cue rawCue, style styleInfo, playResX, playResY float64) C
 	plain = strings.ReplaceAll(plain, `\n`, "\n")
 	plain = strings.ReplaceAll(plain, `\N`, "\n")
 	plain = html.UnescapeString(plain)
+	markupChanged := cue.text != plain
 	lines := strings.Split(plain, "\n")
+	cleaned := false
+	for i, line := range lines {
+		if clean := cleanLine(line); clean != line {
+			lines[i], cleaned = clean, true
+		}
+	}
+	plain = strings.Join(lines, "\n")
 	speakers := 0
 	for _, line := range lines {
 		if speakerLine.MatchString(line) {
@@ -401,19 +436,14 @@ func buildCue(id int, cue rawCue, style styleInfo, playResX, playResY float64) C
 		}
 	}
 	multi := speakers >= 2
-	separator := " "
-	if multi {
-		separator = "   "
-	}
-	trimmed := make([]string, len(lines))
-	for i, line := range lines {
-		trimmed[i] = strings.TrimSpace(line)
-	}
-	display := strings.TrimSpace(strings.Join(trimmed, separator))
+	display := strings.TrimSpace(strings.Join(lines, " "))
 
 	var changes []string
-	if cue.text != plain {
+	if markupChanged {
 		changes = append(changes, "markup_removed_or_newline_decoded")
+	}
+	if cleaned {
+		changes = append(changes, "spaces_and_speaker_marks_cleaned")
 	}
 	if display != plain {
 		changes = append(changes, "whitespace_flattened")
@@ -423,8 +453,8 @@ func buildCue(id int, cue rawCue, style styleInfo, playResX, playResY float64) C
 	if hanText.MatchString(display) {
 		limit = 25
 	}
-	if multi && utf8.RuneCountInString(display) > limit {
-		display = strings.Join(trimmed, "\n")
+	if multi && countedLength(display) > limit {
+		display = strings.Join(lines, "\n")
 		changes = append(changes, "speaker_line_breaks_kept")
 	}
 

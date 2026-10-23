@@ -309,7 +309,7 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 	}
 
 	// 4. Source / display identity interval comparison against baseline.
-	baseline := buildBlocks(mapping, en, zh, llmcfg)
+	baseline := buildBlocks(mapping, en, zh, llmcfg, nil, newSplitChecks(mapping.SplitChecks, false))
 	// Baseline windows come from the pre-policy source layout. For each identity
 	// the pre-policy envelope is the union of that identity's source windows, so
 	// an intentional hold (one cue displayed across the counterpart's slices) is
@@ -487,12 +487,12 @@ func TestReviewProbeFourLinesMustTryWidthMergeBeforePartition(t *testing.T) {
 func TestReviewProbeDialogueCapIncludesSpaces(t *testing.T) {
 	reviewWidthHook(t)
 	cfg := fixtureConfig()
-	cfg.EnChars = 18
+	cfg.EnChars = 14 // "- A long - B line" counts 15: spaces count, dashes do not
 	style := fixtureStyle()
 	style.PrimaryFont = "ZH Font"
 	style.SecondaryFont = "EN Font"
 	bundle := fixtureBundle(
-		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "- A long   - B line", Plain: "- A long\n- B line", Alignment: 2, MultiSpeaker: true}},
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "- A long - B line", Plain: "- A long\n- B line", Alignment: 2, MultiSpeaker: true}},
 		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "答复", Plain: "答复", Alignment: 2}},
 	)
 	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
@@ -501,8 +501,8 @@ func TestReviewProbeDialogueCapIncludesSpaces(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range events {
-		if len(sourceLines(e.enText)) == 1 && len([]rune(e.enText)) > cfg.EnChars {
-			t.Fatalf("dialogue merged above cap %d: %q (%d runes)", cfg.EnChars, e.enText, len([]rune(e.enText)))
+		if len(sourceLines(e.enText)) == 1 && countedLength(e.enText) > cfg.EnChars {
+			t.Fatalf("dialogue merged above cap %d: %q (counted %d)", cfg.EnChars, e.enText, countedLength(e.enText))
 		}
 	}
 }

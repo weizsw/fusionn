@@ -192,7 +192,7 @@ func TestCLIFallback_Subprocess_LLM503FallbackToNativeASS(t *testing.T) {
 
 	// 1. Verify stderr degradation warning
 	stderrStr := stderr.String()
-	wantWarn := "Warning: LLM alignment partially failed (1 windows); fell back to native timing and cue order for failed windows"
+	wantWarn := "Warning: LLM alignment partially failed (1 windows); fell back to timing-based pairing for failed windows"
 	if !strings.Contains(stderrStr, wantWarn) {
 		t.Errorf("expected stderr to contain %q, got:\n%s", wantWarn, stderrStr)
 	}
@@ -225,26 +225,21 @@ func TestCLIFallback_Subprocess_LLM503FallbackToNativeASS(t *testing.T) {
 		t.Error("bilingual.ass missing [Events]")
 	}
 
+	// The failed window falls back to timing-based pairing: each English cue
+	// and the Chinese cue overlapping it share one event on English timing.
 	events := parseDialogueEvents(t, assText)
-	if len(events) != 4 {
-		t.Fatalf("expected exactly 4 dialogue events (2 EN + 2 ZH), got %d:\n%s", len(events), assText)
+	if len(events) != 2 {
+		t.Fatalf("expected exactly 2 bilingual dialogue events, got %d:\n%s", len(events), assText)
 	}
 
-	// Verify exact timing, styles, and text of the 4 native fallback events
-	// Event 0: EN 1 [1.00s..3.00s]
-	// Event 1: ZH 1 [1.20s..3.20s]
-	// Event 2: EN 2 [4.00s..6.00s]
-	// Event 3: ZH 2 [4.20s..6.20s]
 	expectedEvents := []struct {
-		start    string
-		end      string
-		style    string
-		textPart string
+		start     string
+		end       string
+		style     string
+		textParts []string
 	}{
-		{"0:00:01.00", "0:00:03.00", "Eng", "You go ashore and wait."},
-		{"0:00:01.20", "0:00:03.20", "Default", "你在岸上等我。"},
-		{"0:00:04.00", "0:00:06.00", "Eng", "Bring all your trouble to the doorstep."},
-		{"0:00:04.20", "0:00:06.20", "Default", "把你的麻烦带到门口。"},
+		{"0:00:01.00", "0:00:03.00", "Default", []string{"你在岸上等我。", "You go ashore and wait."}},
+		{"0:00:04.00", "0:00:06.00", "Default", []string{"把你的麻烦带到门口。", "Bring all your trouble to the doorstep."}},
 	}
 
 	for i, exp := range expectedEvents {
@@ -255,8 +250,10 @@ func TestCLIFallback_Subprocess_LLM503FallbackToNativeASS(t *testing.T) {
 		if ev.style != exp.style {
 			t.Errorf("event %d style mismatch: got %s, want %s", i, ev.style, exp.style)
 		}
-		if !strings.Contains(ev.text, exp.textPart) {
-			t.Errorf("event %d text mismatch: %q does not contain %q", i, ev.text, exp.textPart)
+		for _, part := range exp.textParts {
+			if !strings.Contains(ev.text, part) {
+				t.Errorf("event %d text mismatch: %q does not contain %q", i, ev.text, part)
+			}
 		}
 	}
 

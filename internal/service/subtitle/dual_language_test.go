@@ -1,6 +1,7 @@
 package subtitle
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -136,6 +137,25 @@ func TestDetectDualLanguageSRT(t *testing.T) {
 				"2\n00:00:04,000 --> 00:00:06,000\n再见 Goodbye\n\n",
 			want: true,
 		},
+		{
+			name: "chinese only with italic tags",
+			content: "1\n00:00:01,000 --> 00:00:03,000\n<i>你好世界</i>\n\n" +
+				"2\n00:00:04,000 --> 00:00:06,000\n<i>再见</i>\n\n" +
+				"3\n00:00:07,000 --> 00:00:09,000\n{\\an8}（伦敦）\n\n",
+			want: false,
+		},
+		{
+			name: "chinese only with latin abbreviations",
+			content: "1\n00:00:01,000 --> 00:00:03,000\nFBI来了\n\n" +
+				"2\n00:00:04,000 --> 00:00:06,000\n我们去找CIA\n\n" +
+				"3\n00:00:07,000 --> 00:00:09,000\n用iPhone打给我\n\n",
+			want: false,
+		},
+		{
+			name:    "bilingual after a chinese-only opening",
+			content: chineseOnlyCues(40) + bilingualCues(41, 60),
+			want:    true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -184,6 +204,25 @@ Style: Default,Arial,20,&H00FFFFFF
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,你好世界
 Dialogue: 0,0:00:04.00,0:00:06.00,Default,,0,0,0,,再见
+`,
+			want: false,
+		},
+		{
+			name: "chinese only ASS with override tags",
+			content: `[Script Info]
+ScriptType: v4.00+
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour
+Style: Default,Arial,20,&H00FFFFFF
+Style: Sign,Arial,20,&H00FFFFFF
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,{\fs20}你好世界\N{\fs16}再见
+Dialogue: 0,0:00:04.00,0:00:06.00,Default,,0,0,0,,{\i1}谢谢{\i0}\N对不起
+Dialogue: 0,0:00:04.00,0:00:06.00,Sign,,0,0,0,,{\an8\pos(960,80)}伦敦
+Dialogue: 0,0:00:07.00,0:00:09.00,Sign,,0,0,0,,{\an8\p1}m 0 0 l 100 0 100 100{\p0}
 `,
 			want: false,
 		},
@@ -350,5 +389,50 @@ func TestConvertDualLanguageSRTToASS_MixedLine(t *testing.T) {
 	}
 	if !strings.Contains(result, "Default_1,,0,0,0,,Hello World") {
 		t.Error("English part not extracted from mixed line")
+	}
+}
+
+// chineseOnlyCues returns SRT cues 1..count with Chinese text only.
+func chineseOnlyCues(count int) string {
+	var sb strings.Builder
+	for i := 1; i <= count; i++ {
+		fmt.Fprintf(&sb, "%d\n00:%02d:%02d,000 --> 00:%02d:%02d,500\n第%d句中文\n\n", i, i/60, i%60, i/60, i%60, i)
+	}
+	return sb.String()
+}
+
+// bilingualCues returns SRT cues from..to with a Chinese and an English line.
+func bilingualCues(from, to int) string {
+	var sb strings.Builder
+	for i := from; i <= to; i++ {
+		fmt.Fprintf(&sb, "%d\n00:%02d:%02d,000 --> 00:%02d:%02d,500\n第%d句中文\nLine number %d\n\n", i, i/60, i%60, i/60, i%60, i, i)
+	}
+	return sb.String()
+}
+
+func TestLineLanguages(t *testing.T) {
+	tests := []struct {
+		line             string
+		chinese, english bool
+	}{
+		{"你好世界", true, false},
+		{"Hello World", false, true},
+		{"OK", false, true},
+		{"I", false, false},
+		{"你好世界 Hello World", true, true},
+		{"我很好。I'm fine.", true, true},
+		{"再见 Goodbye", true, false},
+		{"FBI来了", true, false},
+		{"我们去找FBI", true, false},
+		{"<i>你好</i>", true, false},
+		{"<i>Hello there</i>", false, true},
+		{`{\an8}（伦敦）`, true, false},
+		{`{\p1}m 0 0 l 100 0{\p0}`, false, false},
+	}
+	for _, tt := range tests {
+		chinese, english := lineLanguages(tt.line)
+		if chinese != tt.chinese || english != tt.english {
+			t.Errorf("lineLanguages(%q) = %v,%v, want %v,%v", tt.line, chinese, english, tt.chinese, tt.english)
+		}
 	}
 }

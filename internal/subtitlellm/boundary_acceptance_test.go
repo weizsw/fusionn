@@ -27,18 +27,22 @@ func assEventTimes(t *testing.T, content string) [][2]int {
 func TestB01_SyncAndFallbackFloorBoundaries(t *testing.T) {
 	// Total duration 2400ms: exactly 2*1.2s, so a proportional cut at the exact
 	// middle is admissible; 2390ms cannot produce two >=1.2s fragments.
+	// Below the floor the pair cannot split in sync: only the over-limit
+	// English splits, and the Chinese stays whole.
 	cases := []struct {
 		name       string
 		start, end int
-		wantEvents int
+		want       []string
+		synced     bool
 	}{
-		{"exact_2x1200ms", 1000, 3400, 2},
-		{"10ms_below", 1000, 3390, 1},
+		{"exact_2x1200ms", 1000, 3400, []string{"甲。Alpha.", "乙。Bravo."}, true},
+		{"10ms_below", 1000, 3390, []string{"甲。 乙。Alpha.", "甲。 乙。Bravo."}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := renderTestConfig()
-			cfg.EnChars = 65
+			// "Alpha. Bravo." is over the English limit, so the pair must split.
+			cfg.EnChars = 8
 			cfg.ZhChars = 25
 			// Equal-length halves put the natural proportional cut exactly at the
 			// midpoint, so the 1.2s floor is met or missed by exactly 10ms.
@@ -48,13 +52,17 @@ func TestB01_SyncAndFallbackFloorBoundaries(t *testing.T) {
 				[]Cue{{ID: 1, Start: tc.start, End: tc.end, Display: "甲。 乙。", Plain: "甲。\n乙。"}},
 			)
 			mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+			mapping = confirmAllSplits(t, bundle, mapping, cfg)
 			out, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 			if err != nil {
 				t.Fatal(err)
 			}
 			events := parseDialogues(t, string(out))
-			if len(events) != tc.wantEvents {
-				t.Fatalf("events = %d, want %d", len(events), tc.wantEvents)
+			if len(events) != len(tc.want) {
+				t.Fatalf("events = %d, want %d", len(events), len(tc.want))
+			}
+			for i, want := range tc.want {
+				assertGlyphs(t, events[i].text, want)
 			}
 			times := assEventTimes(t, string(out))
 			for i, span := range times {
@@ -65,7 +73,7 @@ func TestB01_SyncAndFallbackFloorBoundaries(t *testing.T) {
 					t.Fatalf("events %d and %d overlap after ASS rounding: %v %v", i-1, i, times[i-1], span)
 				}
 			}
-			if tc.wantEvents == 2 {
+			if tc.synced {
 				for i, span := range times {
 					if span[1]-span[0] < minSyncFragmentMS/10 {
 						t.Fatalf("fragment %d shorter than 1.2s in ASS centiseconds: %v", i, span)
@@ -571,32 +579,37 @@ func TestB13_SameFamilyDifferentSizesNotConfused(t *testing.T) {
 	}
 }
 
-// B13: rune counting includes spaces and punctuation, never bytes.
-func TestB13_RuneCountIncludesSpacesAndPunctuation(t *testing.T) {
-	cfg := fixtureConfig()
-	cfg.EnChars = 18
-	// 19 runes with the merge separator and punctuation: must NOT merge.
-	if got := len([]rune("- A long" + mergeSeparator + "- B line")); got <= cfg.EnChars {
-		t.Fatalf("fixture invariant: %d runes should exceed cap %d", got, cfg.EnChars)
+// B13: the cap counts letters, digits and spaces in runes, never bytes;
+// punctuation and symbols do not count.
+func TestB13_CapCountsSpacesNotPunctuation(t *testing.T) {
+	// 17 runes: the two dashes do not count, the four spaces do.
+	if got := countedLength("- A long - B line"); got != 15 {
+		t.Fatalf("countedLength = %d, want 15", got)
 	}
-	// Confirms compactText no longer hides spaces for the cap decision.
-	bundle := fixtureBundle(
-		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "- A long   - B line", Plain: "- A long\n- B line", MultiSpeaker: true}},
-		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "答复", Plain: "答复"}},
-	)
-	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
-	oldHook := fontWidthMeasurerOverride
-	defer func() { fontWidthMeasurerOverride = oldHook }()
-	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
-		return 100, true
-	}
-	_, events, err := renderWithAudits(bundle, mapping, cfg, fixtureStyle(), 1920, 1080, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range events {
-		if len(sourceLines(e.enText)) == 1 && len([]rune(e.enText)) > cfg.EnChars {
-			t.Fatalf("merged past cap including spaces: %q", e.enText)
+	for _, tt := range []struct {
+		cap    int
+		merged bool
+	}{{cap: 14, merged: false}, {cap: 15, merged: true}} {
+		cfg := fixtureConfig()
+		cfg.EnChars = tt.cap
+		bundle := fixtureBundle(
+			[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "- A long - B line", Plain: "- A long\n- B line", MultiSpeaker: true}},
+			[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "答复", Plain: "答复"}},
+		)
+		mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+		oldHook := fontWidthMeasurerOverride
+		fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
+			return 100, true
+		}
+		_, events, err := renderWithAudits(bundle, mapping, cfg, fixtureStyle(), 1920, 1080, nil)
+		fontWidthMeasurerOverride = oldHook
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range events {
+			if merged := len(sourceLines(e.enText)) == 1; merged != tt.merged {
+				t.Fatalf("cap %d: merged = %v, want %v: %q", tt.cap, merged, tt.merged, e.enText)
+			}
 		}
 	}
 }
@@ -605,12 +618,15 @@ func TestB13_RuneCountIncludesSpacesAndPunctuation(t *testing.T) {
 func TestB14_MeasurementFailureKeepsCompleteText(t *testing.T) {
 	cfg := renderTestConfig()
 	// Cap fits each original source line, so the only way to reach one line is a
-	// width-driven merge, which must not happen without a reliable measurement.
-	cfg.ZhChars = 6
+	// width-driven merge. Without a measurement it needs the em upper bound to
+	// fit, and 35 characters at size 52 exceed the 1760px usable width.
+	cfg.ZhChars = 17
 	cfg.EnChars = 20
+	line1 := strings.Repeat("第一段中文", 3) + "第一"
+	line2 := strings.Repeat("第二段中文", 3) + "第二"
 	bundle := makeBundle(
 		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "Short english.", Plain: "Short english."}},
-		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "第一段中文 第二段中文", Plain: "第一段中文\n第二段中文"}},
+		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: line1 + " " + line2, Plain: line1 + "\n" + line2}},
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
 	oldHook := fontWidthMeasurerOverride

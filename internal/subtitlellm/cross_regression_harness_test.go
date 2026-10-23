@@ -1108,13 +1108,11 @@ func RunDarkMatterCrossRegressionToDir(dir, outDir string) (*RegressionRunResult
 		return nil, fmt.Errorf("load sources: %w", err)
 	}
 
-	rawMapping, err := os.ReadFile(mappingPath)
+	// Load-time text cleanup changed the source fingerprint, so the committed
+	// mapping is bound to the parsed bundle before rendering and importing.
+	mappingPath, importedMapping, err := rebindMapping(mappingPath, bundle, filepath.Join(outDir, "imported-mapping"))
 	if err != nil {
-		return nil, fmt.Errorf("read mapping: %w", err)
-	}
-	var importedMapping Mapping
-	if err := json.Unmarshal(rawMapping, &importedMapping); err != nil {
-		return nil, fmt.Errorf("unmarshal mapping: %w", err)
+		return nil, fmt.Errorf("rebind mapping: %w", err)
 	}
 
 	cfg := config.LLMConfig{
@@ -1380,7 +1378,7 @@ func RunDarkMatterCrossRegressionToDir(dir, outDir string) (*RegressionRunResult
 	if err != nil {
 		return nil, fmt.Errorf("cueIndex: %w", err)
 	}
-	baseline := buildBlocks(importedMapping, enIdx, zhIdx, cfg)
+	baseline := buildBlocks(importedMapping, enIdx, zhIdx, cfg, nil, newSplitChecks(importedMapping.SplitChecks, false))
 	baselineInts := make(map[string][][2]int)
 	for _, b := range baseline {
 		for _, id := range b.enIDs {

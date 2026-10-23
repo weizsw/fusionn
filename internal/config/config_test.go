@@ -567,8 +567,14 @@ subtitle:
 	if llm.ResponseFormat != ResponseFormatJSONObject {
 		t.Errorf("response_format = %q, want %q", llm.ResponseFormat, ResponseFormatJSONObject)
 	}
-	if llm.TimeoutSeconds != 180 {
-		t.Errorf("timeout_seconds = %d, want 180", llm.TimeoutSeconds)
+	if llm.TimeoutSeconds != 300 {
+		t.Errorf("timeout_seconds = %d, want 300", llm.TimeoutSeconds)
+	}
+	if llm.MaxTokens != 0 {
+		t.Errorf("max_tokens = %d, want 0 (omitted)", llm.MaxTokens)
+	}
+	if llm.ReasoningEffort != "low" {
+		t.Errorf("reasoning_effort = %q, want low", llm.ReasoningEffort)
 	}
 	if llm.Workers != 3 {
 		t.Errorf("workers = %d, want 3", llm.Workers)
@@ -597,7 +603,7 @@ subtitle:
 	if llm.FillGapMS != 500 {
 		t.Errorf("fill_gap_ms = %d, want 500", llm.FillGapMS)
 	}
-	if llm.APIKey != "" || llm.APIKeyEnv != "" || llm.ReasoningEffort != "" || llm.MappingPath != "" || llm.WordAlignURL != "" {
+	if llm.APIKey != "" || llm.APIKeyEnv != "" || llm.MappingPath != "" || llm.WordAlignURL != "" {
 		t.Errorf("optional LLM fields should default to empty")
 	}
 }
@@ -606,7 +612,7 @@ func TestLLMConfigEnvBindings(t *testing.T) {
 	t.Setenv("FUSIONN_SUBTITLE_LLM_API_KEY", "env-api-key")
 	t.Setenv("FUSIONN_SUBTITLE_LLM_BASE_URL", "http://llm.example/v1")
 	t.Setenv("FUSIONN_SUBTITLE_LLM_MODEL", "env-model")
-	t.Setenv("FUSIONN_SUBTITLE_LLM_REASONING_EFFORT", "low")
+	t.Setenv("FUSIONN_SUBTITLE_LLM_REASONING_EFFORT", "medium")
 	t.Setenv("FUSIONN_SUBTITLE_LLM_WORKERS", "7")
 	t.Setenv("FUSIONN_SUBTITLE_LLM_WORD_ALIGN_URL", "http://word-align:8767")
 
@@ -632,7 +638,7 @@ subtitle:
 	if llm.Model != "env-model" {
 		t.Errorf("model = %q", llm.Model)
 	}
-	if llm.ReasoningEffort != "low" {
+	if llm.ReasoningEffort != "medium" {
 		t.Errorf("reasoning_effort = %q", llm.ReasoningEffort)
 	}
 	if llm.Workers != 7 {

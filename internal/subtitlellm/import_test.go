@@ -11,10 +11,10 @@ import (
 	"github.com/fusionn/internal/config"
 )
 
-func prototypeMappingConfig(t *testing.T) config.LLMConfig {
+func prototypeMappingConfig(t *testing.T, bundle Bundle) config.LLMConfig {
 	t.Helper()
 	cfg := testConfig(t, "http://127.0.0.1:1/v1")
-	cfg.MappingPath = filepath.Join(prototypeSources, "alignment", "mapping.json")
+	cfg.MappingPath, _ = reboundPrototypeMapping(t, bundle)
 	cfg.Model = "group/flash-models"
 	return cfg
 }
@@ -27,7 +27,7 @@ func TestImportPrototypeMapping(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := prototypeMappingConfig(t)
+	cfg := prototypeMappingConfig(t, bundle)
 	mapping, audit, err := NewEngine().Align(context.Background(), bundle, cfg)
 	if err != nil {
 		t.Fatalf("Align() error = %v", err)
@@ -35,8 +35,9 @@ func TestImportPrototypeMapping(t *testing.T) {
 	if len(mapping.Groups) != 712 {
 		t.Fatalf("groups = %d, want 712", len(mapping.Groups))
 	}
-	if mapping.Fingerprint != "b96a000b0fdd93db02fdec22e4b34abede2ea421997873db3c046739909ab9b9" {
-		t.Fatalf("fingerprint = %s", mapping.Fingerprint)
+	if want, err := mappingDigest(mapping); err != nil || mapping.Fingerprint != want || mapping.SourceFingerprint != bundle.Fingerprint {
+		t.Fatalf("fingerprint = %s source = %s, want digest %s for bundle %s (err %v)",
+			mapping.Fingerprint, mapping.SourceFingerprint, want, bundle.Fingerprint, err)
 	}
 	if len(audit.Restored["en"]) != 0 || len(audit.Restored["zh"]) != 0 {
 		t.Fatalf("restored = %v", audit.Restored)
@@ -58,7 +59,7 @@ func TestImportPrototypeMappingReportsModelMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := prototypeMappingConfig(t)
+	cfg := prototypeMappingConfig(t, bundle)
 	cfg.Model = "another-model"
 	_, audit, err := NewEngine().Align(context.Background(), bundle, cfg)
 	if err != nil {
@@ -300,7 +301,7 @@ func TestImportMappingOfflineNeedsNoAPIKeyEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("UNSET_IMPORT_KEY", "")
-	cfg := prototypeMappingConfig(t)
+	cfg := prototypeMappingConfig(t, bundle)
 	cfg.APIKeyEnv = "UNSET_IMPORT_KEY"
 	if _, _, err := NewEngine().Align(context.Background(), bundle, cfg); err != nil {
 		t.Fatalf("offline import required an API key: %v", err)

@@ -37,6 +37,7 @@ const (
 	MetadataLLMDegraded       = "llm_degraded"
 	MetadataLLMFailedWindows  = "llm_failed_windows"
 	MetadataLLMWindowFailures = "llm_window_failures"
+	MetadataLLMPairing        = "llm_pairing"
 )
 
 // MergerProcessor merges English and Chinese subtitles with the configured
@@ -184,6 +185,9 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 	if err != nil {
 		return fmt.Errorf("load subtitle sources: %w", err)
 	}
+	if bundle.ZHShiftMS != 0 {
+		log.Infof("Shifted Chinese subtitles by %+dms to match English timing", bundle.ZHShiftMS)
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -209,7 +213,7 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 		return fmt.Errorf("llm alignment failed: %w", alignErr)
 	}
 	if len(audit.FailedWindows) > 0 {
-		log.Warnf("LLM alignment partially failed (%d windows); fell back to native timing and cue order for failed windows", len(audit.FailedWindows))
+		log.Warnf("LLM alignment partially failed (%d windows); fell back to timing-based pairing for failed windows", len(audit.FailedWindows))
 		if pctx.Metadata != nil {
 			pctx.Metadata[MetadataLLMDegraded] = true
 			pctx.Metadata[MetadataLLMFailedWindows] = audit.FailedWindows
@@ -258,6 +262,7 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 	// The renderer already applied the final styles, PlayRes and explicit
 	// positions; prevent the style processor from rewriting them.
 	pctx.Metadata[subtitlellm.MetadataLLMStyled] = true
+	pctx.Metadata[MetadataLLMPairing] = audit.Pairing
 	pctx.MergedSubPath = mergedPath
 
 	log.Infof("✅ Merge completed: %s", mergedPath)
@@ -425,10 +430,17 @@ func (p *MergerProcessor) logLLMAudit(audit subtitlellm.Audit) {
 		len(audit.Rejected), len(audit.Conflicts), len(audit.Restored["en"]), len(audit.Restored["zh"]),
 		audit.ContextDuplicates, len(audit.FailedWindows), audit.CacheHits)
 	if len(audit.FailedWindows) > 0 {
-		log.Warnf("LLM alignment degraded: native timing fallback used for %d windows", len(audit.FailedWindows))
+		log.Warnf("LLM alignment degraded: timing-based pairing used for %d windows", len(audit.FailedWindows))
 		for _, f := range audit.WindowFailures {
 			log.Warnf("LLM window %d failure reason: %s", f.Window, f.Reason)
 		}
+	}
+	pairing := audit.Pairing
+	log.Infof("LLM pairing: en=%d/%d (%.1f%%) zh=%d/%d (%.1f%%) timing_paired_en=%d timing_paired_zh=%d",
+		pairing.ENPaired, pairing.ENTotal, 100*pairing.ENRatio(), pairing.ZHPaired, pairing.ZHTotal, 100*pairing.ZHRatio(),
+		len(audit.TimingPaired["en"]), len(audit.TimingPaired["zh"]))
+	if pairing.Low() {
+		log.Warnf("Only %.0f%% of English dialogue has a Chinese partner; check that the Chinese subtitle matches this video", 100*pairing.ENRatio())
 	}
 	if audit.Provenance != nil {
 		log.Infof("LLM mapping provenance: source=%s mapping_path=%s mapping_model=%s configured_model=%s model_mismatch=%v",

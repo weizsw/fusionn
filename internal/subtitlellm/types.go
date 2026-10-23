@@ -27,6 +27,9 @@ const (
 const (
 	OriginModel    = "model"
 	OriginRestored = "restored"
+	// OriginTiming marks restored cues paired by time overlap after the model
+	// did not place them.
+	OriginTiming = "timing"
 )
 
 // Mapping group kinds.
@@ -70,6 +73,9 @@ type Bundle struct {
 	EN          []Cue  `json:"en"`
 	ZH          []Cue  `json:"zh"`
 	Fingerprint string `json:"fingerprint"`
+	// ZHShiftMS is the offset LoadSources added to Chinese cue times to line
+	// them up with English. OriginalStart/OriginalEnd keep the file times.
+	ZHShiftMS int `json:"zh_shift_ms,omitempty"`
 }
 
 // Group is one bilingual alignment group. OwnerWindow is present in JSON for
@@ -159,7 +165,25 @@ type Mapping struct {
 	SourceFingerprint string            `json:"source_fingerprint"`
 	Parameters        MappingParameters `json:"parameters"`
 	Groups            []Group           `json:"groups"`
+	SplitChecks       []SplitCheck      `json:"split_checks,omitempty"`
 	Fingerprint       string            `json:"fingerprint,omitempty"`
+}
+
+// SplitCheck records whether showing ZH[i] together with EN[i] keeps every
+// Chinese part with the English part it translates. The renderer splits a
+// pair part by part only when a check says Same.
+type SplitCheck struct {
+	ZH   []string `json:"zh"`
+	EN   []string `json:"en"`
+	Same bool     `json:"same"`
+}
+
+// SplitCheckAudit counts the order checks of one alignment run.
+type SplitCheckAudit struct {
+	Asked      int      `json:"asked"`
+	Confirmed  int      `json:"confirmed"`
+	Unanswered int      `json:"unanswered"`
+	Failures   []string `json:"failures,omitempty"`
 }
 
 // Coverage reports how many source cues each language contributed.
@@ -225,6 +249,8 @@ type Audit struct {
 	ContextDuplicates int               `json:"context_duplicates"`
 	WindowMissing     []WindowMissing   `json:"window_missing"`
 	Restored          map[string][]int  `json:"restored"`
+	TimingPaired      map[string][]int  `json:"timing_paired,omitempty"`
+	Pairing           Pairing           `json:"pairing"`
 	CacheCorrupted    []CacheCorruption `json:"cache_corrupted,omitempty"`
 	RequestRetries    []RequestRetry    `json:"request_retries,omitempty"`
 	FailedWindows     []int             `json:"failed_windows,omitempty"`
@@ -232,6 +258,7 @@ type Audit struct {
 	CacheHits         int               `json:"cache_hits,omitempty"`
 	HTTPAttempts      int               `json:"http_attempts_this_run,omitempty"`
 	ResolvedModels    []string          `json:"resolved_models,omitempty"`
+	SplitChecks       *SplitCheckAudit  `json:"split_checks,omitempty"`
 	Coverage          Coverage          `json:"coverage"`
 	Provenance        *Provenance       `json:"provenance,omitempty"`
 }
@@ -308,7 +335,7 @@ func mappingDigest(m Mapping) (string, error) {
 	for i, group := range m.Groups {
 		groups[i] = groupValue(group)
 	}
-	return digestValue(map[string]any{
+	value := map[string]any{
 		"version":            m.Version,
 		"source_fingerprint": m.SourceFingerprint,
 		"parameters": map[string]any{
@@ -321,7 +348,24 @@ func mappingDigest(m Mapping) (string, error) {
 			"schema_enforcement": m.Parameters.SchemaEnforcement,
 		},
 		"groups": groups,
-	})
+	}
+	// Older mappings have no checks; leaving the key out keeps their fingerprints valid.
+	if len(m.SplitChecks) > 0 {
+		checks := make([]any, len(m.SplitChecks))
+		for i, check := range m.SplitChecks {
+			checks[i] = map[string]any{"zh": stringsValue(check.ZH), "en": stringsValue(check.EN), "same": check.Same}
+		}
+		value["split_checks"] = checks
+	}
+	return digestValue(value)
+}
+
+func stringsValue(values []string) []any {
+	result := make([]any, len(values))
+	for i, value := range values {
+		result[i] = value
+	}
+	return result
 }
 
 func groupValue(g Group) map[string]any {

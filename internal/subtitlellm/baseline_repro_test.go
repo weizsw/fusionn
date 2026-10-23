@@ -70,6 +70,7 @@ func zhSequence(t *testing.T, ass string) []string {
 // the fix must emit each source part exactly once, in source order.
 func TestNToOneHeldSourceKeepsSinglePassOrder(t *testing.T) {
 	bundle, mapping, cfg, style := nToOneFixture(t)
+	mapping = confirmAllSplits(t, bundle, mapping, cfg)
 	out, err := Render(bundle, mapping, cfg, style, 1920, 1080)
 	if err != nil {
 		t.Fatal(err)

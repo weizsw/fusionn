@@ -106,21 +106,23 @@ func TestFallbackBehavior_LLM503FallbackToNativeASS(t *testing.T) {
 	}
 
 	// Parse dialogue events and deeply verify timing, order, and cue texts
+	// The failed window falls back to timing-based pairing for dialogue.
+	// Bracketed sound cues and captions have no reliable timing partner and
+	// stay one-sided.
 	events := parseASSEvents(t, assText)
-	if len(events) != 4 {
-		t.Fatalf("expected 4 dialogue events (2 EN + 2 ZH), got %d:\n%s", len(events), assText)
+	if len(events) != 3 {
+		t.Fatalf("expected 3 dialogue events (1 pair + 2 one-sided), got %d:\n%s", len(events), assText)
 	}
 
 	// Verify exact timing and text
 	expected := []struct {
 		start string
 		end   string
-		text  string
+		texts []string
 	}{
-		{start: "0:00:01.00", end: "0:00:03.00", text: "Hello"},
-		{start: "0:00:01.00", end: "0:00:03.00", text: "你好"},
-		{start: "0:00:04.00", end: "0:00:06.00", text: "[phone ringing]"},
-		{start: "0:00:04.00", end: "0:00:06.00", text: "【三天后】"},
+		{start: "0:00:01.00", end: "0:00:03.00", texts: []string{"你好", "Hello"}},
+		{start: "0:00:04.00", end: "0:00:06.00", texts: []string{"[phone ringing]"}},
+		{start: "0:00:04.00", end: "0:00:06.00", texts: []string{"【三天后】"}},
 	}
 
 	for i, exp := range expected {
@@ -128,8 +130,10 @@ func TestFallbackBehavior_LLM503FallbackToNativeASS(t *testing.T) {
 		if ev.start != exp.start || ev.end != exp.end {
 			t.Errorf("event [%d] timing mismatch: got %s->%s, want %s->%s", i, ev.start, ev.end, exp.start, exp.end)
 		}
-		if !strings.Contains(ev.text, exp.text) {
-			t.Errorf("event [%d] text mismatch: got %q, want %q", i, ev.text, exp.text)
+		for _, text := range exp.texts {
+			if !strings.Contains(ev.text, text) {
+				t.Errorf("event [%d] text mismatch: got %q, want %q", i, ev.text, text)
+			}
 		}
 	}
 
@@ -143,6 +147,11 @@ func TestFallbackBehavior_LLM503FallbackToNativeASS(t *testing.T) {
 	// Verify degraded metadata flag is recorded
 	if degraded, ok := pctx.Metadata["llm_degraded"].(bool); !ok || !degraded {
 		t.Errorf("expected llm_degraded metadata to be true, got %v", pctx.Metadata["llm_degraded"])
+	}
+	// The bracketed sound cue is not counted as dialogue.
+	wantPairing := subtitlellm.Pairing{ENPaired: 1, ENTotal: 1, ZHPaired: 1, ZHTotal: 1}
+	if pairing, ok := pctx.Metadata[MetadataLLMPairing].(subtitlellm.Pairing); !ok || pairing != wantPairing {
+		t.Errorf("llm_pairing metadata = %+v, want %+v", pctx.Metadata[MetadataLLMPairing], wantPairing)
 	}
 
 	// Verify audit evidence is persisted and traceable

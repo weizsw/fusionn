@@ -421,6 +421,51 @@ func TestReconcileLayerMismatchStillConflict(t *testing.T) {
 	}
 }
 
+// TestReconcileSameMembersLayerMismatchKeepsOwner verifies that two fully
+// informed windows returning exactly the same members agree on the pairing even
+// when they choose different layers: the owner window's group is accepted.
+func TestReconcileSameMembersLayerMismatchKeepsOwner(t *testing.T) {
+	coreMS := 10000
+
+	en := makeTestCues("en", []int{10, 11}, []int{10500, 11000}, []int{10800, 11500})
+	zh := makeTestCues("zh", []int{20, 21}, []int{10500, 11000}, []int{10800, 11500})
+	bundle := testBundle(t, en, zh)
+
+	batches := []batch{
+		{
+			Index:   0,
+			ENInput: []int{10, 11},
+			ZHInput: []int{20, 21},
+			Valid: []Group{
+				{ENIDs: []int{10, 11}, ZHIDs: []int{20, 21}, Layer: LayerTop, Origin: OriginModel, Kind: KindDialogue},
+			},
+		},
+		{
+			Index:   1,
+			ENInput: []int{10, 11},
+			ZHInput: []int{20, 21},
+			Valid: []Group{
+				{ENIDs: []int{10, 11}, ZHIDs: []int{20, 21}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+			},
+		},
+	}
+
+	accepted, audit := reconcile(bundle, batches, coreMS)
+
+	if len(audit.Conflicts) != 0 {
+		t.Fatalf("expected no conflicts, got %+v", audit.Conflicts)
+	}
+	var model []Group
+	for _, g := range accepted {
+		if g.Origin == OriginModel {
+			model = append(model, g)
+		}
+	}
+	if len(model) != 1 || model[0].Layer != LayerBottom || model[0].OwnerWindow != 1 {
+		t.Fatalf("expected owner window 1 group on bottom layer, got %+v", model)
+	}
+}
+
 // TestReconcileKindMetadataMismatchStillConflict verifies that conflicting kind
 // classifications between owner and truncated observation are not ignored.
 func TestReconcileKindMetadataMismatchStillConflict(t *testing.T) {
