@@ -388,19 +388,18 @@ func TestCounterexample_PriorDisplayTooShortNotRolledBack(t *testing.T) {
 	}
 
 	// Observable content and interval invariant:
+	// Under shared gapped English boundaries (Top fix), the Chinese plan follows
+	// the English counterpart windows cleanly without intermediate proportional cuts.
 	// Because ZH2 only had 400ms prior display, it was not chopped into an unreadable 50ms tail at 6000;
 	// instead it remained readable by being grouped into [6000..9000] with ZH3.
-	if len(events) != 3 {
-		t.Fatalf("expected exactly 3 dialogue events, got %d: %+v", len(events), events)
+	if len(events) != 2 {
+		t.Fatalf("expected exactly 2 dialogue events under shared gapped boundaries, got %d: %+v", len(events), events)
 	}
-	if events[0].start != 1000 || events[0].end != 3670 || !strings.Contains(events[0].text, "前段首句") {
+	if events[0].start != 1000 || events[0].end != 4000 || !strings.Contains(events[0].text, "前段首句") {
 		t.Fatalf("unexpected event[0]: [%d..%d] text=%q", events[0].start, events[0].end, events[0].text)
 	}
-	if events[1].start != 3670 || events[1].end != 4000 || !strings.Contains(events[1].text, "短句") {
+	if events[1].start != 6000 || events[1].end != 9000 || !strings.Contains(events[1].text, "短句") || !strings.Contains(events[1].text, "后部第三句") {
 		t.Fatalf("unexpected event[1]: [%d..%d] text=%q", events[1].start, events[1].end, events[1].text)
-	}
-	if events[2].start != 6000 || events[2].end != 9000 || !strings.Contains(events[2].text, "短句") || !strings.Contains(events[2].text, "后部第三句") {
-		t.Fatalf("unexpected event[2]: [%d..%d] text=%q", events[2].start, events[2].end, events[2].text)
 	}
 }
 
