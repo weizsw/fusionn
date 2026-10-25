@@ -153,6 +153,38 @@ func TestSnapBeyond500msNeedsCheck(t *testing.T) {
 	t.Fatalf("second Chinese cue missing: %+v", events)
 }
 
+// TestSnapComparesShownTimes is the 08:45 case: the switches are 501 ms apart,
+// 0.50 s as the file shows them, so the Chinese switches with the English
+// without an order check.
+func TestSnapComparesShownTimes(t *testing.T) {
+	noWidthMeasurer(t)
+	bundle := fixtureBundle(
+		[]Cue{
+			{ID: 1, Start: 520187, End: 522063, Display: "the U.S. Justice Department has sided", Plain: "the U.S. Justice Department has sided"},
+			{ID: 2, Start: 522064, End: 525233, Display: "with the fallen SEALs of Alpha Platoon and their case", Plain: "with the fallen SEALs\nof Alpha Platoon and their case"},
+			{ID: 3, Start: 525234, End: 526692, Display: "against Capstone Industries.", Plain: "against Capstone Industries."},
+		},
+		[]Cue{
+			{ID: 1, Start: 520103, End: 524732, Display: "美国司法部 支持阵亡的海豹突击队A排", Plain: "美国司法部\n支持阵亡的海豹突击队A排"},
+			{ID: 2, Start: 524733, End: 527318, Display: "对顶点工业的诉讼", Plain: "对顶点工业的诉讼"},
+		},
+	)
+	groups := []Group{{ENIDs: []int{1, 2, 3}, ZHIDs: []int{1, 2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}}
+	out, _, err := renderWithAudits(bundle, fixtureMapping(bundle, groups), fixtureConfig(), fixtureStyle(), 1920, 1080, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range parseDialogues(t, string(out)) {
+		if strings.Contains(e.text, "对顶点工业的诉讼") {
+			if e.start != 525230 {
+				t.Fatalf("Chinese switch at %d, want the English switch 525230:\n%s", e.start, out)
+			}
+			return
+		}
+	}
+	t.Fatalf("second Chinese cue missing:\n%s", out)
+}
+
 func splitCheckServer(t *testing.T, calls *int, status int) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

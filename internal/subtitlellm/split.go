@@ -224,6 +224,33 @@ func oneToNParts(enCue Cue, zs []Cue, options [][]string, words WordTimings, che
 	return nil, nil
 }
 
+// speakerLines returns the lines of a two-speaker Chinese cue without their
+// dashes when the cue holds one line per English cue, each English cue has
+// one speaker and fits one line, and the order check confirms the pairs.
+// Each line is then shown with its English cue, one speaker per event, so the
+// dash goes. It returns nil otherwise.
+func speakerLines(es []Cue, z Cue, cfg config.LLMConfig, checks *splitChecks) []string {
+	lines := sourceLines(z.Plain)
+	if len(lines) != len(es) {
+		return nil
+	}
+	english := make([]string, len(es))
+	for i, cue := range es {
+		if cue.MultiSpeaker || countedLength(cue.Display) > cfg.EnChars || !startsWithDash(lines[i]) {
+			return nil
+		}
+		english[i] = cue.Display
+		lines[i] = strings.TrimSpace(strings.TrimLeft(lines[i], speakerMarks))
+		if lines[i] == "" {
+			return nil
+		}
+	}
+	if !checks.confirmed(lines, english) {
+		return nil
+	}
+	return lines
+}
+
 // splitLongBlocks plans held text once across all of its existing slices.
 // Projecting both language plans onto each slice preserves source gaps and
 // overlaps, and lets a short translation stay unchanged across new cuts.
@@ -462,7 +489,7 @@ func nearestSwitch(cut int, switches []int) int {
 	best := -1
 	for _, at := range switches {
 		distance := absInt(at - cut)
-		if at != cut && distance <= snapToleranceMS && (best < 0 || distance < absInt(best-cut)) {
+		if at != cut && shownDistance(at, cut) <= snapToleranceMS && (best < 0 || distance < absInt(best-cut)) {
 			best = at
 		}
 	}
@@ -900,6 +927,12 @@ const (
 	snapCheckedToleranceMS = 1000
 )
 
+// shownDistance is the distance between two times as the subtitle file shows
+// them, in whole centiseconds, so a threshold matches what the viewer sees.
+func shownDistance(a, b int) int {
+	return absInt(roundCentiseconds(a) - roundCentiseconds(b))
+}
+
 // splitChineseSources restores source fragments inside the English outer
 // bounds. Invalid or unreadably short source cuts use proportional timing.
 // If any source would become invisible in an English gap, retain the hold.
@@ -965,7 +998,7 @@ func snapCuts(cuts []int, slices []block, cues []Cue, en map[int]Cue, checks *sp
 		if best < 0 || slices[best].start == cut {
 			continue
 		}
-		target, distance := slices[best].start, absInt(slices[best].start-cut)
+		target, distance := slices[best].start, shownDistance(slices[best].start, cut)
 		if distance > snapCheckedToleranceMS || (i > 0 && target <= snapped[i-1]) || (i+1 < len(cuts) && target >= cuts[i+1]) {
 			continue
 		}

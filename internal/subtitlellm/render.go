@@ -106,6 +106,7 @@ func renderWithAudits(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, s
 		frameHeight:  height,
 	}
 	blocks = applySpatialPolicies(blocks, mapping, en, zh, geometry, effective, checks)
+	yieldToChineseSingles(blocks, mapping)
 	sort.SliceStable(blocks, func(i, j int) bool {
 		a, b := blocks[i], blocks[j]
 		if a.start != b.start {
@@ -342,6 +343,64 @@ func indexTrack(cues []Cue) (map[int]Cue, error) {
 
 // verifySourceCoverage ensures the renderer never drops a source cue. Held
 // text repeats intended, but every source ID must occur in at least one event.
+const (
+	// singleOverlapMS is the longest overlap between a Chinese-only line and a
+	// paired line that counts as two timings of one pause rather than speech
+	// at the same time.
+	singleOverlapMS = 500
+	// minYieldedPairMS is the shortest a paired line may become when it
+	// yields to a Chinese-only line.
+	minYieldedPairMS = 1000
+)
+
+// yieldToChineseSingles removes short overlaps between a Chinese-only
+// dialogue line and the paired line next to it. The pair shows on English
+// time while the single keeps its Chinese time, so two timings of one pause
+// can overlap and the player stacks three lines. The pair yields, which
+// restores the Chinese track's own order, unless it would drop below
+// minYieldedPairMS; then the single is cut.
+func yieldToChineseSingles(blocks []block, mapping Mapping) {
+	single := func(b block) bool {
+		return len(b.enIDs) == 0 && len(b.zhIDs) > 0 && !b.isLyric && b.position == nil &&
+			b.group >= 0 && b.group < len(mapping.Groups) && mapping.Groups[b.group].Kind != KindOnScreenText
+	}
+	paired := func(b block) bool {
+		return len(b.enIDs) > 0 && len(b.zhIDs) > 0 && !b.isLyric && b.position == nil
+	}
+	for i := range blocks {
+		if !single(blocks[i]) {
+			continue
+		}
+		s := &blocks[i]
+		for j := range blocks {
+			if j == i || !paired(blocks[j]) || blocks[j].top != s.top {
+				continue
+			}
+			p := &blocks[j]
+			// Measured on the centisecond times the subtitle file shows.
+			overlap := min(roundCentiseconds(s.end), roundCentiseconds(p.end)) -
+				max(roundCentiseconds(s.start), roundCentiseconds(p.start))
+			if overlap <= 0 || overlap > singleOverlapMS {
+				continue
+			}
+			switch {
+			case p.start < s.start && p.end < s.end:
+				if s.start-p.start >= minYieldedPairMS {
+					p.end = s.start
+				} else {
+					s.start = p.end
+				}
+			case p.start > s.start && p.end > s.end:
+				if p.end-s.end >= minYieldedPairMS {
+					p.start = s.end
+				} else {
+					s.end = p.start
+				}
+			}
+		}
+	}
+}
+
 func verifySourceCoverage(blocks []block, en, zh map[int]Cue) error {
 	enSeen := make(map[int]bool, len(en))
 	zhSeen := make(map[int]bool, len(zh))
@@ -654,6 +713,23 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig, word
 		if (len(es) == 1 || len(zs) == 1) && enJoinable && zhJoinable {
 			result = append(result, makeBlock(es[0].Start, maxEnd(es), es, zs, strategyShortJoin))
 			continue
+		}
+		// A two-speaker Chinese cue that does not fit one line with the joined
+		// English follows the English cues, one speaker line per cue.
+		if len(zs) == 1 && zs[0].MultiSpeaker && len(es) > 1 {
+			if lines := speakerLines(es, zs[0], cfg, checks); lines != nil {
+				for i, cue := range es {
+					end := cue.End
+					if i+1 < len(es) && es[i+1].Start-end > 0 && es[i+1].Start-end <= cfg.FillGapMS {
+						end = es[i+1].Start
+					}
+					b := makeBlock(cue.Start, end, []Cue{cue}, zs, strategyTimedSplit)
+					// A speaker line is one source line: it keeps its length.
+					b.zhText, b.zhSeparatedRole, b.zhFlattened = &lines[i], true, true
+					result = append(result, b)
+				}
+				continue
+			}
 		}
 		if len(zs) == 1 && zs[0].MultiSpeaker && enJoinable {
 			result = append(result, makeBlock(es[0].Start, maxEnd(es), es, zs, strategyShortJoin))
