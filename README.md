@@ -90,7 +90,7 @@ The merge runs on a bounded worker queue, so a slow LLM request never blocks the
 Compose starts three services: `fusionn`, `word-align` (optional CPU alignment) and `redis`. A commented `fusionn-subs` service shows how to add translation.
 
 > [!NOTE]
-> The first `word-align` request downloads the alignment model into the Hugging Face volume. The model worker exits after 300 seconds of inactivity to release memory and reloads from cache on the next request. Set `ALIGN_IDLE_SECONDS` on the service to change this.
+> The first `word-align` request downloads the alignment model into the Hugging Face volume. The model worker exits after 300 seconds of inactivity to release memory and reloads from cache on the next request. Set `ALIGN_IDLE_SECONDS` on the service to change this. The service writes one structured `event=request` log line per alignment request (health checks stay silent at INFO); set `ALIGN_LOG_LEVEL` (default `INFO`, for example `DEBUG`) to change what it records.
 
 ### Local development
 
