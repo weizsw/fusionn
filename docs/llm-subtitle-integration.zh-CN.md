@@ -138,6 +138,37 @@ docker compose up -d --build
 
 Compose 为主程序设置 `FUSIONN_SUBTITLE_LLM_WORD_ALIGN_URL=http://word-align:8767`。独立运行时可设置 `subtitle.llm.word_align_url`；空字符串使用比例计时。改地址后需重启 fusionn。对齐服务只接收短 WAV 和原英文，不需要媒体目录或宿主机路径映射。
 
+### 对齐服务日志
+
+服务在每次对齐请求结束时写一行摘要到标准错误。行首是 UTC 时间、级别和进程号，后面是 `event=` 开头、字段用 `key=value` 表示的固定键值对，方便采集和检索。
+
+用 `docker compose logs -f word-align` 查看。典型输出：
+
+```text
+2024-01-01T12:00:00.123Z INFO pid=1 event=service_started port=8767 model=Qwen/Qwen3-ForcedAligner-0.6B-hf threads=4 idle_seconds=300 log_level=INFO
+2024-01-01T12:00:01.001Z INFO pid=1 event=worker_started
+2024-01-01T12:00:14.802Z INFO pid=1 event=request method=POST route=align status=200 request_id=3f2a1c9e4b7d4a6f8c0e5b1d2a7f9c30 duration_ms=13801.4 outcome=ok audio_bytes=812340 text_chars=214 word_count=41 queue_ms=0.1 worker_ms=13800.9 cold_start=true
+```
+
+- 每次对齐请求只有一条结束摘要，包含 `method`、`route`、`status`、`request_id`、`duration_ms`、`outcome`，失败时还有 `reason`。成功请求另外记录 `audio_bytes`、`text_chars` 和 `word_count`。进入对齐流程的请求还会记录 `queue_ms`（在 `Aligner.align` 内从开始等锁算起，不含读取和解析 HTTP body 的时间）、`worker_ms`（取得锁之后的执行时间，包含首次启动工作进程和加载模型）和 `cold_start`（取锁时 worker 还没有成功完成过对齐；首次输入无效或加载后推理失败也会是 `true`，所以它不代表本次一定发生了模型加载）。
+- 客户端可传 `X-Request-ID` 请求头。值只允许 `A-Z a-z 0-9 . _ -`、长度 1 到 64，合法就沿用，否则服务自己生成。响应头 `X-Request-ID` 始终返回实际使用的值，包括 404、413、501 等错误响应。
+- 成功且词数大于 0 记 INFO；结果为空或客户端输入错误记 WARNING；工作进程或内部错误记 ERROR。
+- 客户端提前断开连接时记 `outcome=client_disconnected`，级别 WARNING，不改变已发送的响应。
+- `GET /health` 只在 DEBUG 级别写请求日志，默认级别下不产生输出。
+- 机器可读的失败原因：`invalid_input`、`missing_field`、`invalid_utf8`、`bad_content_type`、`unsupported_language`、`request_too_large`、`not_found`、`worker_crashed`、`internal_error`、`not_implemented` 等；`outcome` 取值为 `ok`、`empty_result`、`client_error`、`worker_error`、`client_disconnected`、`protocol_error`。
+- 生命周期事件单独记录：`service_started`、`worker_started`、`model_load_started`、`model_load_completed`、`worker_unloaded`（带 `reason=idle|shutdown|broken` 和实际空闲秒数 `idle_seconds`）、`service_stopping`。工作进程第一次请求就崩溃时 `idle_seconds=0`。
+- 请求摘要不记录音频内容、字幕正文或原始请求行；内部异常会保留诊断堆栈。
+
+默认级别 INFO。用 `ALIGN_LOG_LEVEL` 覆盖，取值为标准 Python 级别名，无法识别时回退 INFO。`transformers`、`huggingface_hub`、`httpx`、`httpcore`、`filelock`、`urllib3`、`torch` 的 INFO 日志统一压到 WARNING，下载进度条默认关闭。
+
+```yaml
+services:
+  word-align:
+    environment:
+      ALIGN_LOG_LEVEL: DEBUG
+      ALIGN_IDLE_SECONDS: "300"
+```
+
 Go 优先选择带英文语言标签的音轨，否则使用第一个音轨；有中央声道时提取中央声道，再转成单声道 16kHz。只对适合拆分的超限英文源片段请求词时间，单条原片段最多 30 秒。请求和音频提取共用每条 60 秒的期限。服务不可用、输出文字不匹配、切点异常或阅读时间不足时，使用比例计时；比例也不合格时保持原事件。对齐请求失败后保留已完成的时间结果，剩余条目回退，不使整集失败；任务取消仍会中止处理。词级时间是模型估计，不能保证每条都比比例自然。
 
 配置中的 `en_chars`、`zh_chars` 同时控制短句合并和长句候选。原字幕本来有两行不会单独触发拆分；首先展平，再比较当前配置阈值。CLI 额外输出 `word-timings.json`，用于核对这次实际采用的词时间。正常服务流程目前不会持久化复用词时间；LLM 配对缓存与词级时间缓存是不同的环节，后者仍列在 [TODO](../TODO.md)。
