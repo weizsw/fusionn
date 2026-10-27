@@ -216,7 +216,7 @@ func validateImportedGroups(mapping Mapping, bundle Bundle) error {
 		if group.Layer != LayerTop && group.Layer != LayerBottom {
 			return fmt.Errorf("group %d has invalid layer %q", index, group.Layer)
 		}
-		if group.Origin != OriginModel && group.Origin != OriginRestored && group.Origin != OriginTiming {
+		if group.Origin != OriginModel && group.Origin != OriginRestored && group.Origin != OriginTiming && group.Origin != OriginTranslation {
 			return fmt.Errorf("group %d has invalid origin %q", index, group.Origin)
 		}
 		if len(group.ENIDs) == 0 && len(group.ZHIDs) == 0 {
@@ -230,6 +230,14 @@ func validateImportedGroups(mapping Mapping, bundle Bundle) error {
 		}
 		if reason := validateRowValues(group, tracks, MaxDistanceMS); reason != "" {
 			return fmt.Errorf("group %d: %s", index, reason)
+		}
+		if group.Origin == OriginTranslation {
+			if len(group.ENIDs) != 1 || len(group.ZHIDs) != 1 || group.ENIDs[0] != group.ZHIDs[0] {
+				return fmt.Errorf("translation group %d must pair the same cue ID 1:1", index)
+			}
+			if !sameTranslationTiming(tracks["en"][group.ENIDs[0]], tracks["zh"][group.ZHIDs[0]]) {
+				return fmt.Errorf("translation group %d timing differs", index)
+			}
 		}
 		for _, lang := range []string{"en", "zh"} {
 			for _, id := range rowIDs(group, lang) {

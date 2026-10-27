@@ -30,6 +30,8 @@ const (
 	// OriginTiming marks restored cues paired by time overlap after the model
 	// did not place them.
 	OriginTiming = "timing"
+	// OriginTranslation marks direct pairs from a source and its translation.
+	OriginTranslation = "translation"
 )
 
 // Mapping group kinds.
