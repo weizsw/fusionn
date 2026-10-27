@@ -11,7 +11,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/fusionn/internal/client/bazarr"
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/handler"
 	"github.com/fusionn/internal/queue"
@@ -41,6 +40,12 @@ func main() {
 	}
 	defer cfgMgr.Stop()
 	cfg := cfgMgr.Get()
+	cfgMgr.OnChange(func(old, updated *config.Config) {
+		if old.Server != updated.Server || old.Redis != updated.Redis || old.Queue != updated.Queue ||
+			old.Subtitle.Enabled != updated.Subtitle.Enabled {
+			logger.Warn("Server, Redis, queue and subtitle.enabled changes require a restart")
+		}
+	})
 
 	// Initialize Redis client (for translation queue)
 	var redisQueueClient *queue.RedisClient
@@ -51,13 +56,6 @@ func main() {
 			logger.Warnf("⚠️  Redis connection failed: %v (translation queue disabled)", err)
 			redisQueueClient = nil
 		}
-	}
-
-	// Initialize Bazarr client (for subtitle search)
-	var bazarrClient *bazarr.Client
-	if cfg.Bazarr.Enabled {
-		bazarrClient = bazarr.NewClient(cfg.Bazarr.URL, cfg.Bazarr.APIKey, cfg.Bazarr.SearchTimeout)
-		logger.Infof("✅ Bazarr integration enabled: %s", cfg.Bazarr.URL)
 	}
 
 	// Initialize Merge Queue and Subtitle Service (if enabled)
@@ -75,7 +73,7 @@ func main() {
 		)
 
 		// Create subtitle service
-		subtitleService, err = subtitle.NewService(cfg, redisQueueClient, mergeQueue, bazarrClient)
+		subtitleService, err = subtitle.NewReloadableService(cfgMgr, redisQueueClient, mergeQueue)
 		if err != nil {
 			logger.Fatalf("❌ Failed to initialize subtitle service: %v", err)
 		}
