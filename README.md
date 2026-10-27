@@ -287,6 +287,8 @@ The queue key must match the one the translation service reads. Jobs use the fus
 
 The translation service polls Redis, translates, and posts back to `/api/v1/callback/translation` with `job_id`, `video_path`, `eng_subtitle_path` and `chs_subtitle_path`. fusionn then enqueues the merge.
 
+With `subtitle.engine: llm`, translation callbacks bypass LLM matching and pair cues by their order. The English source and Chinese translation must have equal cue counts and identical timestamps for each pair. If either check fails, the merge stops with an error.
+
 ### Queue and notifications
 
 ```yaml

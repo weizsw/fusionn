@@ -156,7 +156,11 @@ func (p *MergerProcessor) processDuoSubs(ctx context.Context, pctx *ProcessingCo
 // comes from model output.
 func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContext) error {
 	log := logger.Indent()
-	log.Info("Merging English + Chinese subtitles with the native LLM engine")
+	if pctx.ChineseSubSource == ChineseSourceTranslated {
+		log.Info("Merging translated subtitles with direct 1:1 mapping (no LLM matching)")
+	} else {
+		log.Info("Merging English + Chinese subtitles with the native LLM engine")
+	}
 
 	if err := ctx.Err(); err != nil {
 		return err
@@ -196,7 +200,17 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 	// precomputed MappingPath is verified against this text, so an imported
 	// mapping for a different (for example unconverted) track is rejected
 	// rather than silently mixed with converted Chinese text.
-	mapping, audit, alignErr := p.llmEngine.Align(ctx, bundle, p.llmConfig)
+	var mapping subtitlellm.Mapping
+	var audit subtitlellm.Audit
+	var alignErr error
+	if pctx.ChineseSubSource == ChineseSourceTranslated {
+		mapping, audit, alignErr = subtitlellm.AlignTranslated(bundle)
+		if alignErr != nil {
+			return fmt.Errorf("translated subtitle mapping failed: %w", alignErr)
+		}
+	} else {
+		mapping, audit, alignErr = p.llmEngine.Align(ctx, bundle, p.llmConfig)
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
