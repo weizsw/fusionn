@@ -132,7 +132,9 @@ The output directory must not exist yet. Add `--video` with absolute `--en-strea
 Configuration is loaded from `config/config.yaml`, or from `CONFIG_PATH`. See [config/config.example.yaml](config/config.example.yaml) for every key and its default.
 
 > [!IMPORTANT]
-> The config manager detects file changes, but subtitle services and queue workers capture their engine, connection and style settings at startup. **Restart fusionn after changing those settings.**
+> The configuration manager checks the file every 10 seconds. After it loads a valid change, new analysis and merge jobs use the updated subtitle, Bazarr and Apprise configuration. Jobs already waiting in the merge queue use the configuration available when a worker starts them. A running pipeline keeps its original configuration until it finishes. Analysis and merge take separate configuration snapshots. If pipeline construction fails, the service keeps the previous pipelines and logs the error.
+>
+> Restart fusionn after changing `server`, `redis`, `queue` or `subtitle.enabled`. These values control resources created at startup. In particular, changing `subtitle.enabled` does not enable or disable processing until a restart.
 
 ### Choosing an engine
 

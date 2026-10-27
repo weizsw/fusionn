@@ -3,6 +3,7 @@ package subtitle
 import (
 	"context"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 
@@ -15,12 +16,18 @@ import (
 
 // Service orchestrates subtitle processing using the pipeline architecture.
 type Service struct {
-	analyzePipeline *Pipeline // Analyze + Extract
-	mergePipeline   *Pipeline // Convert + Merge + Style + Output + Notify + Cleanup
+	mu           sync.Mutex
+	pipelines    *servicePipelines
+	configSource func() *config.Config
+	lastConfig   *config.Config
+	mergeQueue   *queue.MergeQueue
+	redisClient  QueueClient
+}
+
+type servicePipelines struct {
 	config          *config.Config
-	mergeQueue      *queue.MergeQueue
-	redisClient     QueueClient
-	appriseClient   *notification.AppriseClient
+	analyzePipeline *Pipeline
+	mergePipeline   *Pipeline
 }
 
 // NewService creates a new subtitle service with all processors configured.
@@ -102,12 +109,14 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 	}
 
 	return &Service{
-		analyzePipeline: analyzePipeline,
-		mergePipeline:   mergePipeline,
-		config:          cfg,
-		mergeQueue:      mergeQueue,
-		redisClient:     redisClient,
-		appriseClient:   appriseClient,
+		pipelines: &servicePipelines{
+			config:          cfg,
+			analyzePipeline: analyzePipeline,
+			mergePipeline:   mergePipeline,
+		},
+		lastConfig:  cfg,
+		mergeQueue:  mergeQueue,
+		redisClient: redisClient,
 	}, nil
 }
 
@@ -115,6 +124,7 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 // Phase 1: Analyze + Extract (fast, synchronous)
 // Phase 2: Merge (slow, enqueued to worker)
 func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) error {
+	pipelines := s.currentPipelines()
 	jobID := uuid.New().String()
 
 	pctx := &ProcessingContext{
@@ -135,7 +145,7 @@ func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) error {
 
 	logger.Infof("📝 Analyzing subtitles for %s (job: %s)", params.Title, jobID)
 
-	if err := s.analyzePipeline.Execute(ctx, pctx); err != nil {
+	if err := pipelines.analyzePipeline.Execute(ctx, pctx); err != nil {
 		logger.Errorf("Analyze pipeline failed (job: %s): %v", jobID, err)
 		return err
 	}
@@ -190,6 +200,7 @@ func (s *Service) ProcessWithSubtitles(ctx context.Context, videoPath, engSubPat
 
 // ProcessMergeJob processes a merge job from the queue (called by worker).
 func (s *Service) ProcessMergeJob(ctx context.Context, job *queue.MergeJob) error {
+	pipelines := s.currentPipelines()
 	// Create processing context
 	pctx := &ProcessingContext{
 		VideoPath:        job.VideoPath,
@@ -207,7 +218,7 @@ func (s *Service) ProcessMergeJob(ctx context.Context, job *queue.MergeJob) erro
 	logger.Infof("🔧 Processing merge job: %s (%s)", job.JobID, job.MediaTitle)
 
 	// Execute merge pipeline
-	if err := s.mergePipeline.Execute(ctx, pctx); err != nil {
+	if err := pipelines.mergePipeline.Execute(ctx, pctx); err != nil {
 		logger.Errorf("Merge pipeline failed (job: %s): %v", job.JobID, err)
 		return err
 	}
@@ -218,12 +229,12 @@ func (s *Service) ProcessMergeJob(ctx context.Context, job *queue.MergeJob) erro
 
 // GetAnalyzePipeline returns the analyze pipeline (for testing).
 func (s *Service) GetAnalyzePipeline() *Pipeline {
-	return s.analyzePipeline
+	return s.currentPipelines().analyzePipeline
 }
 
 // GetMergePipeline returns the merge pipeline (for testing).
 func (s *Service) GetMergePipeline() *Pipeline {
-	return s.mergePipeline
+	return s.currentPipelines().mergePipeline
 }
 
 // effectiveSubtitleEngine resolves the engine for directly constructed configs.
