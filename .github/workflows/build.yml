@@ -116,6 +116,7 @@ jobs:
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Build and push
+        id: image
         uses: docker/build-push-action@v5
         with:
           context: services/word-align
@@ -125,3 +126,19 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=word-align
           cache-to: type=gha,mode=max,scope=word-align
+
+      - name: Smoke test
+        env:
+          WORD_ALIGN_IMAGE: ghcr.io/${{ github.repository }}-word-align@${{ steps.image.outputs.digest }}
+        run: |
+          container_id=$(docker run -d "$WORD_ALIGN_IMAGE")
+          trap 'docker logs "$container_id"; docker rm -f "$container_id"' EXIT
+          for _ in $(seq 30); do
+            if docker exec "$container_id" python -c "from urllib.request import urlopen; urlopen('http://127.0.0.1:8767/health', timeout=2)" 2>/dev/null; then
+              echo "health check OK"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "health check failed after 30 attempts"
+          exit 1
