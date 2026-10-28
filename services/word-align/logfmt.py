@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Unified single-line log format for the word-align service.
 
-Vendored from fusionn-muse scripts/logfmt.py @ dec5488
-(sha256 839ce7019794a08698447b2211cba2dd4d8f2d59b0dad270b6f6144bf9a2e2b1); only the SERVICE constant and the first docstring line differ.
+Vendored from fusionn-muse scripts/logfmt.py @ 5845dba
+(sha256 2468a1431fb1a99e9b871fb7405a7fb56855a8cef05e3012f5b5de65a358aeac); only the SERVICE constant and the first docstring line differ.
 
 
 Timestamp, field order, quoting and level names are shared with the Go services in
@@ -386,7 +386,6 @@ def format_line(level, event, msg, fields=None, component=None, service=None, mo
     parts = [
         format_timestamp(moment),
         _LEVEL_NAMES.get(level, "INFO"),
-        "service=" + format_value(service or _state["service"]),
         "component=" + format_value(component or _state["component"]),
         "event=" + format_value(event),
     ]

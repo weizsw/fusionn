@@ -336,10 +336,10 @@ Unknown or malformed values fail at startup rather than at first use.
 Every process writes one event per line to the standard stream:
 
 ```text
-2026-07-01T14:20:03.456+08:00 WARN service=fusionn component=worker event=job_failed job_id=abc stage=analyze error="video file not found" msg="Job failed"
+2026-07-01T14:20:03.456+08:00 WARN component=worker event=job_failed job_id=abc stage=analyze error="video file not found" msg="Job failed"
 ```
 
-Timestamps are fixed UTC+8 with milliseconds. The fixed field order is `service component event`, then the correlation fields (`job_id submission_id attempt_id request_id parent_job_id stage tool stream`) and the remaining fields sorted by name; `msg` is always last. Values with spaces, quotes, equals signs or control characters are double-quoted with backslash escapes. Credentials (API keys, tokens, passwords, URL userinfo, `Authorization` headers) are masked at every level; content excerpts and stack traces appear only as bounded fields (`preview` at DEBUG, capped at 512 characters; `stack`, capped at 4096).
+Timestamps are fixed UTC+8 with milliseconds. The fixed field order is `component event`, then the correlation fields (`job_id submission_id attempt_id request_id parent_job_id stage tool stream`) and the remaining fields sorted by name; `msg` is always last. Lines carry no `service` field: the application or container identity comes from the collection entry. Values with spaces, quotes, equals signs or control characters are double-quoted with backslash escapes. Credentials (API keys, tokens, passwords, URL userinfo, `Authorization` headers) are masked at every level; content excerpts and stack traces appear only as bounded fields (`preview` at DEBUG, capped at 512 characters; `stack`, capped at 4096).
 
 View the container logs with `docker compose logs -f fusionn`; the compose file caps them at 20 MiB per file with six files per container.
 

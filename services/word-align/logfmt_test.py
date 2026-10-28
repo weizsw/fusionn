@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Tests for the shared logfmt renderer.
 
-Vendored from fusionn-muse scripts/test_logfmt.py @ dec5488
-(sha256 73458b1d9cee225d070d3c015b956b0682b8831b349b197d2fe87814acffc36b); only the service name differs.
+Vendored from fusionn-muse scripts/test_logfmt.py @ 5845dba
+(sha256 7fbe3a6ef53d35a5466b61913f7ba2ab8c14d8c2aa957f81f0ac204c582f2b70); only the service name differs.
 """
 
 import datetime
@@ -101,7 +101,7 @@ class GoldenVectorTest(unittest.TestCase):
         )
         self.assertEqual(
             line,
-            "2026-07-01T14:20:03.456+08:00 WARN service=word-align component=processor "
+            "2026-07-01T14:20:03.456+08:00 WARN component=processor "
             "event=translation_retry job_id=abc submission_id=sub-1 attempt_id=42 "
             "request_id=req-9 stage=translating tool=llm-subtrans stream=stderr "
             'error="provider timeout" note="a=b" retry=1 retry_after_ms=2000 '
@@ -127,8 +127,9 @@ class GoldenVectorTest(unittest.TestCase):
 
     def test_every_line_carries_the_required_fields(self):
         line = fixed_line(level=logging.INFO, component="queue", event="job_started", msg="Job started")
-        for required in ("service=word-align", "component=queue", "event=job_started", "msg="):
+        for required in ("component=queue", "event=job_started", "msg="):
             self.assertIn(required, line)
+        self.assertNotIn("service=", line, "the service name is no longer rendered")
 
     def test_timestamp_is_fixed_utc8_regardless_of_process_tz(self):
         with mock.patch.dict(os.environ, {"TZ": "America/New_York"}):
@@ -338,7 +339,7 @@ class SafetyTest(unittest.TestCase):
                 "ok_name": 4,
             },
         )
-        self.assertIn("service=word-align", line)
+        self.assertNotIn("service=", line, "the reserved field cannot be injected")
         self.assertIn("component=component", line)
         self.assertIn("event=real_event", line)
         self.assertIn('msg="real message"', line)
@@ -436,14 +437,14 @@ class ConfigureTest(unittest.TestCase):
             logger.info("translation_started", "Translation started")
         output = stream.getvalue()
         self.assertNotIn("Hidden detail", output)
-        self.assertIn("INFO service=word-align component=llm-subtrans event=translation_started", output)
+        self.assertIn("INFO component=llm-subtrans event=translation_started", output)
 
     def test_debug_flag_reaches_selected_fields(self):
         stream = io.StringIO()
         with mock.patch.dict(os.environ, {"LOG_LEVEL": "DEBUG"}, clear=True):
             logger = logfmt.configure(service="word-align", component="llm-subtrans", stream=stream)
             logger.debug("tool_started", "Tool started", tool="llm-subtrans")
-        self.assertIn("DEBUG service=word-align component=llm-subtrans event=tool_started tool=llm-subtrans", stream.getvalue())
+        self.assertIn("DEBUG component=llm-subtrans event=tool_started tool=llm-subtrans", stream.getvalue())
 
     def test_repeated_configure_does_not_duplicate_records(self):
         stream = io.StringIO()
@@ -470,7 +471,7 @@ class ConfigureTest(unittest.TestCase):
             logfmt.configure(service="host-asr", component="host-asr", stream=stream)
             logging.getLogger("uvicorn.error").warning("Started server process [4321]")
         output = stream.getvalue()
-        self.assertIn("WARN service=host-asr component=host-asr event=server_started", output)
+        self.assertIn("WARN component=host-asr event=server_started", output)
         self.assertIn("logger=uvicorn.error", output)
         self.assertIn("pid=4321", output)
         self.assertIn('msg="Server process started"', output)
