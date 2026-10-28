@@ -7,7 +7,8 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir --upgrade pip==26.2 setuptools==83.0.0
-COPY server.py ./
+COPY server.py logfmt.py ./
+RUN python -c "import server"
 EXPOSE 8767
 HEALTHCHECK --interval=15s --timeout=3s CMD ["python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8767/health', timeout=2)"]
 CMD ["python", "server.py"]
