@@ -38,7 +38,7 @@ The service writes one unified log line per event to stderr (stdout stays
 empty); the format is shared with `fusionn` and `word-align`:
 
 ```text
-2026-07-01T14:20:03.456+08:00 INFO service=duosubs component=service event=request_completed request_id=merge-1 duration_ms=42.0 method=POST route="/merge" status=200 msg="Request completed"
+2026-07-01T14:20:03.456+08:00 INFO component=service event=request_completed request_id=merge-1 duration_ms=42.0 method=POST route="/merge" status=200 msg="Request completed"
 ```
 
 `merge_started`, `merge_completed` and `merge_failed` carry `request_id`,
