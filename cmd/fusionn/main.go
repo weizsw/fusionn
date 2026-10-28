@@ -3,13 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/handler"
@@ -20,12 +23,21 @@ import (
 )
 
 func main() {
-	// Initialize logger
+	os.Exit(run())
+}
+
+func run() int {
 	isDev := os.Getenv("ENV") != "production"
-	logger.Init(isDev)
+	logger.Configure(logger.Config{})
 	defer logger.Sync()
 
-	version.PrintBanner(nil)
+	// The banner is the one deliberate exception to the single-line rule: it
+	// prints once per startup, after the logger is configured, and shows the
+	// level actually in effect.
+	version.PrintBanner(nil, logger.Log.Level().CapitalString())
+
+	log := logger.Component("main")
+	log.Info(context.Background(), "service_started", "Service started", zap.String("version", version.Version))
 
 	// Load configuration
 	configPath := os.Getenv("CONFIG_PATH")
@@ -33,17 +45,18 @@ func main() {
 		configPath = "config/config.yaml"
 	}
 
-	logger.Infof("📁 Loading config: %s", configPath)
+	log.Info(context.Background(), "config_loading", "Loading configuration", zap.String("path", configPath))
 	cfgMgr, err := config.NewManager(configPath)
 	if err != nil {
-		logger.Fatalf("❌ Config error: %v", err)
+		log.Error(context.Background(), "service_failed", "Config error", zap.String("stage", "config"), zap.Error(err))
+		return 1
 	}
 	defer cfgMgr.Stop()
 	cfg := cfgMgr.Get()
 	cfgMgr.OnChange(func(old, updated *config.Config) {
 		if old.Server != updated.Server || old.Redis != updated.Redis || old.Queue != updated.Queue ||
 			old.Subtitle.Enabled != updated.Subtitle.Enabled {
-			logger.Warn("Server, Redis, queue and subtitle.enabled changes require a restart")
+			log.Warn(context.Background(), "config_restart_required", "Configuration change requires a restart")
 		}
 	})
 
@@ -53,7 +66,7 @@ func main() {
 		var err error
 		redisQueueClient, err = queue.NewRedisClient(cfg.Redis)
 		if err != nil {
-			logger.Warnf("⚠️  Redis connection failed: %v (translation queue disabled)", err)
+			log.Warn(context.Background(), "redis_unavailable", "Redis connection failed, translation queue disabled", zap.Error(err))
 			redisQueueClient = nil
 		}
 	}
@@ -75,7 +88,8 @@ func main() {
 		// Create subtitle service
 		subtitleService, err = subtitle.NewReloadableService(cfgMgr, redisQueueClient, mergeQueue)
 		if err != nil {
-			logger.Fatalf("❌ Failed to initialize subtitle service: %v", err)
+			log.Error(context.Background(), "service_failed", "Failed to initialize subtitle service", zap.String("stage", "init"), zap.Error(err))
+			return 1
 		}
 
 		// Wire the queue handler now that the service exists
@@ -84,8 +98,8 @@ func main() {
 		// Start queue workers
 		mergeQueue.Start()
 
-		logger.Infof("✅ Subtitle service initialized (queue: %d worker(s), %d max pending)",
-			cfg.Queue.Workers, cfg.Queue.QueueSize)
+		log.Info(context.Background(), "service_ready", "Subtitle service initialized",
+			zap.Int("workers", cfg.Queue.Workers), zap.Int("queue_size", cfg.Queue.QueueSize))
 	}
 
 	// Initialize HTTP server
@@ -93,8 +107,14 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
+	// Gin must not print its own route/debug/panic output: every line is
+	// rendered by the unified logger (routes_registered and request_panic
+	// below).
+	gin.DefaultWriter = io.Discard
+	gin.DefaultErrorWriter = io.Discard
+
 	router := gin.New()
-	router.Use(gin.Recovery())
+	router.Use(recoveryLogger())
 	router.Use(requestLogger())
 
 	// Register routes
@@ -110,42 +130,28 @@ func main() {
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatalf("❌ Server error: %v", err)
+			log.Error(context.Background(), "service_failed", "Server error", zap.String("stage", "listen"), zap.Error(err))
+			os.Exit(1) //nolint:gocritic // best-effort exit from the listener goroutine
 		}
 	}()
 
-	// Print startup info
-	logger.Info("")
-	logger.Infof("🌐 API server: http://localhost:%d", cfg.Server.Port)
-	logger.Infof("   GET  /health                       - Health check")
-	logger.Infof("   GET  /api/v1/status                - Application status")
-	if cfg.Subtitle.Enabled {
-		logger.Infof("   POST /api/v1/webhook/sonarr        - Sonarr webhook")
-		logger.Infof("   POST /api/v1/webhook/radarr        - Radarr webhook")
-		logger.Infof("   POST /api/v1/callback/translation  - Translation callback")
-	}
-	logger.Info("")
-	logger.Info("────────────────────────────────────────────────────────────────")
-	if cfg.Subtitle.Enabled {
-		logger.Info("✅  Ready! Subtitle automation enabled")
-	} else {
-		logger.Info("✅  Ready! Application is running...")
-	}
-	logger.Info("────────────────────────────────────────────────────────────────")
+	log.Info(context.Background(), "server_listening", "HTTP server listening",
+		zap.Int("port", cfg.Server.Port), zap.Bool("subtitle_enabled", cfg.Subtitle.Enabled))
+	log.Debug(context.Background(), "routes_registered", "Routes registered",
+		logger.Preview("/health /api/v1/status /api/v1/webhook/sonarr /api/v1/webhook/radarr /api/v1/callback/translation"))
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Info("")
-	logger.Info("🛑 Shutting down...")
+	log.Info(context.Background(), "shutdown_started", "Shutting down")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		logger.Errorf("❌ Shutdown error: %v", err)
+		log.Error(context.Background(), "shutdown_failed", "Shutdown error", zap.Error(err))
 	}
 
 	// Cleanup resources
@@ -155,11 +161,12 @@ func main() {
 
 	if redisQueueClient != nil {
 		if err := redisQueueClient.Close(); err != nil {
-			logger.Errorf("❌ Redis close error: %v", err)
+			log.Error(context.Background(), "redis_close_failed", "Redis close error", zap.Error(err))
 		}
 	}
 
-	logger.Info("👋 Goodbye!")
+	log.Info(context.Background(), "service_stopped", "Service stopped")
+	return 0
 }
 
 func registerRoutes(router *gin.Engine, cfg *config.Config, subtitleService *subtitle.Service) {
@@ -189,18 +196,58 @@ func registerRoutes(router *gin.Engine, cfg *config.Config, subtitleService *sub
 	}
 }
 
-// requestLogger returns a gin middleware for logging HTTP requests
+// requestLogger emits one end-of-request summary with method, normalized
+// route, status, request_id and duration_ms. Successful health checks drop to
+// DEBUG; 4xx are WARN and 5xx ERROR.
 func requestLogger() gin.HandlerFunc {
+	log := logger.Component("http")
 	return func(c *gin.Context) {
 		start := time.Now()
-		path := c.Request.URL.Path
+
+		// Validate or generate the request ID and carry it in the request
+		// context so handler logs can correlate.
+		requestID := c.GetHeader("X-Request-ID")
+		if !logger.ValidRequestID(requestID) {
+			requestID = logger.NewRequestID()
+		}
+		c.Header("X-Request-ID", requestID)
+		c.Request = c.Request.WithContext(logger.WithRequestID(c.Request.Context(), requestID))
 
 		c.Next()
 
+		route := c.FullPath()
+		if route == "" {
+			route = c.Request.URL.Path
+		}
+		fields := []zap.Field{
+			zap.String("method", c.Request.Method),
+			zap.String("route", route),
+			zap.Int("status", c.Writer.Status()),
+			logger.DurMs(time.Since(start)),
+		}
 		status := c.Writer.Status()
-		if path != "/health" || status >= 400 {
-			latency := time.Since(start)
-			logger.Debugf("HTTP %s %s → %d (%v)", c.Request.Method, path, status, latency)
+		ctx := c.Request.Context()
+		switch {
+		case route == "/health" && status < 400:
+			log.Debug(ctx, "request_completed", "Health check completed", fields...)
+		case status >= 500:
+			log.Error(ctx, "request_completed", "Request failed", fields...)
+		case status >= 400:
+			log.Warn(ctx, "request_completed", "Request rejected", fields...)
+		default:
+			log.Info(ctx, "request_completed", "Request completed", fields...)
 		}
 	}
+}
+
+// recoveryLogger replaces gin's default recovery (which writes raw text that
+// bypasses the unified format): one ERROR event with an escaped, bounded
+// stack, then the usual 500 abort.
+func recoveryLogger() gin.HandlerFunc {
+	log := logger.Component("http")
+	return gin.CustomRecovery(func(c *gin.Context, recovered any) {
+		log.Error(c.Request.Context(), "request_panic", "Panic recovered",
+			zap.Any("recovered", recovered), zap.String("stack", string(debug.Stack())))
+		c.AbortWithStatus(http.StatusInternalServerError)
+	})
 }

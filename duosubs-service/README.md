@@ -32,6 +32,28 @@ python service.py
 
 The service will start on `http://0.0.0.0:8765`
 
+## Logs
+
+The service writes one unified log line per event to stderr (stdout stays
+empty); the format is shared with `fusionn` and `word-align`:
+
+```text
+2026-07-01T14:20:03.456+08:00 INFO service=duosubs component=service event=request_completed request_id=merge-1 duration_ms=42.0 method=POST route="/merge" status=200 msg="Request completed"
+```
+
+`merge_started`, `merge_completed` and `merge_failed` carry `request_id`,
+`duration_ms` and a machine-readable `reason`; subtitle paths and DuoSubs
+progress text appear only in bounded DEBUG fields. Set `LOG_LEVEL` to
+`DEBUG` to see them. Credentials are masked at every level.
+
+This service runs on the host, so its logs are not in the container log page;
+collect them from the terminal, `launchd`/`systemd` or your own redirect, for
+example:
+
+```bash
+python service.py >> /var/log/duosubs.log 2>&1
+```
+
 ## Usage
 
 ### Health Check

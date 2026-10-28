@@ -12,14 +12,20 @@ import threading
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from concurrent.futures.process import BrokenProcessPool
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+import logfmt
 import server
 
 BOUNDARY = "alignment-test-boundary"
+
+# Tests assert on captured records; keep the module-level display stream quiet.
+for _display_handler in list(logging.getLogger().handlers):
+    logging.getLogger().removeHandler(_display_handler)
 
 
 def multipart_body(fields):
@@ -33,12 +39,22 @@ def multipart_body(fields):
     return body + f"--{BOUNDARY}--\r\n".encode()
 
 
-def parse_event(message):
-    fields = {}
-    for part in message.split(" "):
-        key, _, value = part.partition("=")
-        fields[key] = value
-    return fields
+def record_fields(record):
+    """Structured fields of a domain record, as the shared formatter receives them."""
+    return dict(getattr(record, "fields", None) or {})
+
+
+def render_record(record):
+    """Render a domain record through the shared formatter (the real sink)."""
+    return logfmt.format_line(
+        record.levelno,
+        getattr(record, "event", "log_message"),
+        record.getMessage(),
+        record_fields(record),
+        component=getattr(record, "component", None),
+        service=getattr(record, "service", None),
+        moment=logfmt.datetime.datetime.fromtimestamp(record.created, logfmt._UTC8),
+    )
 
 
 class StubAligner:
@@ -122,13 +138,15 @@ class LoggingTest(unittest.TestCase):
     """Check the structured log contract: one terminal summary, safe fields, quiet health."""
 
     def setUp(self):
+        root = logging.getLogger()
+        self.display_handlers = list(root.handlers)
+        for handler in self.display_handlers:
+            root.removeHandler(handler)
+        self.addCleanup(lambda: [root.addHandler(handler) for handler in self.display_handlers])
         recorder = RecordingHandler()
-        self.addCleanup(server.LOG.removeHandler, recorder)
-        self.addCleanup(setattr, server.LOG, "propagate", server.LOG.propagate)
-        self.addCleanup(server.LOG.setLevel, server.LOG.level)
-        server.LOG.addHandler(recorder)
-        server.LOG.setLevel(logging.DEBUG)
-        server.LOG.propagate = False
+        self.addCleanup(root.removeHandler, recorder)
+        root.addHandler(recorder)
+        root.setLevel(logging.DEBUG)
         self.records = recorder.records
         self.aligner = StubAligner()
         patcher = patch.object(server, "ALIGNER", self.aligner)
@@ -142,12 +160,24 @@ class LoggingTest(unittest.TestCase):
         self.addCleanup(self.httpd.shutdown)
         self.base = f"http://127.0.0.1:{self.httpd.server_port}"
 
+    def wait_for(self, predicate, timeout=3.0):
+        """Poll shared records: the summary is written after the response."""
+        deadline = time.monotonic() + timeout
+        while True:
+            result = predicate(list(self.records))
+            if result or time.monotonic() >= deadline:
+                return result
+            time.sleep(0.02)
+
     def terminal_events(self):
-        return [
-            record
-            for record in self.records
-            if record.levelno >= logging.INFO and record.getMessage().startswith("event=request ")
-        ]
+        def collect(records):
+            return [
+                record
+                for record in records
+                if getattr(record, "event", None) == "request_completed" and record.levelno >= logging.INFO
+            ]
+
+        return self.wait_for(collect)
 
     def upload(self, fields=None, request_id=None, content_type=None, data=None):
         if data is None:
@@ -166,19 +196,19 @@ class LoggingTest(unittest.TestCase):
             self.assertEqual(json.load(response)["words"][0]["text"], "First")
         summaries = self.terminal_events()
         self.assertEqual(len(summaries), 1)
-        fields = parse_event(summaries[0].getMessage())
+        fields = record_fields(summaries[0])
         self.assertEqual(summaries[0].levelno, logging.INFO)
         self.assertEqual(fields["method"], "POST")
         self.assertEqual(fields["route"], "align")
-        self.assertEqual(fields["status"], "200")
+        self.assertEqual(fields["status"], 200)
         self.assertEqual(fields["request_id"], "review-success")
         self.assertEqual(fields["outcome"], "ok")
-        self.assertEqual(fields["audio_bytes"], "9")
-        self.assertEqual(fields["text_chars"], "13")
-        self.assertEqual(fields["word_count"], "1")
-        self.assertEqual(fields["queue_ms"], "1.5")
-        self.assertEqual(fields["worker_ms"], "2.5")
-        self.assertEqual(fields["cold_start"], "true")
+        self.assertEqual(fields["audio_bytes"], 9)
+        self.assertEqual(fields["text_chars"], 13)
+        self.assertEqual(fields["word_count"], 1)
+        self.assertEqual(fields["queue_ms"], 1.5)
+        self.assertEqual(fields["worker_ms"], 2.5)
+        self.assertIs(fields["cold_start"], True)
         self.assertGreaterEqual(float(fields["duration_ms"]), 0.0)
         self.assertNotIn("reason", fields)
 
@@ -189,22 +219,27 @@ class LoggingTest(unittest.TestCase):
         summaries = self.terminal_events()
         self.assertEqual(len(summaries), 1)
         self.assertEqual(summaries[0].levelno, logging.WARNING)
-        self.assertEqual(parse_event(summaries[0].getMessage())["outcome"], "empty_result")
+        self.assertEqual(record_fields(summaries[0])["outcome"], "empty_result")
 
     def test_health_is_quiet_at_info(self):
         with urlopen(self.base + "/health", timeout=3) as response:
             self.assertEqual(json.load(response)["status"], "ok")
         self.assertEqual([record for record in self.records if record.levelno >= logging.INFO], [])
-        summaries = [record for record in self.records if record.getMessage().startswith("event=request ")]
+        summaries = self.wait_for(
+            lambda records: [
+                record for record in records if getattr(record, "event", None) == "request_completed"
+            ]
+        )
         self.assertEqual(len(summaries), 1)
-        self.assertEqual(parse_event(summaries[0].getMessage())["route"], "health")
+        self.assertEqual(record_fields(summaries[0])["route"], "health")
+        self.assertEqual(summaries[0].levelno, logging.DEBUG)
 
     def test_unknown_request_id_is_replaced_and_echoed(self):
         request = self.upload(request_id="bad id with spaces")
         with urlopen(request, timeout=3) as response:
             echoed = response.headers["X-Request-ID"]
         self.assertNotEqual(echoed, "bad id with spaces")
-        self.assertEqual(parse_event(self.terminal_events()[0].getMessage())["request_id"], echoed)
+        self.assertEqual(record_fields(self.terminal_events()[0])["request_id"], echoed)
 
     def test_request_content_and_query_never_reach_the_log(self):
         secret = "SecretSubtitleLine42"
@@ -218,8 +253,7 @@ class LoggingTest(unittest.TestCase):
         with self.assertRaises(HTTPError) as caught:
             urlopen(unknown, timeout=3)
         with caught.exception:
-            formatter = logging.Formatter()
-            logged = " ".join(formatter.format(record) for record in self.records)
+            logged = " ".join(render_record(record) for record in self.records)
             self.assertNotIn(secret, logged)
             self.assertNotIn("SECRET-AUDIO-BYTES", logged)
             self.assertNotIn("bad id with spaces", logged)
@@ -235,14 +269,14 @@ class LoggingTest(unittest.TestCase):
             protocols = [
                 record
                 for record in self.terminal_events()
-                if parse_event(record.getMessage())["request_id"] == f"review-{method}"
+                if record_fields(record)["request_id"] == f"review-{method}"
             ]
             self.assertEqual(len(protocols), 1)
-            fields = parse_event(protocols[0].getMessage())
+            fields = record_fields(protocols[0])
             self.assertEqual(protocols[0].levelno, logging.WARNING)
             self.assertEqual(fields["method"], method)
             self.assertEqual(fields["route"], "unknown")
-            self.assertEqual(fields["status"], "501")
+            self.assertEqual(fields["status"], 501)
             self.assertEqual(fields["outcome"], "protocol_error")
             self.assertEqual(fields["reason"], "not_implemented")
 
@@ -260,12 +294,12 @@ class LoggingTest(unittest.TestCase):
             summaries = [
                 record
                 for record in self.terminal_events()
-                if parse_event(record.getMessage())["request_id"] == request.headers["X-request-id"]
+                if record_fields(record)["request_id"] == request.headers["X-request-id"]
             ]
             self.assertEqual(len(summaries), 1)
-            fields = parse_event(summaries[0].getMessage())
+            fields = record_fields(summaries[0])
             self.assertEqual(summaries[0].levelno, logging.WARNING)
-            self.assertEqual(fields["status"], str(status))
+            self.assertEqual(fields["status"], status)
             self.assertEqual(fields["reason"], reason)
             self.assertEqual(fields["outcome"], "client_error")
 
@@ -283,8 +317,8 @@ class LoggingTest(unittest.TestCase):
             client.close()
         self.assertIn(b" 413 ", response.split(b"\r\n", 1)[0])
         self.assertIn(b"X-Request-ID: review-413", response)
-        fields = parse_event(self.terminal_events()[0].getMessage())
-        self.assertEqual(fields["status"], "413")
+        fields = record_fields(self.terminal_events()[0])
+        self.assertEqual(fields["status"], 413)
         self.assertEqual(fields["reason"], "request_too_large")
         self.assertEqual(fields["request_id"], "review-413")
         self.assertNotIn("audio_bytes", fields)
@@ -302,7 +336,7 @@ class LoggingTest(unittest.TestCase):
                 self.assertEqual(response.code, 400)
             summaries = self.terminal_events()
             self.assertEqual(len(summaries), 1)
-            self.assertEqual(parse_event(summaries[0].getMessage())["reason"], reason)
+            self.assertEqual(record_fields(summaries[0])["reason"], reason)
             self.records.clear()
 
     def test_failed_worker_keeps_timings_and_error_type(self):
@@ -316,13 +350,13 @@ class LoggingTest(unittest.TestCase):
                 self.assertEqual(response.code, 503)
             summaries = self.terminal_events()
             self.assertEqual(len(summaries), 1)
-            fields = parse_event(summaries[0].getMessage())
+            fields = record_fields(summaries[0])
             self.assertEqual(summaries[0].levelname, level)
-            self.assertEqual(fields["status"], "503")
+            self.assertEqual(fields["status"], 503)
             self.assertEqual(fields["reason"], reason)
-            self.assertEqual(fields["queue_ms"], "1.5")
-            self.assertEqual(fields["worker_ms"], "2.5")
-            self.assertEqual(fields["cold_start"], "true")
+            self.assertEqual(fields["queue_ms"], 1.5)
+            self.assertEqual(fields["worker_ms"], 2.5)
+            self.assertIs(fields["cold_start"], True)
             self.assertEqual(fields.get("error_type"), error_type)
         self.aligner.failure = None
 
@@ -347,33 +381,49 @@ class LoggingTest(unittest.TestCase):
             summaries = [
                 record
                 for record in self.terminal_events()
-                if parse_event(record.getMessage())["request_id"] == "dropped-client"
+                if record_fields(record)["request_id"] == "dropped-client"
             ]
             if summaries:
                 break
             time.sleep(0.05)
         self.assertEqual(len(summaries), 1)
         self.assertEqual(summaries[0].levelno, logging.WARNING)
-        fields = parse_event(summaries[0].getMessage())
+        fields = record_fields(summaries[0])
         self.assertEqual(fields["outcome"], "client_disconnected")
         self.assertEqual(fields["reason"], "client_disconnected")
-        self.assertEqual(fields["status"], "200")
+        self.assertEqual(fields["status"], 200)
 
-    def test_configure_logging_is_idempotent_and_quiets_libraries(self):
-        with patch.dict(server.os.environ, {"ALIGN_LOG_LEVEL": "debug"}):
-            for handler in list(server.LOG.handlers):
-                server.LOG.removeHandler(handler)
+    def test_configure_logging_is_idempotent_and_ignores_unknown_library_records(self):
+        with patch.dict(server.os.environ, {"ALIGN_LOG_LEVEL": "debug"}, clear=False):
+            server.configure_logging()
+            server.configure_logging()
+            self.addCleanup(lambda: [
+                logging.getLogger().removeHandler(handler)
+                for handler in list(logging.getLogger().handlers)
+            ])
+            root = logging.getLogger()
+            self.assertEqual(len(root.handlers), 1)
+            self.assertEqual(root.level, logging.DEBUG)
+            self.assertEqual(root.handlers[0].level, logging.DEBUG)
+
+            # The display handler drops unknown third-party records below WARN;
+            # an observer handler still sees every record.
+            display = root.handlers[0]
+            info_record = logging.LogRecord("transformers", logging.INFO, __file__, 1, "model shard loaded", None, None)
+            warn_record = logging.LogRecord("transformers", logging.WARNING, __file__, 1, "degraded", None, None)
+            self.assertFalse(display.filter(info_record))
+            self.assertTrue(display.filter(warn_record))
+
+            observer = RecordingHandler()
+            root.addHandler(observer)
             try:
-                server.configure_logging()
-                server.configure_logging()
-                self.assertEqual(len(server.LOG.handlers), 1)
-                self.assertEqual(server.LOG.level, logging.DEBUG)
-                self.assertFalse(server.LOG.propagate)
-                self.assertEqual(logging.getLogger("transformers").level, logging.WARNING)
-                self.assertEqual(logging.getLogger("torch").level, logging.WARNING)
+                logging.getLogger("transformers").info("model shard loaded")
+                logging.getLogger("transformers").warning("degraded")
+                messages = [record.getMessage() for record in observer.records]
+                self.assertIn("degraded", messages)
+                self.assertIn("model shard loaded", messages)
             finally:
-                for handler in list(server.LOG.handlers):
-                    server.LOG.removeHandler(handler)
+                root.removeHandler(observer)
 
 
 class StubPool(ThreadPoolExecutor):
@@ -407,6 +457,17 @@ class ModelLifecycleTest(unittest.TestCase):
         aligner = server.Aligner(idle_seconds=idle_seconds)
         self.addCleanup(aligner.close)
         return aligner
+
+    @contextmanager
+    def capture_records(self):
+        """Collect domain records from the root logger for the duration."""
+        root = logging.getLogger()
+        recorder = RecordingHandler()
+        root.addHandler(recorder)
+        try:
+            yield recorder.records
+        finally:
+            root.removeHandler(recorder)
 
     def test_lazy_load_reuse_idle_release_and_reload(self):
         aligner = self.new_aligner(idle_seconds=0.15)
@@ -503,24 +564,30 @@ class ModelLifecycleTest(unittest.TestCase):
     def test_first_worker_crash_reports_zero_idle(self, clock):
         aligner = self.new_aligner()
         self.work.side_effect = BrokenProcessPool("worker stopped")
-        with self.assertLogs(server.LOG, level="INFO") as captured:
+        with self.capture_records() as records:
             with self.assertRaises(BrokenProcessPool):
                 aligner.align(b"audio", "First")
-        unloaded = [line for line in captured.output if "event=worker_unloaded" in line]
+        unloaded = [record for record in records if getattr(record, "event", None) == "worker_unloaded"]
         self.assertEqual(len(unloaded), 1)
-        self.assertIn("reason=broken", unloaded[0])
-        self.assertIn("idle_seconds=0.0", unloaded[0])
+        fields = record_fields(unloaded[0])
+        self.assertEqual(fields["reason"], "broken")
+        self.assertEqual(float(fields["idle_seconds"]), 0.0)
 
     def test_idle_unload_reports_elapsed_idle(self):
         aligner = self.new_aligner(idle_seconds=0.1)
-        with self.assertLogs(server.LOG, level="INFO") as captured:
+        with self.capture_records() as records:
             aligner.align(b"audio", "First")
             self.assertTrue(self.pools[0].stopped.wait(timeout=3))
             with aligner.lock:
                 pass
-        unloaded = [line for line in captured.output if "event=worker_unloaded reason=idle" in line]
+        unloaded = [
+            record
+            for record in records
+            if getattr(record, "event", None) == "worker_unloaded"
+            and record_fields(record).get("reason") == "idle"
+        ]
         self.assertEqual(len(unloaded), 1)
-        self.assertGreater(float(unloaded[0].split("idle_seconds=")[1]), 0.05)
+        self.assertGreater(float(record_fields(unloaded[0])["idle_seconds"]), 0.05)
 
     def test_idle_timeout_configuration(self):
         with patch.dict(server.os.environ, {"ALIGN_IDLE_SECONDS": "120"}):

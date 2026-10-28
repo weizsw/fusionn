@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/fusionn/pkg/logger"
 )
 
@@ -87,7 +89,8 @@ func (c *Client) SearchEpisodeSubtitle(ctx context.Context, seriesID, episodeID 
 	params.Set(queryForced, bazarrFalse)
 
 	reqURL := c.baseURL + "/api/episodes/subtitles?" + params.Encode()
-	logger.Debugf("Bazarr PATCH request: %s", reqURL)
+	logger.Component("bazarr").Debug(ctx, "request_started", "Bazarr PATCH request",
+		zap.String("method", "PATCH"), logger.Preview(reqURL))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, reqURL, http.NoBody)
 	if err != nil {
@@ -104,10 +107,11 @@ func (c *Client) SearchEpisodeSubtitle(ctx context.Context, seriesID, episodeID 
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	logger.Debugf("Bazarr PATCH response: status=%d, took=%s, body=%s", resp.StatusCode, elapsed, string(body))
+	logger.Component("bazarr").Debug(ctx, "request_completed", "Bazarr PATCH response",
+		zap.Int("status", resp.StatusCode), logger.DurMs(elapsed), logger.Preview(string(body)))
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bazarr episode search returned status %d (took %s): %s", resp.StatusCode, elapsed, string(body))
+		return fmt.Errorf("bazarr episode search returned status %d (took %s)", resp.StatusCode, elapsed)
 	}
 	return nil
 }
@@ -120,7 +124,8 @@ func (c *Client) SearchMovieSubtitle(ctx context.Context, radarrID int, language
 	params.Set(queryForced, bazarrFalse)
 
 	reqURL := c.baseURL + "/api/movies/subtitles?" + params.Encode()
-	logger.Debugf("Bazarr PATCH request: %s", reqURL)
+	logger.Component("bazarr").Debug(ctx, "request_started", "Bazarr PATCH request",
+		zap.String("method", "PATCH"), logger.Preview(reqURL))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, reqURL, http.NoBody)
 	if err != nil {
@@ -137,10 +142,11 @@ func (c *Client) SearchMovieSubtitle(ctx context.Context, radarrID int, language
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	logger.Debugf("Bazarr PATCH response: status=%d, took=%s, body=%s", resp.StatusCode, elapsed, string(body))
+	logger.Component("bazarr").Debug(ctx, "request_completed", "Bazarr PATCH response",
+		zap.Int("status", resp.StatusCode), logger.DurMs(elapsed), logger.Preview(string(body)))
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bazarr movie search returned status %d (took %s): %s", resp.StatusCode, elapsed, string(body))
+		return fmt.Errorf("bazarr movie search returned status %d (took %s)", resp.StatusCode, elapsed)
 	}
 	return nil
 }
@@ -168,7 +174,8 @@ func (c *Client) GetEpisodeSubtitles(ctx context.Context, episodeID int) (*Episo
 	if err != nil {
 		return nil, fmt.Errorf("read episode response: %w", err)
 	}
-	logger.Debugf("Bazarr GET episodes response (episodeId=%d): %s", episodeID, string(body))
+	logger.Component("bazarr").Debug(ctx, "response_received", "Bazarr episodes response",
+		zap.Int("episode_id", episodeID), logger.Preview(string(body)))
 
 	var listResp EpisodeListResponse
 	if err := json.Unmarshal(body, &listResp); err != nil {
@@ -204,7 +211,8 @@ func (c *Client) GetMovieSubtitles(ctx context.Context, radarrID int) (*MovieDat
 	if err != nil {
 		return nil, fmt.Errorf("read movie response: %w", err)
 	}
-	logger.Debugf("Bazarr GET movies response (radarrId=%d): %s", radarrID, string(body))
+	logger.Component("bazarr").Debug(ctx, "response_received", "Bazarr movies response",
+		zap.Int("radarr_id", radarrID), logger.Preview(string(body)))
 
 	var listResp MovieListResponse
 	if err := json.Unmarshal(body, &listResp); err != nil {

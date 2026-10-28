@@ -1,12 +1,9 @@
 package executor
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os/exec"
-
-	"github.com/fusionn/pkg/logger"
 )
 
 // RunCleanit runs cleanit with the no-sdh tag on an SRT file (modifies in-place).
@@ -17,13 +14,14 @@ func RunCleanit(ctx context.Context, srtPath string) error {
 		srtPath,
 	)
 
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	tail := &boundedTail{}
+	cmd.Stderr = tail
 
-	logger.Debugf("Executing: %s", cmd.String())
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("cleanit failed: %w (stderr: %s)", err, stderr.String())
+	start := toolStarted(ctx, "cleanit", cmd)
+	err := cmd.Run()
+	toolFinished(ctx, "cleanit", start, err, tail.Diagnostic())
+	if err != nil {
+		return fmt.Errorf("cleanit failed: %w", err)
 	}
 
 	return nil

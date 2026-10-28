@@ -2,6 +2,10 @@ package subtitle
 
 import (
 	"context"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/fusionn/internal/config"
@@ -96,10 +100,7 @@ func TestMergerProcessor_Process_ShouldNotPanic(t *testing.T) {
 				Device:         "cpu",
 				TimeoutMinutes: 10,
 			},
-			pctx: &ProcessingContext{
-				EnglishSubPath: "/tmp/english.srt",
-				ChineseSubPath: "/tmp/chinese.srt",
-			},
+			pctx: &ProcessingContext{},
 		},
 		{
 			name: "without model (uses default)",
@@ -109,15 +110,22 @@ func TestMergerProcessor_Process_ShouldNotPanic(t *testing.T) {
 				Device:         "cpu",
 				TimeoutMinutes: 10,
 			},
-			pctx: &ProcessingContext{
-				EnglishSubPath: "/tmp/english.srt",
-				ChineseSubPath: "/tmp/chinese.srt",
-			},
+			pctx: &ProcessingContext{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// VideoPath decides where Process() creates its temp merge
+			// directory, so keep it - and the subtitle inputs - under
+			// t.TempDir(): the testing framework then removes the merge
+			// directory with the test instead of leaving an empty
+			// .fusionn-merge-* directory in the package directory.
+			root := t.TempDir()
+			tt.pctx.VideoPath = filepath.Join(root, "video.mkv")
+			tt.pctx.EnglishSubPath = filepath.Join(root, "english.srt")
+			tt.pctx.ChineseSubPath = filepath.Join(root, "chinese.srt")
+
 			defer func() {
 				if r := recover(); r != nil {
 					t.Errorf("Process() panicked: %v", r)
@@ -136,6 +144,8 @@ func TestMergerProcessor_Process_ShouldNotPanic(t *testing.T) {
 			if err == nil {
 				t.Error("Process() expected error (duosubs not installed), got nil")
 			}
+
+			assertTempMergeDirUnder(t, tt.pctx, root)
 		})
 	}
 }
@@ -154,9 +164,11 @@ func TestMergerProcessor_Process_CreatesOutputDirectory(t *testing.T) {
 		t.Fatalf("NewMergerProcessor() error = %v", err)
 	}
 
+	root := t.TempDir()
 	pctx := &ProcessingContext{
-		EnglishSubPath: "/nonexistent/english.srt",
-		ChineseSubPath: "/nonexistent/chinese.srt",
+		VideoPath:      filepath.Join(root, "video.mkv"),
+		EnglishSubPath: filepath.Join(root, "english.srt"),
+		ChineseSubPath: filepath.Join(root, "chinese.srt"),
 	}
 
 	ctx := context.Background()
@@ -171,6 +183,69 @@ func TestMergerProcessor_Process_CreatesOutputDirectory(t *testing.T) {
 	// If directory creation failed, error would contain "failed to create output directory"
 	if contains(err.Error(), "failed to create output directory") {
 		t.Errorf("Process() failed at directory creation, should fail at duosubs execution: %v", err)
+	}
+
+	assertTempMergeDirUnder(t, pctx, root)
+}
+
+// assertTempMergeDirUnder checks that Process() created its merge directory and
+// that it sits directly under the test-owned root, so cleanup follows the test.
+func assertTempMergeDirUnder(t *testing.T, pctx *ProcessingContext, root string) {
+	t.Helper()
+	if pctx.TempMergeDir == "" {
+		t.Fatal("Process() did not set TempMergeDir")
+	}
+	if got := filepath.Dir(pctx.TempMergeDir); got != root {
+		t.Errorf("TempMergeDir parent = %q, want %q", got, root)
+	}
+	if info, err := os.Stat(pctx.TempMergeDir); err != nil || !info.IsDir() {
+		t.Errorf("TempMergeDir %q was not created: %v", pctx.TempMergeDir, err)
+	}
+}
+
+// A merge directory under t.TempDir() disappears with the subtest that created
+// it. The earlier shape (no VideoPath) left .fusionn-merge-* in the package
+// directory after every run, because an isolated Process call has no pipeline
+// cleanup to remove it.
+func TestMergerProcessor_Process_TempMergeDirRemovedWithTestRoot(t *testing.T) {
+	p, err := NewMergerProcessor(config.DuoSubsConfig{
+		Mode:           "local",
+		Model:          "test-model",
+		Device:         "cpu",
+		TimeoutMinutes: 1,
+	})
+	if err != nil {
+		t.Fatalf("NewMergerProcessor() error = %v", err)
+	}
+
+	var root, mergeDir string
+	t.Run("merge run", func(t *testing.T) {
+		root = t.TempDir()
+		pctx := &ProcessingContext{
+			VideoPath:      filepath.Join(root, "video.mkv"),
+			EnglishSubPath: filepath.Join(root, "english.srt"),
+			ChineseSubPath: filepath.Join(root, "chinese.srt"),
+		}
+
+		if err := p.Process(context.Background(), pctx); err == nil {
+			t.Error("Process() expected error (duosubs not installed), got nil")
+		}
+		mergeDir = pctx.TempMergeDir
+		if mergeDir == "" {
+			t.Fatal("Process() did not set TempMergeDir")
+		}
+		if info, err := os.Stat(mergeDir); err != nil || !info.IsDir() {
+			t.Fatalf("TempMergeDir %q was not created: %v", mergeDir, err)
+		}
+	})
+
+	// The subtest ended, so the testing framework removed its temp root and
+	// the merge directory with it.
+	if _, err := os.Stat(mergeDir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("merge directory %q survived the subtest: %v", mergeDir, err)
+	}
+	if _, err := os.Stat(root); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("test root %q survived the subtest: %v", root, err)
 	}
 }
 

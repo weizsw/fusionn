@@ -11,9 +11,6 @@ import (
 
 // ConvertOpenCC converts Traditional Chinese to Simplified Chinese using OpenCC.
 func ConvertOpenCC(ctx context.Context, inputPath, outputPath, configName string) error {
-	logger.Infof("Running OpenCC: %s → %s (config: %s)", inputPath, outputPath, configName)
-
-	// opencc -i <input> -o <output> -c <config>
 	args := []string{
 		"-i", inputPath,
 		"-o", outputPath,
@@ -21,19 +18,25 @@ func ConvertOpenCC(ctx context.Context, inputPath, outputPath, configName string
 	}
 
 	cmd := exec.CommandContext(ctx, "opencc", args...)
-	output, err := cmd.CombinedOutput()
+	stdout, stderr := &boundedTail{}, &boundedTail{}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+
+	start := toolStarted(ctx, "opencc", cmd)
+	err := cmd.Run()
+	diag := stderr.Diagnostic() + stdout.Diagnostic()
+	toolFinished(ctx, "opencc", start, err, diag)
+
+	toolLogger().Debug(ctx, "tool_output", "Tool output", logger.Preview(summarize(diag)))
 
 	if err != nil {
-		return fmt.Errorf("opencc failed: %w\nOutput: %s", err, string(output))
+		return fmt.Errorf("opencc failed: %w", err)
 	}
 
 	// Verify output file exists
 	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
 		return fmt.Errorf("opencc did not create output file: %s", outputPath)
 	}
-
-	logger.Infof("✅ OpenCC conversion completed: %s", outputPath)
-	logger.Debugf("OpenCC output: %s", string(output))
 
 	return nil
 }

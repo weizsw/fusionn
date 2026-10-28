@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/executor"
@@ -130,8 +131,8 @@ func (p *MergerProcessor) Process(ctx context.Context, pctx *ProcessingContext) 
 
 // processDuoSubs keeps the legacy DuoSubs pipeline unchanged.
 func (p *MergerProcessor) processDuoSubs(ctx context.Context, pctx *ProcessingContext) error {
-	log := logger.Indent()
-	log.Info("Merging English + Chinese subtitles with DuoSubs")
+	log := logger.Component("merger")
+	log.Info(ctx, "merge_started", "Merging English + Chinese subtitles", zap.String("engine", "duosubs"))
 
 	outputDir, err := createMergeDir(pctx.VideoPath)
 	if err != nil {
@@ -147,7 +148,7 @@ func (p *MergerProcessor) processDuoSubs(ctx context.Context, pctx *ProcessingCo
 
 	pctx.MergedSubPath = mergedPath
 
-	log.Infof("✅ Merge completed: %s", mergedPath)
+	log.Info(ctx, "merge_completed", "Merge completed", zap.String("path", mergedPath))
 	return nil
 }
 
@@ -155,12 +156,13 @@ func (p *MergerProcessor) processDuoSubs(ctx context.Context, pctx *ProcessingCo
 // bilingual ASS locally, and persists the audit trail. Subtitle text never
 // comes from model output.
 func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContext) error {
-	log := logger.Indent()
+	log := logger.Component("merger")
+	mode := "llm"
 	if pctx.ChineseSubSource == ChineseSourceTranslated {
-		log.Info("Merging translated subtitles with direct 1:1 mapping (no LLM matching)")
-	} else {
-		log.Info("Merging English + Chinese subtitles with the native LLM engine")
+		mode = "translated"
 	}
+	log.Info(ctx, "merge_started", "Merging English + Chinese subtitles",
+		zap.String("engine", "llm"), zap.String("mode", mode))
 
 	if err := ctx.Err(); err != nil {
 		return err
@@ -190,7 +192,8 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 		return fmt.Errorf("load subtitle sources: %w", err)
 	}
 	if bundle.ZHShiftMS != 0 {
-		log.Infof("Shifted Chinese subtitles by %+dms to match English timing", bundle.ZHShiftMS)
+		log.Info(ctx, "timing_shifted", "Shifted Chinese subtitles to match English timing",
+			zap.Int("shift_ms", bundle.ZHShiftMS))
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -218,7 +221,7 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 	if err := p.persistLLMArtifacts(pctx, outputDir, bundle, mapping, audit); err != nil {
 		return fmt.Errorf("persist alignment artifacts: %w", err)
 	}
-	p.logLLMAudit(audit)
+	p.logLLMAudit(ctx, audit)
 
 	if alignErr != nil {
 		if errors.Is(alignErr, context.Canceled) || errors.Is(alignErr, context.DeadlineExceeded) {
@@ -227,7 +230,8 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 		return fmt.Errorf("llm alignment failed: %w", alignErr)
 	}
 	if len(audit.FailedWindows) > 0 {
-		log.Warnf("LLM alignment partially failed (%d windows); fell back to timing-based pairing for failed windows", len(audit.FailedWindows))
+		log.Warn(ctx, "alignment_degraded", "LLM alignment partially failed, fell back to timing-based pairing",
+			zap.Int("failed_windows", len(audit.FailedWindows)))
 		if pctx.Metadata != nil {
 			pctx.Metadata[MetadataLLMDegraded] = true
 			pctx.Metadata[MetadataLLMFailedWindows] = audit.FailedWindows
@@ -252,10 +256,10 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 		return err
 	}
 	if wordErr != nil {
-		log.Warnf("Word alignment stopped; remaining cues use proportional timing: %v", wordErr)
+		log.Warn(ctx, "word_alignment_stopped", "Word alignment stopped, remaining cues use proportional timing", zap.Error(wordErr))
 	}
 	if len(words) > 0 {
-		log.Infof("Received word timestamps for %d long English cues", len(words))
+		log.Debug(ctx, "word_timestamps_received", "Received word timestamps for long English cues", zap.Int("cues", len(words)))
 	}
 	rendered, err := subtitlellm.RenderWithWordTimings(bundle, mapping, p.llmConfig, p.styleConfig, width, height, words)
 	if err != nil {
@@ -279,7 +283,7 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 	pctx.Metadata[MetadataLLMPairing] = audit.Pairing
 	pctx.MergedSubPath = mergedPath
 
-	log.Infof("✅ Merge completed: %s", mergedPath)
+	log.Info(ctx, "merge_completed", "Merge completed", zap.String("path", mergedPath))
 	return nil
 }
 
@@ -299,9 +303,9 @@ func createMergeDir(videoPath string) (string, error) {
 // source file is untouched. An empty path means conversion was disabled or
 // failed and the caller should keep the original track.
 func (p *MergerProcessor) convertChineseFile(ctx context.Context, enPath, zhPath, outputDir string) (string, error) {
-	log := logger.Indent()
+	log := logger.Component("merger")
 	if !p.openccConfig.Enabled {
-		log.Warn("Traditional Chinese conversion requested but OpenCC is disabled; using original Chinese text")
+		log.Warn(ctx, "conversion_disabled", "Traditional Chinese conversion requested but OpenCC is disabled, using original Chinese text")
 		return "", nil
 	}
 	if p.convertOpenCC == nil {
@@ -317,16 +321,17 @@ func (p *MergerProcessor) convertChineseFile(ctx context.Context, enPath, zhPath
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
-		log.Warnf("OpenCC conversion failed, using original Chinese text: %v", err)
+		log.Warn(ctx, "conversion_failed", "OpenCC conversion failed, using original Chinese text", zap.Error(err))
 		return "", nil
 	}
 	// The converted file must still parse as a matching source track; otherwise
 	// discard it rather than changing the mapping.
 	if _, err := subtitlellm.LoadSources(enPath, outputPath); err != nil {
-		log.Warnf("Failed to parse converted Chinese subtitles, using original text: %v", err)
+		log.Warn(ctx, "conversion_parse_failed", "Failed to parse converted Chinese subtitles, using original text", zap.Error(err))
 		return "", nil
 	}
-	log.Infof("Applied OpenCC Traditional → Simplified conversion: %s", outputPath)
+	log.Info(ctx, "conversion_applied", "Applied OpenCC Traditional to Simplified conversion",
+		zap.String("path", outputPath))
 	return outputPath, nil
 }
 
@@ -340,14 +345,16 @@ func (p *MergerProcessor) videoDimensions(ctx context.Context, videoPath string)
 	probeOutput, err := p.probe(ctx, videoPath)
 	if err != nil {
 		if ctx.Err() == nil {
-			logger.Warnf("Failed to detect video resolution, using configured ASS style: %v", err)
+			logger.Component("merger").Warn(context.Background(), "resolution_probe_failed",
+				"Failed to detect video resolution, using configured ASS style", zap.Error(err))
 		}
 		return 0, 0
 	}
 	if width, height, ok := videoDimensions(probeOutput); ok {
 		return width, height
 	}
-	logger.Warn("Failed to detect video resolution, using configured ASS style")
+	logger.Component("merger").Warn(context.Background(), "resolution_probe_failed",
+		"Failed to detect video resolution, using configured ASS style")
 	return 0, 0
 }
 
@@ -365,7 +372,7 @@ func (p *MergerProcessor) persistLLMArtifacts(pctx *ProcessingContext, outputDir
 	if !p.llmConfig.CacheEnabled || mapping.Fingerprint == "" {
 		return nil
 	}
-	log := logger.Indent()
+	log := logger.Component("merger")
 
 	artifactRoot := filepath.Join(outputDir, llmArtifactDirName, artifactID(bundle, mapping))
 	if strings.TrimSpace(p.llmConfig.CacheDir) != "" {
@@ -392,7 +399,7 @@ func (p *MergerProcessor) persistLLMArtifacts(pctx *ProcessingContext, outputDir
 		}
 		pctx.Metadata[artifact.key] = artifact.path
 	}
-	log.Infof("Saved LLM alignment artifacts to %s", artifactRoot)
+	log.Debug(context.Background(), "artifacts_saved", "Saved LLM alignment artifacts", zap.String("path", artifactRoot))
 	return nil
 }
 
@@ -438,27 +445,40 @@ func writeJSONFile(path string, value any) error {
 
 // logLLMAudit reports deterministic counts and provenance only. Rejected model
 // rows are never logged, and no credentials exist in the audit.
-func (p *MergerProcessor) logLLMAudit(audit subtitlellm.Audit) {
-	log := logger.Indent()
-	log.Infof("LLM alignment audit: rejected=%d conflicts=%d restored_en=%d restored_zh=%d context_duplicates=%d failed_windows=%d cache_hits=%d",
-		len(audit.Rejected), len(audit.Conflicts), len(audit.Restored["en"]), len(audit.Restored["zh"]),
-		audit.ContextDuplicates, len(audit.FailedWindows), audit.CacheHits)
+func (p *MergerProcessor) logLLMAudit(ctx context.Context, audit subtitlellm.Audit) {
+	log := logger.Component("merger")
+	log.Info(ctx, "alignment_audit", "LLM alignment audit",
+		zap.Int("rejected", len(audit.Rejected)), zap.Int("conflicts", len(audit.Conflicts)),
+		zap.Int("restored_en", len(audit.Restored["en"])), zap.Int("restored_zh", len(audit.Restored["zh"])),
+		zap.Int("context_duplicates", audit.ContextDuplicates),
+		zap.Int("failed_windows", len(audit.FailedWindows)), zap.Int("cache_hits", audit.CacheHits))
 	if len(audit.FailedWindows) > 0 {
-		log.Warnf("LLM alignment degraded: timing-based pairing used for %d windows", len(audit.FailedWindows))
+		log.Warn(ctx, "alignment_degraded", "LLM alignment degraded, timing-based pairing used",
+			zap.Int("failed_windows", len(audit.FailedWindows)))
 		for _, f := range audit.WindowFailures {
-			log.Warnf("LLM window %d failure reason: %s", f.Window, f.Reason)
+			log.Debug(ctx, "window_failure", "LLM window failure",
+				zap.Int("window", f.Window), logger.Preview(f.Reason))
 		}
 	}
 	pairing := audit.Pairing
-	log.Infof("LLM pairing: en=%d/%d (%.1f%%) zh=%d/%d (%.1f%%) timing_paired_en=%d timing_paired_zh=%d",
-		pairing.ENPaired, pairing.ENTotal, 100*pairing.ENRatio(), pairing.ZHPaired, pairing.ZHTotal, 100*pairing.ZHRatio(),
-		len(audit.TimingPaired["en"]), len(audit.TimingPaired["zh"]))
+	log.Info(ctx, "pairing_summary", "LLM pairing summary",
+		zap.Int("en_paired", pairing.ENPaired), zap.Int("en_total", pairing.ENTotal),
+		zap.Float64("en_ratio", pairing.ENRatio()),
+		zap.Int("zh_paired", pairing.ZHPaired), zap.Int("zh_total", pairing.ZHTotal),
+		zap.Float64("zh_ratio", pairing.ZHRatio()),
+		zap.Int("timing_paired_en", len(audit.TimingPaired["en"])),
+		zap.Int("timing_paired_zh", len(audit.TimingPaired["zh"])))
 	if pairing.Low() {
-		log.Warnf("Only %.0f%% of English dialogue has a Chinese partner; check that the Chinese subtitle matches this video", 100*pairing.ENRatio())
+		log.Warn(ctx, "pairing_low", "Only part of the English dialogue has a Chinese partner, check that the Chinese subtitle matches this video",
+			zap.Float64("en_ratio", pairing.ENRatio()))
 	}
 	if audit.Provenance != nil {
-		log.Infof("LLM mapping provenance: source=%s mapping_path=%s mapping_model=%s configured_model=%s model_mismatch=%v",
-			audit.Provenance.Source, audit.Provenance.MappingPath, audit.Provenance.MappingModel,
-			audit.Provenance.ConfiguredModel, audit.Provenance.ModelMismatch)
+		log.Info(ctx, "mapping_provenance", "LLM mapping provenance",
+			zap.String("source", audit.Provenance.Source),
+			zap.String("mapping_model", audit.Provenance.MappingModel),
+			zap.String("configured_model", audit.Provenance.ConfiguredModel),
+			zap.Bool("model_mismatch", audit.Provenance.ModelMismatch))
+		log.Debug(ctx, "mapping_provenance_detail", "LLM mapping provenance detail",
+			logger.Preview(audit.Provenance.MappingPath))
 	}
 }

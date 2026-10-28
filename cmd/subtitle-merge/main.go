@@ -13,21 +13,28 @@ import (
 	"syscall"
 	"time"
 
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/executor"
 	"github.com/fusionn/internal/subtitlellm"
 	"github.com/fusionn/pkg/logger"
 )
 
+// mergeLog reports merge diagnostics for the CLI command.
+var mergeLog = logger.Component("subtitle-merge")
+
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		mergeLog.Error(context.Background(), "command_failed", "Command failed", zap.Error(err))
+		os.Exit(1) //nolint:gocritic // defer inside run() already flushed the logger
 	}
 }
 
 func run() error {
-	logger.Init(false)
+	// CLI diagnostics go to stderr; stdout stays machine-readable results.
+	logger.Configure(logger.Config{Output: zapcore.AddSync(os.Stderr)})
 	defer logger.Sync()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -119,24 +126,27 @@ func execute(ctx context.Context) error {
 		return err
 	}
 	if bundle.ZHShiftMS != 0 {
-		fmt.Fprintf(os.Stderr, "Shifted Chinese subtitles by %+dms to match English timing\n", bundle.ZHShiftMS)
+		mergeLog.Info(ctx, "timing_shifted", "Shifted Chinese subtitles to match English timing",
+			zap.Int("shift_ms", bundle.ZHShiftMS))
 	}
 	mapping, audit, err := subtitlellm.NewEngine().Align(ctx, bundle, cfg.Subtitle.LLM)
 	if err != nil {
 		return err
 	}
 	if len(audit.FailedWindows) > 0 {
-		fmt.Fprintf(os.Stderr, "Warning: LLM alignment partially failed (%d windows); fell back to timing-based pairing for failed windows\n", len(audit.FailedWindows))
+		mergeLog.Warn(ctx, "alignment_degraded", "LLM alignment partially failed, fell back to timing-based pairing",
+			zap.Int("failed_windows", len(audit.FailedWindows)))
 	}
 	if audit.Pairing.Low() {
-		fmt.Fprintf(os.Stderr, "Warning: only %.0f%% of English dialogue has a Chinese partner; check that the Chinese subtitle matches this video\n", 100*audit.Pairing.ENRatio())
+		mergeLog.Warn(ctx, "pairing_low", "Only part of the English dialogue has a Chinese partner, check that the Chinese subtitle matches this video",
+			zap.Float64("en_ratio", audit.Pairing.ENRatio()))
 	}
 	words, wordErr := subtitlellm.AlignWords(ctx, *video, bundle, cfg.Subtitle.LLM)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if wordErr != nil {
-		fmt.Fprintf(os.Stderr, "Word alignment stopped; remaining cues use proportional timing: %v\n", wordErr)
+		mergeLog.Warn(ctx, "word_alignment_stopped", "Word alignment stopped, remaining cues use proportional timing", zap.Error(wordErr))
 	}
 	data, err := subtitlellm.RenderWithWordTimings(bundle, mapping, cfg.Subtitle.LLM, cfg.Subtitle.ASSStyle, width, height, words)
 	if err != nil {

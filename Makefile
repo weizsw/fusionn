@@ -15,6 +15,7 @@ run:
 test:
 	go test -v -race ./...
 	python3 -B -m unittest discover -s services/word-align -p '*_test.py'
+	python3 -B -m unittest discover -s duosubs-service -p '*_test.py'
 
 # Run tests with coverage
 test-cover:

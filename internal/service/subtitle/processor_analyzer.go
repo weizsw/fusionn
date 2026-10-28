@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"go.uber.org/zap"
+
 	"github.com/fusionn/pkg/logger"
 )
 
@@ -31,8 +33,9 @@ func (p *AnalyzerProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process analyzes the video file for subtitle tracks.
 func (p *AnalyzerProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	log := logger.Indent()
-	log.Infof("Analyzing video: %s", pctx.VideoPath)
+	log := logger.Component("analyzer")
+	log.Info(ctx, "analysis_started", "Analyzing video")
+	log.Debug(ctx, "analysis_detail", "Analysis detail", logger.Preview(pctx.VideoPath))
 
 	analysis, err := p.analyzer.AnalyzeVideo(ctx, pctx.VideoPath)
 	if err != nil {
@@ -41,9 +44,9 @@ func (p *AnalyzerProcessor) Process(ctx context.Context, pctx *ProcessingContext
 
 	pctx.Analysis = analysis
 
-	log.Infof("Analysis complete: English=%v, Chinese=%v",
-		analysis.EnglishTrack != nil,
-		analysis.ChineseTrack != nil)
+	log.Info(ctx, "analysis_completed", "Analysis completed",
+		zap.Bool("has_english_track", analysis.EnglishTrack != nil),
+		zap.Bool("has_chinese_track", analysis.ChineseTrack != nil))
 
 	return nil
 }

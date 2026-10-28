@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"github.com/fusionn/internal/service/subtitle"
 	"github.com/fusionn/pkg/logger"
@@ -14,6 +15,9 @@ import (
 type CallbackHandler struct {
 	subtitleService *subtitle.Service
 }
+
+// callbackLog is the handler-level logger; request_id/job_id come from the request context.
+var callbackLog = logger.Component("callback")
 
 // NewCallbackHandler creates a new callback handler.
 func NewCallbackHandler(subtitleService *subtitle.Service) *CallbackHandler {
@@ -32,40 +36,46 @@ type TranslationCallbackPayload struct {
 
 // HandleTranslationCallback processes translation completion callbacks from fusionn-subs.
 func (h *CallbackHandler) HandleTranslationCallback(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	var payload TranslationCallbackPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		logger.Errorf("Invalid callback payload: %v", err)
+		callbackLog.Warn(ctx, "callback_invalid", "Invalid callback payload", zap.String("reason", "invalid_payload"), zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload"})
 		return
 	}
 
-	logger.Infof("📥 Translation callback received: job_id=%s", payload.JobID)
+	ctx = logger.WithJobID(ctx, payload.JobID)
+	callbackLog.Info(ctx, "callback_received", "Translation callback received")
 
 	// Validate file existence
 	if _, err := os.Stat(payload.EngSubtitlePath); os.IsNotExist(err) {
-		logger.Errorf("English subtitle file not found: %s", payload.EngSubtitlePath)
+		callbackLog.Warn(ctx, "callback_invalid", "English subtitle file not found",
+			zap.String("reason", "missing_english_subtitle"), zap.String("path", payload.EngSubtitlePath))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "English subtitle file not found"})
 		return
 	}
 
 	if _, err := os.Stat(payload.ChsSubtitlePath); os.IsNotExist(err) {
-		logger.Errorf("Chinese subtitle file not found: %s", payload.ChsSubtitlePath)
+		callbackLog.Warn(ctx, "callback_invalid", "Chinese subtitle file not found",
+			zap.String("reason", "missing_chinese_subtitle"), zap.String("path", payload.ChsSubtitlePath))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Chinese subtitle file not found"})
 		return
 	}
 
-	// Enqueue merge job
+	// Enqueue merge job; the new merge job keeps its own Job ID and records
+	// the translation Job ID as parent_job_id.
 	if err := h.subtitleService.ProcessWithSubtitles(
-		c.Request.Context(),
+		ctx,
 		payload.VideoPath,
 		payload.EngSubtitlePath,
 		payload.ChsSubtitlePath,
+		payload.JobID,
 	); err != nil {
-		logger.Errorf("Failed to enqueue merge job: %v", err)
+		callbackLog.Error(ctx, "callback_enqueue_failed", "Failed to enqueue merge job", zap.Error(err))
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Queue full or unavailable"})
 		return
 	}
 
-	logger.Infof("✅ Merge job enqueued for translation callback: job_id=%s", payload.JobID)
 	c.JSON(http.StatusAccepted, gin.H{"message": "Callback received, merge job enqueued"})
 }

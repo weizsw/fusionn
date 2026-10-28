@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/fusionn/internal/client/bazarr"
 	"github.com/fusionn/internal/config"
@@ -13,6 +14,9 @@ import (
 	"github.com/fusionn/internal/queue"
 	"github.com/fusionn/pkg/logger"
 )
+
+// log is the worker-level logger; correlation IDs come from ctx.
+var log = logger.Component("worker")
 
 // Service orchestrates subtitle processing using the pipeline architecture.
 type Service struct {
@@ -100,12 +104,12 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 	// Check if font embedding is enabled and binary is available
 	if cfg.Subtitle.FontEmbedding.Enabled {
 		if !isFusionnFontAvailable() {
-			logger.Warn("⚠️ fusionn-font binary not found - font embedding disabled")
+			logger.Component("service").Warn(context.Background(), "font_embedding_unavailable", "fusionn-font binary not found, font embedding disabled")
 		}
 	}
 
 	if !IsCleanitAvailable() {
-		logger.Warn("⚠️ cleanit not found in PATH - SDH subtitle filtering disabled")
+		logger.Component("service").Warn(context.Background(), "sdh_filter_unavailable", "cleanit not found in PATH, SDH subtitle filtering disabled")
 	}
 
 	return &Service{
@@ -126,6 +130,7 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) error {
 	pipelines := s.currentPipelines()
 	jobID := uuid.New().String()
+	ctx = logger.WithJobID(ctx, jobID)
 
 	pctx := &ProcessingContext{
 		VideoPath:       params.Path,
@@ -143,10 +148,11 @@ func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) error {
 		Metadata:        make(map[string]interface{}),
 	}
 
-	logger.Infof("📝 Analyzing subtitles for %s (job: %s)", params.Title, jobID)
+	log.Info(ctx, "job_received", "Job received",
+		zap.String("stage", "analyze"), zap.String("media_title", params.Title), zap.String("media_type", params.MediaType))
 
 	if err := pipelines.analyzePipeline.Execute(ctx, pctx); err != nil {
-		logger.Errorf("Analyze pipeline failed (job: %s): %v", jobID, err)
+		log.Error(ctx, "job_failed", "Job failed", zap.String("stage", "analyze"), zap.Error(err))
 		return err
 	}
 
@@ -162,22 +168,31 @@ func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) error {
 		}
 
 		if err := s.mergeQueue.Enqueue(mergeJob); err != nil {
+			// A full or stopped queue is the final failure of this operation;
+			// the webhook caller only receives the 202 and ignores the error,
+			// so the single ERROR is reported here, at the boundary.
+			log.Error(ctx, "job_failed", "Job failed", zap.String("stage", "enqueue"), zap.Error(err))
 			return err
 		}
 
-		logger.Infof("✅ Analysis complete, merge job enqueued (job: %s)", jobID)
+		log.Info(ctx, "job_enqueued", "Analysis complete, merge job enqueued", zap.String("stage", "merge"))
 	} else {
-		logger.Infof("✅ Analysis complete (job: %s)", jobID)
+		log.Info(ctx, "analysis_completed", "Analysis complete")
 	}
 
 	return nil
 }
 
 // ProcessWithSubtitles processes pre-extracted subtitles (from translation callback).
-// This enqueues a merge job with the provided subtitle paths.
-func (s *Service) ProcessWithSubtitles(ctx context.Context, videoPath, engSubPath, chsSubPath string) error {
+// This enqueues a merge job with the provided subtitle paths. The merge job
+// keeps its own new Job ID; parentJobID is recorded for correlation only.
+func (s *Service) ProcessWithSubtitles(ctx context.Context, videoPath, engSubPath, chsSubPath, parentJobID string) error {
 	// Generate job ID
 	jobID := uuid.New().String()
+	ctx = logger.WithJobID(ctx, jobID)
+	if parentJobID != "" {
+		ctx = logger.WithParentJobID(ctx, parentJobID)
+	}
 
 	// Enqueue merge job
 	mergeJob := &queue.MergeJob{
@@ -194,13 +209,14 @@ func (s *Service) ProcessWithSubtitles(ctx context.Context, videoPath, engSubPat
 		return err
 	}
 
-	logger.Infof("✅ Translation callback merge job enqueued (job: %s)", jobID)
+	log.Info(ctx, "job_linked", "Merge job linked to translation job")
 	return nil
 }
 
 // ProcessMergeJob processes a merge job from the queue (called by worker).
 func (s *Service) ProcessMergeJob(ctx context.Context, job *queue.MergeJob) error {
 	pipelines := s.currentPipelines()
+	ctx = logger.WithJobID(ctx, job.JobID)
 	// Create processing context
 	pctx := &ProcessingContext{
 		VideoPath:        job.VideoPath,
@@ -215,15 +231,13 @@ func (s *Service) ProcessMergeJob(ctx context.Context, job *queue.MergeJob) erro
 		Metadata:         make(map[string]interface{}),
 	}
 
-	logger.Infof("🔧 Processing merge job: %s (%s)", job.JobID, job.MediaTitle)
-
-	// Execute merge pipeline
+	// Execute merge pipeline (job start/completion lifecycle is owned by the
+	// merge queue worker; this layer reports stage progress).
 	if err := pipelines.mergePipeline.Execute(ctx, pctx); err != nil {
-		logger.Errorf("Merge pipeline failed (job: %s): %v", job.JobID, err)
+		log.Debug(ctx, "job_failed", "Job failed", zap.String("stage", "merge"), zap.Error(err))
 		return err
 	}
 
-	logger.Infof("✅ Merge job completed: %s", job.JobID)
 	return nil
 }
 

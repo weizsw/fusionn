@@ -10,7 +10,6 @@ import io
 import json
 import logging
 import os
-import re
 import signal
 import sys
 import threading
@@ -18,40 +17,29 @@ import time
 import uuid
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
-from datetime import datetime, timezone
 from email import policy
 from email.parser import BytesParser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from multiprocessing import get_context
 
+import logfmt
+
 MAX_REQUEST_BYTES = 4 * 1024 * 1024
 MODEL_ID = os.environ.get("ALIGN_MODEL", "Qwen/Qwen3-ForcedAligner-0.6B-hf")
-LOG = logging.getLogger("word-align")
 
-_REQUEST_ID_RE = re.compile(r"[A-Za-z0-9._-]{1,64}\Z")
-_NOISY_LOGGERS = ("transformers", "huggingface_hub", "httpx", "httpcore", "filelock", "urllib3", "torch")
-
-
-class _UTCFormatter(logging.Formatter):
-    def formatTime(self, record, datefmt=None):
-        moment = datetime.fromtimestamp(record.created, tz=timezone.utc)
-        return moment.strftime("%Y-%m-%dT%H:%M:%S.") + f"{moment.microsecond // 1000:03d}Z"
+# The shared renderer owns the format, level and redaction policy. Requests and
+# lifecycle events use the server component; model work reports as worker.
+LOG = logfmt.configure("word-align", component="server")
+WORKER_LOG = logfmt.Logger("worker", service="word-align")
 
 
 def configure_logging():
-    """Set up the service logger on stderr. Idempotent and safe in each process."""
-    if LOG.handlers:
-        return
-    level = os.environ.get("ALIGN_LOG_LEVEL", "INFO").upper()
-    LOG.setLevel(logging.getLevelNamesMapping().get(level, logging.INFO))
-    handler = logging.StreamHandler()  # stderr
-    handler.setFormatter(_UTCFormatter("%(asctime)s %(levelname)s pid=%(process)d %(message)s"))
-    LOG.addHandler(handler)
-    LOG.propagate = False
-    for name in _NOISY_LOGGERS:
-        logging.getLogger(name).setLevel(logging.WARNING)
+    """Install the shared formatter on stderr. Idempotent and safe in each process."""
+    global LOG
+    LOG = logfmt.configure("word-align", component="server")
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    return LOG
 
 
 class ModelAligner:
@@ -76,19 +64,21 @@ class ModelAligner:
         with self.lock:
             if self.model is None:
                 torch.set_num_threads(int(os.environ.get("ALIGN_THREADS", "4")))
-                LOG.info("event=model_load_started model=%s request_id=%s", MODEL_ID, request_id)
+                WORKER_LOG.info("model_load_started", "Model load started",
+                                model=MODEL_ID, request_id=request_id)
                 load_start = time.perf_counter()
                 processor = AutoProcessor.from_pretrained(MODEL_ID)
                 model = AutoModelForTokenClassification.from_pretrained(
                     MODEL_ID, dtype=torch.float32, attn_implementation="sdpa"
                 ).eval()
                 self.processor, self.model = processor, model
-                LOG.info(
-                    "event=model_load_completed model=%s device=%s load_ms=%s request_id=%s",
-                    MODEL_ID,
-                    model.device,
-                    round((time.perf_counter() - load_start) * 1000, 1),
-                    request_id,
+                WORKER_LOG.info(
+                    "model_load_completed",
+                    "Model load completed",
+                    model=MODEL_ID,
+                    device=str(model.device),
+                    load_ms=round((time.perf_counter() - load_start) * 1000, 1),
+                    request_id=request_id,
                 )
             inputs, word_lists = self.processor.prepare_forced_aligner_inputs(
                 audio=audio, transcript=text, language="English"
@@ -118,9 +108,9 @@ def align_clip(audio_bytes: bytes, text: str, request_id: str | None = None) -> 
 def _request_id(handler) -> str:
     headers = getattr(handler, "headers", None)
     value = headers.get("X-Request-ID") if headers is not None else None
-    if value is not None and _REQUEST_ID_RE.fullmatch(value):
-        return value
-    return uuid.uuid4().hex
+    # The shared helper applies the ASCII 1-64 rule and generates a new id for
+    # anything else (spec: never echo an unexpected caller value).
+    return logfmt.request_id(value)
 
 
 def _route(method, path) -> str:
@@ -161,12 +151,6 @@ def _terminal_level(status: int, context: dict):
     return logging.WARNING, "client_error"
 
 
-def _kv(key: str, value) -> str:
-    if isinstance(value, bool):
-        value = "true" if value else "false"
-    return f"{key}={value}"
-
-
 class Aligner:
     """Keep model memory in one worker and stop it after an idle period."""
 
@@ -192,7 +176,7 @@ class Aligner:
                 self.timer.cancel()
             try:
                 if self.pool is None:
-                    LOG.info("event=worker_started")
+                    WORKER_LOG.info("worker_started", "Model worker started")
                     self.pool = ProcessPoolExecutor(max_workers=1, mp_context=get_context("spawn"))
                 result = self.pool.submit(align_clip, audio_bytes, text, request_id).result()
                 self.model_loaded = True
@@ -222,7 +206,8 @@ class Aligner:
         if pool is not None:
             pool.shutdown(wait=True)
             idle = 0.0 if self.last_used is None else max(0.0, time.monotonic() - self.last_used)
-            LOG.info("event=worker_unloaded reason=%s idle_seconds=%.1f", reason, idle)
+            WORKER_LOG.info("worker_unloaded", "Model worker unloaded",
+                            reason=reason, idle_seconds=round(idle, 1))
         self.model_loaded = False
 
     def close(self):
@@ -240,13 +225,15 @@ class Handler(BaseHTTPRequestHandler):
     def send_error(self, code, message=None, explain=None):
         request_id = _request_id(self)
         self._pending_request_id = request_id
-        LOG.warning(
-            "event=request method=%s route=%s status=%s request_id=%s outcome=protocol_error reason=%s",
-            getattr(self, "command", None),
-            _route(getattr(self, "command", None), getattr(self, "path", "")),
-            code,
-            request_id,
-            _http_reason(code),
+        LOG.warn(
+            "request_completed",
+            "Request rejected",
+            method=getattr(self, "command", None),
+            route=_route(getattr(self, "command", None), getattr(self, "path", "")),
+            status=code,
+            request_id=request_id,
+            outcome="protocol_error",
+            reason=_http_reason(code),
         )
         super().send_error(code, message, explain)
 
@@ -274,25 +261,35 @@ class Handler(BaseHTTPRequestHandler):
         if level is None:
             level, outcome = _terminal_level(status, context)
         outcome = outcome or "ok"
-        fields = [
-            ("event", "request"),
-            ("method", self.command),
-            ("route", _route(self.command, self.path)),
-            ("status", status),
-            ("request_id", request_id),
-            ("duration_ms", round((time.perf_counter() - started) * 1000, 1)),
-            ("outcome", outcome),
-        ]
+        summary = {
+            "method": self.command,
+            "route": _route(self.command, self.path),
+            "status": status,
+            "request_id": request_id,
+            "duration_ms": round((time.perf_counter() - started) * 1000, 1),
+            "outcome": outcome,
+        }
         if reason is not None or context.get("reason") is not None:
-            fields.append(("reason", reason if reason is not None else context["reason"]))
+            summary["reason"] = reason if reason is not None else context["reason"]
         for key in ("audio_bytes", "text_chars", "word_count", "queue_ms", "worker_ms", "cold_start", "error_type"):
             if key in context:
-                fields.append((key, context[key]))
-        LOG.log(level, " ".join(_kv(key, value) for key, value in fields), exc_info=context.get("exc_info"))
+                summary[key] = context[key]
+        if context.get("exc_info"):
+            # The shared formatter bounds the traceback into an escaped stack field.
+            LOG.exception("request_completed", "Request failed", **summary)
+        elif level == logging.ERROR:
+            LOG.error("request_completed", "Request failed", **summary)
+        elif level == logging.WARNING:
+            LOG.warn("request_completed", "Request rejected", **summary)
+        elif level == logging.DEBUG:
+            LOG.debug("request_completed", "Health check completed", **summary)
+        else:
+            LOG.info("request_completed", "Request completed", **summary)
 
     def do_GET(self):
         context = {"request_id": _request_id(self), "start": time.perf_counter()}
-        LOG.debug("event=request_started method=GET route=%s request_id=%s", _route("GET", self.path), context["request_id"])
+        LOG.debug("request_started", "Request started", method="GET",
+                  route=_route("GET", self.path), request_id=context["request_id"])
         if self.path == "/health":
             self.reply(200, {"status": "ok", "model_loaded": ALIGNER.model_loaded}, context=context, level=logging.DEBUG)
         else:
@@ -300,7 +297,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         context = {"request_id": _request_id(self), "start": time.perf_counter()}
-        LOG.debug("event=request_started method=POST route=%s request_id=%s", _route("POST", self.path), context["request_id"])
+        LOG.debug("request_started", "Request started", method="POST",
+                  route=_route("POST", self.path), request_id=context["request_id"])
         if self.path != "/align":
             self.reply(404, {"error": "unknown endpoint"}, context=context, reason="not_found")
             return
@@ -349,19 +347,21 @@ if __name__ == "__main__":
     configure_logging()
     signal.signal(signal.SIGTERM, _interrupt)
     server = ThreadingHTTPServer(("0.0.0.0", int(os.environ.get("ALIGN_PORT", "8767"))), Handler)
+    level, _ = logfmt.resolve_level()
     LOG.info(
-        "event=service_started port=%d model=%s threads=%s idle_seconds=%s log_level=%s",
-        server.server_address[1],
-        MODEL_ID,
-        os.environ.get("ALIGN_THREADS", "4"),
-        ALIGNER.idle_seconds,
-        logging.getLevelName(LOG.getEffectiveLevel()),
+        "service_started",
+        "Service started",
+        port=server.server_address[1],
+        model=MODEL_ID,
+        threads=os.environ.get("ALIGN_THREADS", "4"),
+        idle_seconds=ALIGNER.idle_seconds,
+        log_level=logging.getLevelName(level),
     )
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        LOG.info("event=service_interrupted")
+        LOG.info("service_interrupted", "Service interrupted")
     finally:
-        LOG.info("event=service_stopping")
+        LOG.info("service_stopping", "Service stopping")
         server.server_close()
         ALIGNER.close()

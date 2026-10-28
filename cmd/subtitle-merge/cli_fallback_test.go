@@ -192,9 +192,9 @@ func TestCLIFallback_Subprocess_LLM503FallbackToNativeASS(t *testing.T) {
 
 	// 1. Verify stderr degradation warning
 	stderrStr := stderr.String()
-	wantWarn := "Warning: LLM alignment partially failed (1 windows); fell back to timing-based pairing for failed windows"
-	if !strings.Contains(stderrStr, wantWarn) {
-		t.Errorf("expected stderr to contain %q, got:\n%s", wantWarn, stderrStr)
+	wantWarn := "event=alignment_degraded"
+	if !strings.Contains(stderrStr, wantWarn) || !strings.Contains(stderrStr, "failed_windows=1") {
+		t.Errorf("expected stderr to contain %q with failed_windows=1, got:\n%s", wantWarn, stderrStr)
 	}
 
 	// 2. Verify stdout status line and fallback window count
@@ -430,8 +430,9 @@ func TestCLIFallback_Subprocess_HTTP401NoRetryFallback(t *testing.T) {
 		t.Errorf("expected 401 to fail-fast without retry (reqCount=1), got %d", reqCount)
 	}
 
-	if !strings.Contains(stderr.String(), "Warning: LLM alignment partially failed (1 windows)") {
-		t.Errorf("missing fallback warning in stderr:\n%s", stderr.String())
+	if !strings.Contains(stderr.String(), "event=alignment_degraded") ||
+		!strings.Contains(stderr.String(), "failed_windows=1") {
+		t.Errorf("missing structured fallback warning in stderr:\n%s", stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "fallback_windows: 1") {
 		t.Errorf("missing fallback_windows: 1 in stdout:\n%s", stdout.String())
@@ -481,7 +482,8 @@ func TestCLIFallback_Subprocess_HostEnvPoisoningImmunity(t *testing.T) {
 	if !validServerHit {
 		t.Fatal("sanitized subprocess did not hit the configured httptest server; was it hijacked?")
 	}
-	if !strings.Contains(stderr.String(), "Warning: LLM alignment partially failed (1 windows)") {
-		t.Errorf("missing fallback warning in stderr:\n%s", stderr.String())
+	if !strings.Contains(stderr.String(), "event=alignment_degraded") ||
+		!strings.Contains(stderr.String(), "failed_windows=1") {
+		t.Errorf("missing structured fallback warning in stderr:\n%s", stderr.String())
 	}
 }

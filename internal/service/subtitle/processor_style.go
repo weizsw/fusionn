@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/executor"
 	"github.com/fusionn/pkg/logger"
@@ -50,8 +52,8 @@ func (p *StyleProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process injects custom styles into the ASS file.
 func (p *StyleProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	log := logger.Indent()
-	log.Infof("Injecting custom ASS styles: %s", pctx.MergedSubPath)
+	log := logger.Component("style")
+	log.Debug(ctx, "style_detail", "Style detail", logger.Preview(pctx.MergedSubPath))
 
 	content, err := os.ReadFile(pctx.MergedSubPath)
 	if err != nil {
@@ -60,12 +62,12 @@ func (p *StyleProcessor) Process(ctx context.Context, pctx *ProcessingContext) e
 
 	doc, err := parseASSDocument(string(content))
 	if err != nil {
-		log.Warnf("Failed to parse ASS file, skipping styling: %v", err)
+		log.Warn(ctx, "style_parse_failed", "Failed to parse ASS file, skipping styling", zap.Error(err))
 		return nil // Don't fail the job, just skip styling
 	}
 
 	if pctx.Metadata[metadataLLMStyled] == true || doc.llmStyled {
-		log.Infof("Subtitle already styled by the LLM renderer, preserving it")
+		log.Info(ctx, "style_preserved", "Subtitle already styled by the LLM renderer, preserving it")
 		return nil
 	}
 
@@ -81,15 +83,17 @@ func (p *StyleProcessor) Process(ctx context.Context, pctx *ProcessingContext) e
 	if pctx.VideoPath != "" {
 		probeOutput, probeErr := p.probe(ctx, pctx.VideoPath)
 		if probeErr != nil {
-			log.Warnf("Failed to detect video resolution, using configured ASS style: %v", probeErr)
+			log.Warn(ctx, "style_probe_failed", "Failed to detect video resolution, using configured ASS style", zap.Error(probeErr))
 		} else if width, height, ok := videoDimensions(probeOutput); ok {
 			scale = referencePlaybackCanvasScale(width, height)
 			marginV = adjustedMarginV(styleConfig.MarginV, width, height, playResY)
 			if scale != 1 {
-				log.Infof("Adapting style for %dx%d playback on the centered 16:9 reference canvas (scale %.3f, margin %d)", width, height, scale, marginV)
+				log.Info(ctx, "style_adapted", "Adapting style for playback on the centered 16:9 reference canvas",
+					zap.Int("width", width), zap.Int("height", height),
+					zap.Float64("scale", scale), zap.Int("margin_v", marginV))
 			}
 		} else {
-			log.Warn("Failed to detect video resolution, using configured ASS style")
+			log.Warn(ctx, "style_probe_failed", "Failed to detect video resolution, using configured ASS style")
 		}
 	}
 
@@ -105,7 +109,7 @@ func (p *StyleProcessor) Process(ctx context.Context, pctx *ProcessingContext) e
 		return fmt.Errorf("failed to write styled ASS: %w", err)
 	}
 
-	log.Infof("✅ Custom styles injected: %s", pctx.MergedSubPath)
+	log.Info(ctx, "style_applied", "Custom styles injected")
 	return nil
 }
 

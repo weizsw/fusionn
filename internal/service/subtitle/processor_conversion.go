@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	"go.uber.org/zap"
+
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/executor"
 	"github.com/fusionn/pkg/logger"
@@ -37,12 +39,12 @@ func (p *ConversionProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process converts Traditional to Simplified Chinese.
 func (p *ConversionProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	log := logger.Indent()
+	log := logger.Component("conversion")
 	if pctx.ChineseSubPath == "" {
 		return fmt.Errorf("chinese subtitle path not set")
 	}
 
-	log.Info("Converting Traditional Chinese → Simplified Chinese")
+	log.Info(ctx, "conversion_started", "Converting Traditional Chinese to Simplified Chinese")
 
 	// Create output path
 	convertedPath := pctx.ChineseSubPath + ".converted.srt"
@@ -61,12 +63,13 @@ func (p *ConversionProcessor) Process(ctx context.Context, pctx *ProcessingConte
 	// Replace Chinese subtitle path with converted version
 	// Clean up original
 	if err := os.Remove(pctx.ChineseSubPath); err != nil {
-		log.Warnf("Failed to remove original Traditional subtitle: %v", err)
+		log.Warn(ctx, "cleanup_failed", "Failed to remove original Traditional subtitle",
+			zap.String("path", pctx.ChineseSubPath), zap.Error(err))
 	}
 
 	pctx.ChineseSubPath = convertedPath
 	pctx.NeedsConversion = false
 
-	log.Info("✅ Conversion completed")
+	log.Info(ctx, "conversion_completed", "Conversion completed")
 	return nil
 }

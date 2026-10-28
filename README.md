@@ -90,7 +90,7 @@ The merge runs on a bounded worker queue, so a slow LLM request never blocks the
 Compose starts three services: `fusionn`, `word-align` (optional CPU alignment) and `redis`. A commented `fusionn-subs` service shows how to add translation.
 
 > [!NOTE]
-> The first `word-align` request downloads the alignment model into the Hugging Face volume. The model worker exits after 300 seconds of inactivity to release memory and reloads from cache on the next request. Set `ALIGN_IDLE_SECONDS` on the service to change this. The service writes one structured `event=request` log line per alignment request (health checks stay silent at INFO); set `ALIGN_LOG_LEVEL` (default `INFO`, for example `DEBUG`) to change what it records.
+> The first `word-align` request downloads the alignment model into the Hugging Face volume. The model worker exits after 300 seconds of inactivity to release memory and reloads from cache on the next request. Set `ALIGN_IDLE_SECONDS` on the service to change this. The service writes one unified log line per event to stderr (`request_completed` per alignment request; health checks stay silent at INFO); set `LOG_LEVEL` (or `ALIGN_LOG_LEVEL` as a fallback alias; default `INFO`) to change what it records.
 
 ### Local development
 
@@ -324,11 +324,24 @@ curl -s http://localhost:8080/api/v1/status
 
 | Environment variable | Purpose |
 |---|---|
-| `ENV` | Set to `production` for Gin release mode and `info`-level console logging (default: development, `debug` level) |
+| `ENV` | Set to `production` for Gin release mode (it no longer changes the log level) |
 | `CONFIG_PATH` | Path to the configuration file (default `config/config.yaml`) |
+| `LOG_LEVEL` | `DEBUG`, `INFO`, `WARN` or `ERROR` (default `INFO`); an invalid value logs a `config_invalid` warning and keeps `INFO` |
 | `FUSIONN_*` | Override any config key, for example `FUSIONN_SERVER_PORT=9090` |
 
 Unknown or malformed values fail at startup rather than at first use.
+
+### Logs
+
+Every process writes one event per line to the standard stream:
+
+```text
+2026-07-01T14:20:03.456+08:00 WARN service=fusionn component=worker event=job_failed job_id=abc stage=analyze error="video file not found" msg="Job failed"
+```
+
+Timestamps are fixed UTC+8 with milliseconds. The fixed field order is `service component event`, then the correlation fields (`job_id submission_id attempt_id request_id parent_job_id stage tool stream`) and the remaining fields sorted by name; `msg` is always last. Values with spaces, quotes, equals signs or control characters are double-quoted with backslash escapes. Credentials (API keys, tokens, passwords, URL userinfo, `Authorization` headers) are masked at every level; content excerpts and stack traces appear only as bounded fields (`preview` at DEBUG, capped at 512 characters; `stack`, capped at 4096).
+
+View the container logs with `docker compose logs -f fusionn`; the compose file caps them at 20 MiB per file with six files per container.
 
 ## Development
 

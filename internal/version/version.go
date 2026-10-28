@@ -27,8 +27,10 @@ func Banner() string {
 	return strings.Trim(banner, "\n")
 }
 
-// PrintBanner writes the decorated banner and version info to w (stdout if nil).
-func PrintBanner(w io.Writer) {
+// PrintBanner writes the decorated banner, version info and the effective log
+// level to w (stdout if nil). The level is passed in by the caller so this
+// package stays independent of the logger.
+func PrintBanner(w io.Writer, logLevel string) {
 	if w == nil {
 		w = os.Stdout
 	}
@@ -37,6 +39,7 @@ func PrintBanner(w io.Writer) {
 	fmt.Fprintln(w, Banner())
 	fmt.Fprintf(w, "\n  fusionn %s\n", Version)
 	fmt.Fprintf(w, "  Intelligent Media Automation Platform\n")
+	fmt.Fprintf(w, "  Log level: %s\n", logLevel)
 	fmt.Fprintln(w, separator)
 	fmt.Fprintln(w)
 }

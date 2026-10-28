@@ -4,10 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
+
+	"go.uber.org/zap"
+
+	"github.com/fusionn/pkg/logger"
 )
 
 // HTTPClient calls a remote DuoSubs HTTP service
@@ -79,7 +84,14 @@ func (c *HTTPClient) Merge(ctx context.Context, primaryPath, secondaryPath, outp
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
 	}
+	// One outbound request id ties this call to the Python service's own
+	// request_completed line; the shared logger renders it with the ctx job_id.
+	requestID := logger.NewRequestID()
+	ctx = logger.WithRequestID(ctx, requestID)
+	httpReq = httpReq.WithContext(ctx)
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-Request-ID", requestID)
+	logger.Component("duosubs").Info(ctx, "service_request", "Calling DuoSubs service", zap.String("tool", "duosubs"))
 
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
@@ -93,7 +105,11 @@ func (c *HTTPClient) Merge(ctx context.Context, primaryPath, secondaryPath, outp
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("http error %d: %s", resp.StatusCode, string(respBody))
+		// The remote body is untrusted content and never becomes part of the
+		// error; it appears once as a bounded, redacted DEBUG excerpt.
+		logger.Component("duosubs").Debug(ctx, "http_error_detail", "DuoSubs HTTP error detail",
+			zap.Int("status", resp.StatusCode), logger.Preview(string(respBody)))
+		return "", fmt.Errorf("http error %d", resp.StatusCode)
 	}
 
 	var mergeResp mergeResponse
@@ -102,7 +118,9 @@ func (c *HTTPClient) Merge(ctx context.Context, primaryPath, secondaryPath, outp
 	}
 
 	if !mergeResp.Success {
-		return "", fmt.Errorf("duosubs failed: %s", mergeResp.Error)
+		logger.Component("duosubs").Debug(ctx, "merge_error_detail", "DuoSubs merge error detail",
+			zap.Int("status", resp.StatusCode), logger.Preview(mergeResp.Error))
+		return "", errors.New("duosubs reported merge failure")
 	}
 
 	return mergeResp.OutputPath, nil

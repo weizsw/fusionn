@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"os/exec"
 	"time"
-
-	"github.com/fusionn/pkg/logger"
 )
 
 // FFProbeOutput represents the structure of ffprobe JSON output.
@@ -38,14 +36,16 @@ func FFProbe(ctx context.Context, videoPath string) (*FFProbeOutput, error) {
 		videoPath,
 	)
 
-	var stdout, stderr bytes.Buffer
+	var stdout bytes.Buffer // ffprobe result, parsed below
+	tail := &boundedTail{}
 	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stderr = tail
 
-	logger.Debugf("Executing: %s", cmd.String())
-
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("ffprobe failed: %w (stderr: %s)", err, stderr.String())
+	start := toolStarted(ctx, "ffprobe", cmd)
+	err := cmd.Run()
+	toolFinished(ctx, "ffprobe", start, err, tail.Diagnostic())
+	if err != nil {
+		return nil, fmt.Errorf("ffprobe failed: %w", err)
 	}
 
 	var output FFProbeOutput
@@ -78,13 +78,14 @@ func extractSubtitle(ctx context.Context, videoPath string, streamIndex int, out
 		outputPath,
 	)
 
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	tail := &boundedTail{}
+	cmd.Stderr = tail
 
-	logger.Debugf("Executing: %s", cmd.String())
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("ffmpeg extract failed: %w (stderr: %s)", err, stderr.String())
+	start := toolStarted(ctx, "ffmpeg", cmd)
+	err := cmd.Run()
+	toolFinished(ctx, "ffmpeg", start, err, tail.Diagnostic())
+	if err != nil {
+		return fmt.Errorf("ffmpeg extract failed: %w", err)
 	}
 
 	return nil

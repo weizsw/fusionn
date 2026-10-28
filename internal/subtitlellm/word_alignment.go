@@ -14,8 +14,11 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/executor"
+	"github.com/fusionn/pkg/logger"
 )
 
 // AlignWords uploads short English audio clips and their source transcripts.
@@ -68,7 +71,9 @@ func AlignWords(ctx context.Context, videoPath string, bundle Bundle, cfg config
 		cmd.Stderr = &stderr
 		data, err := cmd.Output()
 		if err != nil {
-			return nil, 0, fmt.Errorf("extract English cue %d: %w (%s)", cue.ID, err, stderr.String())
+			logger.Component("word_alignment").Debug(ctx, "extract_failed_detail", "Cue extraction failed",
+				zap.Int("cue", cue.ID), logger.Preview(stderr.String()))
+			return nil, 0, fmt.Errorf("extract English cue %d: %w", cue.ID, err)
 		}
 		return data, start, nil
 	})

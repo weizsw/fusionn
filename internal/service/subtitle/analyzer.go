@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"github.com/fusionn/internal/executor"
 	"github.com/fusionn/pkg/logger"
 )
@@ -87,8 +89,8 @@ func (a *Analyzer) SetPreserveNativeASS(enabled bool) {
 
 // AnalyzeVideo detects subtitle tracks in a video file.
 func (a *Analyzer) AnalyzeVideo(ctx context.Context, videoPath string) (*AnalysisResult, error) {
-	log := logger.Indent()
-	log.Infof("Analyzing subtitles in: %s", videoPath)
+	log := logger.Component("analyzer")
+	log.Debug(ctx, "analysis_detail", "Analyzing subtitle tracks", logger.Preview(videoPath))
 
 	// Check if video file exists
 	if _, err := os.Stat(videoPath); os.IsNotExist(err) {
@@ -109,24 +111,26 @@ func (a *Analyzer) AnalyzeVideo(ctx context.Context, videoPath string) (*Analysi
 		}
 	}
 
-	log.Infof("Found %d subtitle track(s)", len(subtitleStreams))
+	log.Info(ctx, "tracks_found", "Subtitle tracks found", zap.Int("count", len(subtitleStreams)))
 
 	// Detect English and Chinese subtitles
 	englishTrack := a.detectEnglishSubtitle(subtitleStreams)
 	chineseTrack := a.detectChineseSubtitle(subtitleStreams)
 
 	if englishTrack != nil {
-		log.Infof("✅ English subtitle detected: index=%d, lang=%s, priority=%d",
-			englishTrack.Index, englishTrack.Language, englishTrack.Priority)
+		log.Info(ctx, "track_detected", "English subtitle detected",
+			zap.String("language", "eng"), zap.Int("index", englishTrack.Index),
+			zap.Int("priority", englishTrack.Priority))
 	} else {
-		log.Warn("⚠️  No English subtitle found")
+		log.Warn(ctx, "track_missing", "No English subtitle found", zap.String("language", "eng"))
 	}
 
 	if chineseTrack != nil {
-		log.Infof("✅ Chinese subtitle detected: index=%d, lang=%s, priority=%d, needs_conversion=%v",
-			chineseTrack.Index, chineseTrack.Language, chineseTrack.Priority, chineseTrack.NeedsConversion)
+		log.Info(ctx, "track_detected", "Chinese subtitle detected",
+			zap.String("language", "chs"), zap.Int("index", chineseTrack.Index),
+			zap.Int("priority", chineseTrack.Priority), zap.Bool("needs_conversion", chineseTrack.NeedsConversion))
 	} else {
-		log.Warn("⚠️  No Chinese subtitle found - will queue for translation")
+		log.Warn(ctx, "track_missing", "No Chinese subtitle found, will queue for translation", zap.String("language", "chs"))
 	}
 
 	return &AnalysisResult{
@@ -159,7 +163,7 @@ type englishScore struct {
 // Pass 1: collect all English candidates and find max frames/bytes.
 // Pass 2: score each candidate, pick the lowest penalty (tie-break by frame count, then stream order).
 func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *Track {
-	log := logger.Indent()
+	log := logger.Component("analyzer")
 
 	var candidates []englishCandidate
 	maxFrames, maxBytes := 0, 0
@@ -205,8 +209,12 @@ func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *Track {
 		score := scoreEnglishTrackDetails(c.stream, c.title, c.frames, c.bytes, maxFrames, maxBytes, len(candidates))
 		scores[i] = score
 
-		log.Infof("English candidate: index=%d, title=%q, total=%d (codec=%d, disposition=%d, title=%d, frame=%d, byte=%d) (codec=%s, frames=%d, bytes=%d)",
-			c.stream.Index, c.title, score.Total, score.CodecPenalty, score.DispositionPenalty, score.TitlePenalty, score.FramePenalty, score.BytePenalty, c.stream.CodecName, c.frames, c.bytes)
+		log.Debug(context.Background(), "candidate_scored", "English candidate scored",
+			zap.Int("index", c.stream.Index), zap.Int("total", score.Total),
+			zap.Int("codec", score.CodecPenalty), zap.Int("disposition", score.DispositionPenalty),
+			zap.Int("title", score.TitlePenalty), zap.Int("frame", score.FramePenalty),
+			zap.Int("byte", score.BytePenalty), zap.String("codec_name", c.stream.CodecName),
+			zap.Int("frames", c.frames), zap.Int("bytes", c.bytes))
 
 		if bestIdx < 0 || score.Total < bestScore.Total || (score.Total == bestScore.Total && c.frames > candidates[bestIdx].frames) {
 			bestIdx = i
@@ -229,11 +237,12 @@ func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *Track {
 		}
 
 		if runnerUpIdx >= 0 {
-			log.Infof("Selected English: index=%d (total=%d, codec=%d, disposition=%d, title=%d, frame=%d, byte=%d) over index=%d (total=%d)",
-				candidates[bestIdx].stream.Index, bestScore.Total, bestScore.CodecPenalty, bestScore.DispositionPenalty, bestScore.TitlePenalty, bestScore.FramePenalty, bestScore.BytePenalty,
-				candidates[runnerUpIdx].stream.Index, runnerUpScore.Total)
+			log.Debug(context.Background(), "english_candidate_selected", "Selected English candidate",
+				zap.Int("index", candidates[bestIdx].stream.Index), zap.Int("total", bestScore.Total),
+				zap.Int("runner_up_index", candidates[runnerUpIdx].stream.Index), zap.Int("runner_up_total", runnerUpScore.Total))
 		} else {
-			log.Infof("Selected English: index=%d (total=%d)", candidates[bestIdx].stream.Index, bestScore.Total)
+			log.Debug(context.Background(), "english_candidate_selected", "Selected English candidate",
+				zap.Int("index", candidates[bestIdx].stream.Index), zap.Int("total", bestScore.Total))
 		}
 	}
 
@@ -407,8 +416,9 @@ func (a *Analyzer) detectChineseSubtitle(streams []executor.StreamInfo) *Track {
 		}
 	}
 	if len(candidates) > 1 {
-		logger.Indent().Infof("Selected Chinese: index=%d, title=%q, penalty=%d, priority=%d (from %d candidates)",
-			best.Index, best.Title, bestPenalty, best.Priority, len(candidates))
+		logger.Component("analyzer").Debug(context.Background(), "chinese_candidate_selected", "Selected Chinese candidate",
+			zap.Int("index", best.Index), logger.Preview(best.Title), zap.Int("penalty", bestPenalty),
+			zap.Int("priority", best.Priority), zap.Int("candidates", len(candidates)))
 	}
 	return best
 }
@@ -465,8 +475,9 @@ func (a *Analyzer) matchChineseTrack(stream executor.StreamInfo) *Track {
 
 	// Priority 3: Fallback - assume Traditional if language is Chinese but title is ambiguous
 	// (Most ambiguous Chinese subtitles are Traditional Chinese)
-	log := logger.Indent()
-	log.Warnf("Chinese subtitle detected but type unknown (lang=%s, title=%s), defaulting to Traditional", lang, title)
+	log := logger.Component("analyzer")
+	log.Warn(context.Background(), "chinese_type_unknown", "Chinese subtitle type unknown, defaulting to Traditional",
+		zap.String("language", lang), zap.String("title", title))
 	return &Track{
 		Index:           stream.Index,
 		Language:        lang,
@@ -480,7 +491,7 @@ func (a *Analyzer) matchChineseTrack(stream executor.StreamInfo) *Track {
 // ExtractSubtitles extracts the detected subtitle tracks to files in the media
 // directory. SRT is the default; see extractTrack for the LLM native ASS mode.
 func (a *Analyzer) ExtractSubtitles(ctx context.Context, result *AnalysisResult) error {
-	log := logger.Indent()
+	log := logger.Component("analyzer")
 	videoBase := filepath.Base(result.VideoPath)
 	videoName := strings.TrimSuffix(videoBase, filepath.Ext(videoBase))
 
@@ -490,7 +501,8 @@ func (a *Analyzer) ExtractSubtitles(ctx context.Context, result *AnalysisResult)
 			return fmt.Errorf("failed to extract English subtitle: %w", err)
 		}
 		result.EnglishTrack.ExtractedPath = outputPath
-		log.Infof("Extracted English subtitle: %s", outputPath)
+		log.Info(ctx, "subtitle_extracted", "English subtitle extracted",
+			zap.String("language", "eng"), zap.String("path", outputPath))
 	}
 
 	if result.ChineseTrack != nil {
@@ -505,7 +517,8 @@ func (a *Analyzer) ExtractSubtitles(ctx context.Context, result *AnalysisResult)
 			return fmt.Errorf("failed to extract Chinese subtitle: %w", err)
 		}
 		result.ChineseTrack.ExtractedPath = outputPath
-		log.Infof("Extracted Chinese subtitle: %s", outputPath)
+		log.Info(ctx, "subtitle_extracted", "Chinese subtitle extracted",
+			zap.String("language", "chs"), zap.String("path", outputPath))
 	}
 
 	return nil
@@ -576,16 +589,18 @@ func isASSSubtitleCodec(codecName string) bool {
 
 // Cleanup removes temporary extracted subtitle files.
 func (a *Analyzer) Cleanup(result *AnalysisResult) {
-	log := logger.Indent()
+	log := logger.Component("analyzer")
 	if result.EnglishTrack != nil && result.EnglishTrack.ExtractedPath != "" {
 		if err := os.Remove(result.EnglishTrack.ExtractedPath); err != nil {
-			log.Warnf("Failed to cleanup %s: %v", result.EnglishTrack.ExtractedPath, err)
+			log.Warn(context.Background(), "cleanup_failed", "Failed to clean up extracted subtitle",
+				zap.String("path", result.EnglishTrack.ExtractedPath), zap.Error(err))
 		}
 	}
 
 	if result.ChineseTrack != nil && result.ChineseTrack.ExtractedPath != "" {
 		if err := os.Remove(result.ChineseTrack.ExtractedPath); err != nil {
-			log.Warnf("Failed to cleanup %s: %v", result.ChineseTrack.ExtractedPath, err)
+			log.Warn(context.Background(), "cleanup_failed", "Failed to clean up extracted subtitle",
+				zap.String("path", result.ChineseTrack.ExtractedPath), zap.Error(err))
 		}
 	}
 }
