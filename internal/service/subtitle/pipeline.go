@@ -3,6 +3,9 @@ package subtitle
 import (
 	"context"
 	"fmt"
+	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/fusionn/pkg/logger"
 )
@@ -100,32 +103,6 @@ type Pipeline struct {
 	processors []Processor
 }
 
-// processorEmojis maps processor names to their visual identifiers
-var processorEmojis = map[string]string{
-	ProcessorNameAnalyzer:         "🔍",
-	ProcessorNameExtractor:        "📤",
-	ProcessorNameConversion:       "🔄",
-	ProcessorNameMerger:           "🔀",
-	ProcessorNameStyle:            "🎨",
-	ProcessorNameFontEmbedding:    "🔤",
-	ProcessorNameOutput:           "💾",
-	ProcessorNameNotification:     "📢",
-	ProcessorNameCleanup:          "🧹",
-	ProcessorNameSDHFilter:        "🔇",
-	ProcessorNameBazarrSDHFilter:  "🔇",
-	ProcessorNameTranslationQueue: "🌐",
-	ProcessorNameBazarrSearch:     "🔎",
-	ProcessorNameDualLanguage:     "🗂️",
-}
-
-// getProcessorEmoji returns the emoji for a processor, or empty string if not found
-func getProcessorEmoji(name string) string {
-	if emoji, ok := processorEmojis[name]; ok {
-		return emoji + " "
-	}
-	return ""
-}
-
 // NewPipeline creates a new processing pipeline.
 func NewPipeline() *Pipeline {
 	return &Pipeline{
@@ -141,28 +118,30 @@ func (p *Pipeline) AddProcessor(proc Processor) *Pipeline {
 
 // Execute runs all processors in sequence.
 func (p *Pipeline) Execute(ctx context.Context, pctx *ProcessingContext) error {
-	logger.Infof("Starting pipeline execution (job: %s)", pctx.JobID)
+	log := logger.Component("pipeline")
+	log.Info(ctx, "pipeline_started", "Pipeline execution started")
 
 	for _, proc := range p.processors {
 		// Check if processor should run
 		if !proc.ShouldRun(pctx) {
-			emoji := getProcessorEmoji(proc.Name())
-			logger.Debugf("⏭️ Skipping processor: %s%s (condition not met)", emoji, proc.Name())
+			log.Debug(ctx, "stage_skipped", "Stage skipped", zap.String("stage", proc.Name()))
 			continue
 		}
 
-		emoji := getProcessorEmoji(proc.Name())
-		logger.Infof("▶️ Running processor: %s%s", emoji, proc.Name())
+		start := time.Now()
+		log.Info(ctx, "stage_started", "Stage started", zap.String("stage", proc.Name()))
 
-		// Execute processor
+		// Execute processor; the failing operation is reported once by its
+		// boundary (worker/caller), so this layer only adds stage context.
 		if err := proc.Process(ctx, pctx); err != nil {
+			log.Debug(ctx, "stage_failed", "Stage failed", zap.String("stage", proc.Name()), zap.Error(err))
 			return fmt.Errorf("processor %s failed: %w", proc.Name(), err)
 		}
 
-		logger.Infof("✅ Processor completed: %s%s", emoji, proc.Name())
+		log.Info(ctx, "stage_completed", "Stage completed", zap.String("stage", proc.Name()), logger.DurMs(time.Since(start)))
 	}
 
-	logger.Infof("Pipeline execution completed (job: %s)", pctx.JobID)
+	log.Info(ctx, "pipeline_completed", "Pipeline execution completed")
 	return nil
 }
 

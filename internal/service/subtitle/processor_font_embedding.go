@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/pkg/logger"
 )
@@ -44,7 +46,8 @@ func (p *FontEmbeddingProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 	// Check if fusionn-font binary is available
 	if !isFusionnFontAvailable() {
-		logger.Warn("fusionn-font binary not found - skipping font embedding")
+		logger.Component("font_embedding").Warn(context.Background(), "font_embedding_unavailable",
+			"fusionn-font binary not found, skipping font embedding")
 		return false
 	}
 
@@ -53,13 +56,13 @@ func (p *FontEmbeddingProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process embeds fonts into the ASS subtitle file.
 func (p *FontEmbeddingProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	log := logger.Indent()
-	log.Info("Embedding fonts into subtitle...")
+	log := logger.Component("font_embedding")
+	log.Debug(ctx, "font_embedding_started", "Embedding fonts into subtitle")
 
 	// Get original file size for logging
 	originalInfo, err := os.Stat(pctx.MergedSubPath)
 	if err != nil {
-		log.Warnf("⚠️ Failed to stat subtitle file: %v - skipping font embedding", err)
+		log.Warn(ctx, "font_embedding_failed", "Failed to stat subtitle file, skipping font embedding", zap.Error(err))
 		return nil
 	}
 	originalSize := originalInfo.Size()
@@ -74,23 +77,23 @@ func (p *FontEmbeddingProcessor) Process(ctx context.Context, pctx *ProcessingCo
 	// Execute fusionn-font
 	output, err := p.executeFusionnFont(ctx, pctx.MergedSubPath, embeddedPath)
 	if err != nil {
-		log.Warnf("⚠️ Font embedding failed: %v - using non-embedded subtitle", err)
+		log.Warn(ctx, "font_embedding_failed", "Font embedding failed, using non-embedded subtitle", zap.Error(err))
 		if output != "" {
-			log.Warnf("fusionn-font output: %s", output)
+			log.Debug(ctx, "font_embedding_output", "fusionn-font output", logger.Preview(output))
 		}
 		return nil
 	}
 
 	// Verify embedded file was created and is valid
 	if err := p.verifyEmbeddedFile(embeddedPath); err != nil {
-		log.Warnf("⚠️ Embedded file validation failed: %v - using non-embedded subtitle", err)
+		log.Warn(ctx, "font_embedding_failed", "Embedded file validation failed, using non-embedded subtitle", zap.Error(err))
 		os.Remove(embeddedPath)
 		return nil
 	}
 
 	// Replace original with embedded version
 	if err := os.Rename(embeddedPath, pctx.MergedSubPath); err != nil {
-		log.Warnf("⚠️ Failed to replace subtitle with embedded version: %v", err)
+		log.Warn(ctx, "font_embedding_failed", "Failed to replace subtitle with embedded version", zap.Error(err))
 		os.Remove(embeddedPath)
 		return nil
 	}
@@ -99,9 +102,10 @@ func (p *FontEmbeddingProcessor) Process(ctx context.Context, pctx *ProcessingCo
 	embeddedInfo, _ := os.Stat(pctx.MergedSubPath)
 	if embeddedInfo != nil {
 		embeddedSize := embeddedInfo.Size()
-		log.Infof("✅ Fonts embedded successfully (%d → %d bytes)", originalSize, embeddedSize)
+		log.Info(ctx, "font_embedding_completed", "Fonts embedded",
+			zap.Int64("original_bytes", originalSize), zap.Int64("embedded_bytes", embeddedSize))
 	} else {
-		log.Info("✅ Fonts embedded successfully")
+		log.Info(ctx, "font_embedding_completed", "Fonts embedded")
 	}
 
 	return nil

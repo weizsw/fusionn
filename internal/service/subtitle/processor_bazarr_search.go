@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/fusionn/internal/client/bazarr"
 	"github.com/fusionn/pkg/logger"
 )
@@ -62,8 +64,8 @@ func (p *BazarrSearchProcessor) ShouldRun(pctx *ProcessingContext) bool {
 }
 
 func (p *BazarrSearchProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	log := logger.Indent()
-	log.Info("Searching Bazarr for Chinese subtitle...")
+	log := logger.Component("bazarr_search")
+	log.Info(ctx, "search_started", "Searching Bazarr for Chinese subtitle")
 
 	var err error
 	switch pctx.MediaType {
@@ -72,18 +74,20 @@ func (p *BazarrSearchProcessor) Process(ctx context.Context, pctx *ProcessingCon
 	case MediaTypeMovie:
 		err = p.searchMovie(ctx, pctx, log)
 	default:
-		log.Warnf("Unknown media type %q, skipping Bazarr search", pctx.MediaType)
+		log.Warn(ctx, "search_skipped", "Unknown media type, skipping Bazarr search", zap.String("media_type", pctx.MediaType))
 		return nil
 	}
 
 	if err != nil {
-		log.Warnf("Bazarr search failed (will fall back to translation): %v", err)
+		log.Warn(ctx, "search_failed", "Bazarr search failed, falling back to translation", zap.Error(err))
 	}
 	return nil
 }
 
-func (p *BazarrSearchProcessor) searchEpisode(ctx context.Context, pctx *ProcessingContext, log logger.IndentedLogger) error {
-	log.Debugf("Bazarr search: seriesID=%d, episodeID=%d, language=%s", pctx.SonarrSeriesID, pctx.SonarrEpisodeID, p.languageCode)
+func (p *BazarrSearchProcessor) searchEpisode(ctx context.Context, pctx *ProcessingContext, log logger.Logger) error {
+	log.Debug(ctx, "search_detail", "Bazarr episode search",
+		zap.Int("series_id", pctx.SonarrSeriesID), zap.Int("episode_id", pctx.SonarrEpisodeID),
+		zap.String("language", p.languageCode))
 
 	if err := p.client.SearchEpisodeSubtitle(ctx, pctx.SonarrSeriesID, pctx.SonarrEpisodeID, p.languageCode); err != nil {
 		return err
@@ -92,7 +96,7 @@ func (p *BazarrSearchProcessor) searchEpisode(ctx context.Context, pctx *Process
 	return p.pollEpisodeResult(ctx, pctx, log)
 }
 
-func (p *BazarrSearchProcessor) pollEpisodeResult(ctx context.Context, pctx *ProcessingContext, log logger.IndentedLogger) error {
+func (p *BazarrSearchProcessor) pollEpisodeResult(ctx context.Context, pctx *ProcessingContext, log logger.Logger) error {
 	deadline := time.Now().Add(p.pollTimeout)
 	attempt := 0
 
@@ -103,13 +107,16 @@ func (p *BazarrSearchProcessor) pollEpisodeResult(ctx context.Context, pctx *Pro
 			return err
 		}
 
-		log.Debugf("Bazarr poll attempt %d: path=%s, subtitles=%d, missing=%d",
-			attempt, info.Path, len(info.Subtitles), len(info.MissingSubtitles))
+		log.Debug(ctx, "search_poll", "Bazarr poll attempt",
+			zap.Int("attempt", attempt), zap.Int("subtitles", len(info.Subtitles)),
+			zap.Int("missing", len(info.MissingSubtitles)), logger.Preview(info.Path))
 		for i, s := range info.Subtitles {
-			log.Debugf("  subtitle[%d]: code2=%q, name=%q, path=%q", i, s.Code2, s.Name, s.Path)
+			log.Debug(ctx, "search_candidate", "Bazarr subtitle candidate",
+				zap.Int("index", i), zap.String("code2", s.Code2), logger.Preview(s.Name))
 		}
 		for i, m := range info.MissingSubtitles {
-			log.Debugf("  missing[%d]: code2=%q, name=%q", i, m.Code2, m.Name)
+			log.Debug(ctx, "search_missing", "Bazarr missing language",
+				zap.Int("index", i), zap.String("code2", m.Code2), logger.Preview(m.Name))
 		}
 
 		stillMissing := false
@@ -121,17 +128,19 @@ func (p *BazarrSearchProcessor) pollEpisodeResult(ctx context.Context, pctx *Pro
 		}
 
 		if !stillMissing {
-			log.Infof("Bazarr reports %q no longer missing after %d poll(s)", p.languageCode, attempt)
-			return p.checkAndSetSubtitle(pctx, info.Subtitles, info.MissingSubtitles, log)
+			log.Info(ctx, "search_found", "Bazarr reports language no longer missing",
+				zap.String("language", p.languageCode), zap.Int("attempts", attempt))
+			return p.checkAndSetSubtitle(ctx, pctx, info.Subtitles, info.MissingSubtitles, log)
 		}
 
 		if time.Now().After(deadline) {
-			log.Infof("Bazarr poll timed out after %s (%d attempts) — %q still in missing_subtitles",
-				p.pollTimeout, attempt, p.languageCode)
-			return p.checkAndSetSubtitle(pctx, info.Subtitles, info.MissingSubtitles, log)
+			log.Warn(ctx, "search_timeout", "Bazarr poll timed out, language still missing",
+				zap.String("language", p.languageCode), zap.Int("attempts", attempt))
+			return p.checkAndSetSubtitle(ctx, pctx, info.Subtitles, info.MissingSubtitles, log)
 		}
 
-		log.Debugf("Language %q still missing, waiting %s before next poll...", p.languageCode, p.pollInterval)
+		log.Debug(ctx, "search_waiting", "Language still missing, waiting before next poll",
+			zap.String("language", p.languageCode), logger.DurMs(p.pollInterval))
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -140,8 +149,9 @@ func (p *BazarrSearchProcessor) pollEpisodeResult(ctx context.Context, pctx *Pro
 	}
 }
 
-func (p *BazarrSearchProcessor) searchMovie(ctx context.Context, pctx *ProcessingContext, log logger.IndentedLogger) error {
-	log.Debugf("Bazarr search: radarrID=%d, language=%s", pctx.RadarrID, p.languageCode)
+func (p *BazarrSearchProcessor) searchMovie(ctx context.Context, pctx *ProcessingContext, log logger.Logger) error {
+	log.Debug(ctx, "search_detail", "Bazarr movie search",
+		zap.Int("radarr_id", pctx.RadarrID), zap.String("language", p.languageCode))
 
 	if err := p.client.SearchMovieSubtitle(ctx, pctx.RadarrID, p.languageCode); err != nil {
 		return err
@@ -150,7 +160,7 @@ func (p *BazarrSearchProcessor) searchMovie(ctx context.Context, pctx *Processin
 	return p.pollMovieResult(ctx, pctx, log)
 }
 
-func (p *BazarrSearchProcessor) pollMovieResult(ctx context.Context, pctx *ProcessingContext, log logger.IndentedLogger) error {
+func (p *BazarrSearchProcessor) pollMovieResult(ctx context.Context, pctx *ProcessingContext, log logger.Logger) error {
 	deadline := time.Now().Add(p.pollTimeout)
 	attempt := 0
 
@@ -161,13 +171,16 @@ func (p *BazarrSearchProcessor) pollMovieResult(ctx context.Context, pctx *Proce
 			return err
 		}
 
-		log.Debugf("Bazarr poll attempt %d: path=%s, subtitles=%d, missing=%d",
-			attempt, info.Path, len(info.Subtitles), len(info.MissingSubtitles))
+		log.Debug(ctx, "search_poll", "Bazarr poll attempt",
+			zap.Int("attempt", attempt), zap.Int("subtitles", len(info.Subtitles)),
+			zap.Int("missing", len(info.MissingSubtitles)), logger.Preview(info.Path))
 		for i, s := range info.Subtitles {
-			log.Debugf("  subtitle[%d]: code2=%q, name=%q, path=%q", i, s.Code2, s.Name, s.Path)
+			log.Debug(ctx, "search_candidate", "Bazarr subtitle candidate",
+				zap.Int("index", i), zap.String("code2", s.Code2), logger.Preview(s.Name))
 		}
 		for i, m := range info.MissingSubtitles {
-			log.Debugf("  missing[%d]: code2=%q, name=%q", i, m.Code2, m.Name)
+			log.Debug(ctx, "search_missing", "Bazarr missing language",
+				zap.Int("index", i), zap.String("code2", m.Code2), logger.Preview(m.Name))
 		}
 
 		stillMissing := false
@@ -179,17 +192,19 @@ func (p *BazarrSearchProcessor) pollMovieResult(ctx context.Context, pctx *Proce
 		}
 
 		if !stillMissing {
-			log.Infof("Bazarr reports %q no longer missing after %d poll(s)", p.languageCode, attempt)
-			return p.checkAndSetSubtitle(pctx, info.Subtitles, info.MissingSubtitles, log)
+			log.Info(ctx, "search_found", "Bazarr reports language no longer missing",
+				zap.String("language", p.languageCode), zap.Int("attempts", attempt))
+			return p.checkAndSetSubtitle(ctx, pctx, info.Subtitles, info.MissingSubtitles, log)
 		}
 
 		if time.Now().After(deadline) {
-			log.Infof("Bazarr poll timed out after %s (%d attempts) — %q still in missing_subtitles",
-				p.pollTimeout, attempt, p.languageCode)
-			return p.checkAndSetSubtitle(pctx, info.Subtitles, info.MissingSubtitles, log)
+			log.Warn(ctx, "search_timeout", "Bazarr poll timed out, language still missing",
+				zap.String("language", p.languageCode), zap.Int("attempts", attempt))
+			return p.checkAndSetSubtitle(ctx, pctx, info.Subtitles, info.MissingSubtitles, log)
 		}
 
-		log.Debugf("Language %q still missing, waiting %s before next poll...", p.languageCode, p.pollInterval)
+		log.Debug(ctx, "search_waiting", "Language still missing, waiting before next poll",
+			zap.String("language", p.languageCode), logger.DurMs(p.pollInterval))
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -198,20 +213,23 @@ func (p *BazarrSearchProcessor) pollMovieResult(ctx context.Context, pctx *Proce
 	}
 }
 
-func (p *BazarrSearchProcessor) checkAndSetSubtitle(pctx *ProcessingContext, subtitles []bazarr.SubtitleInfo, missing []bazarr.MissingLanguage, log logger.IndentedLogger) error {
-	log.Debugf("Checking Bazarr result: languageCode=%q, missing=%d, subtitles=%d", p.languageCode, len(missing), len(subtitles))
+func (p *BazarrSearchProcessor) checkAndSetSubtitle(ctx context.Context, pctx *ProcessingContext, subtitles []bazarr.SubtitleInfo, missing []bazarr.MissingLanguage, log logger.Logger) error {
+	log.Debug(ctx, "search_result", "Checking Bazarr result",
+		zap.String("language", p.languageCode), zap.Int("missing", len(missing)), zap.Int("subtitles", len(subtitles)))
 
 	for _, m := range missing {
 		if m.Code2 == p.languageCode {
-			log.Infof("Bazarr did not find a Chinese subtitle (code2=%q still in missing_subtitles)", m.Code2)
+			log.Info(ctx, "search_not_found", "Bazarr did not find a Chinese subtitle",
+				zap.String("code2", m.Code2))
 			return nil
 		}
 	}
 
-	log.Debugf("Language %q not in missing_subtitles, searching for sidecar files...", p.languageCode)
-	subPath := p.findChineseSidecar(pctx.VideoPath, log)
+	log.Debug(ctx, "search_sidecar", "Language not missing anymore, searching for sidecar files",
+		zap.String("language", p.languageCode))
+	subPath := p.findChineseSidecar(ctx, pctx.VideoPath, log)
 	if subPath != "" {
-		log.Infof("Found Chinese subtitle from Bazarr: %s", subPath)
+		log.Info(ctx, "subtitle_found", "Found Chinese subtitle from Bazarr", zap.String("path", subPath))
 		pctx.ChineseSubPath = subPath
 		pctx.ChineseSubSource = ChineseSourceBazarr
 		return nil
@@ -221,20 +239,21 @@ func (p *BazarrSearchProcessor) checkAndSetSubtitle(pctx *ProcessingContext, sub
 		if s.Code2 == p.languageCode && s.Path != "" {
 			_, statErr := os.Stat(s.Path)
 			if statErr == nil {
-				log.Infof("Found Chinese subtitle from Bazarr API path: %s", s.Path)
+				log.Info(ctx, "subtitle_found", "Found Chinese subtitle from Bazarr API path", zap.String("path", s.Path))
 				pctx.ChineseSubPath = s.Path
 				pctx.ChineseSubSource = ChineseSourceBazarr
 				return nil
 			}
-			log.Debugf("Bazarr API subtitle path not accessible: %s (err: %v)", s.Path, statErr)
+			log.Debug(ctx, "subtitle_path_inaccessible", "Bazarr API subtitle path not accessible",
+				logger.Preview(s.Path), zap.Error(statErr))
 		}
 	}
 
-	log.Info("Bazarr search completed but subtitle file not found locally")
+	log.Info(ctx, "search_completed", "Bazarr search completed but subtitle file not found locally")
 	return nil
 }
 
-func (p *BazarrSearchProcessor) findChineseSidecar(videoPath string, log logger.IndentedLogger) string {
+func (p *BazarrSearchProcessor) findChineseSidecar(ctx context.Context, videoPath string, log logger.Logger) string {
 	dir := filepath.Dir(videoPath)
 	base := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
 
@@ -256,6 +275,6 @@ func (p *BazarrSearchProcessor) findChineseSidecar(videoPath string, log logger.
 			return candidate
 		}
 	}
-	log.Debugf("No sidecar found, checked patterns: %s", fmt.Sprintf("%v", checked))
+	log.Debug(ctx, "sidecar_not_found", "No Chinese sidecar found", logger.Preview(fmt.Sprintf("%v", checked)))
 	return ""
 }

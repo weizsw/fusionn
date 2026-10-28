@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/fusionn/pkg/logger"
 )
@@ -90,7 +91,8 @@ func (q *MergeQueue) SetHandler(handler JobHandler) {
 
 // Start starts the worker pool.
 func (q *MergeQueue) Start() {
-	logger.Infof("🚀 Starting merge queue with %d worker(s)", q.workers)
+	logger.Component("queue").Info(context.Background(), "queue_started", "Merge queue started",
+		zap.Int("workers", q.workers))
 
 	for i := 0; i < q.workers; i++ {
 		q.wg.Add(1)
@@ -100,11 +102,11 @@ func (q *MergeQueue) Start() {
 
 // Stop gracefully shuts down the queue.
 func (q *MergeQueue) Stop() {
-	logger.Info("⏹️  Stopping merge queue...")
+	logger.Component("queue").Info(context.Background(), "queue_stopping", "Merge queue stopping")
 	q.cancel()
 	close(q.jobs)
 	q.wg.Wait()
-	logger.Info("✅ Merge queue stopped")
+	logger.Component("queue").Info(context.Background(), "queue_stopped", "Merge queue stopped")
 }
 
 // Enqueue adds a new job to the queue.
@@ -122,7 +124,8 @@ func (q *MergeQueue) Enqueue(job *MergeJob) error {
 
 	select {
 	case q.jobs <- job:
-		logger.Infof("📥 Job enqueued: %s (%s)", job.JobID, job.MediaTitle)
+		logger.Component("queue").Info(logger.WithJobID(q.ctx, job.JobID), "job_enqueued", "Job enqueued",
+			zap.String("media_title", job.MediaTitle))
 		return nil
 	case <-q.ctx.Done():
 		return q.ctx.Err()
@@ -148,20 +151,20 @@ func (q *MergeQueue) GetPendingCount() int {
 func (q *MergeQueue) worker(id int) {
 	defer q.wg.Done()
 
-	logger.Infof("🔧 Worker %d started", id)
+	logger.Component("queue").Debug(context.Background(), "worker_started", "Worker started", zap.Int("worker", id))
 
 	for {
 		select {
 		case job, ok := <-q.jobs:
 			if !ok {
-				logger.Infof("🔧 Worker %d shutting down", id)
+				logger.Component("queue").Debug(context.Background(), "worker_stopped", "Worker shutting down", zap.Int("worker", id))
 				return
 			}
 
 			q.processJob(id, job)
 
 		case <-q.ctx.Done():
-			logger.Infof("🔧 Worker %d stopped", id)
+			logger.Component("queue").Debug(context.Background(), "worker_stopped", "Worker stopped", zap.Int("worker", id))
 			return
 		}
 	}
@@ -173,10 +176,13 @@ func (q *MergeQueue) processJob(workerID int, job *MergeJob) {
 	job.StartedAt = &startTime
 	job.Status = JobStatusProcessing
 
-	logger.Infof("🔧 Worker %d processing: %s (%s)", workerID, job.JobID, job.MediaTitle)
+	log := logger.Component("queue")
+	ctx := logger.WithJobID(q.ctx, job.JobID)
+	log.Info(ctx, "job_started", "Job started",
+		zap.Int("worker", workerID), zap.String("media_title", job.MediaTitle))
 
 	// Execute job handler
-	err := q.handler(q.ctx, job)
+	err := q.handler(ctx, job)
 
 	completedTime := time.Now()
 	job.CompletedAt = &completedTime
@@ -185,14 +191,15 @@ func (q *MergeQueue) processJob(workerID int, job *MergeJob) {
 	if err != nil {
 		job.Status = JobStatusFailed
 		job.Error = err.Error()
-		logger.Errorf("❌ Worker %d failed: %s (%s) - %v [%.1fs]",
-			workerID, job.JobID, job.MediaTitle, err, duration.Seconds())
+		log.Error(ctx, "job_failed", "Job failed",
+			zap.Int("worker", workerID), zap.String("media_title", job.MediaTitle),
+			zap.String("stage", "merge"), logger.DurMs(duration), zap.Error(err))
 
 		// TODO: Implement retry logic here if needed
 	} else {
 		job.Status = JobStatusCompleted
-		logger.Infof("✅ Worker %d completed: %s (%s) [%.1fs]",
-			workerID, job.JobID, job.MediaTitle, duration.Seconds())
+		log.Info(ctx, "job_completed", "Job completed",
+			zap.Int("worker", workerID), zap.String("media_title", job.MediaTitle), logger.DurMs(duration))
 	}
 
 	// Clean up old jobs after 1 hour

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"go.uber.org/zap"
 
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/pkg/logger"
@@ -48,7 +49,8 @@ func NewRedisClient(cfg config.RedisConfig) (*RedisClient, error) {
 		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
 	}
 
-	logger.Infof("✅ Connected to Redis: %s:%d", cfg.Host, cfg.Port)
+	logger.Component("redis").Info(context.Background(), "redis_connected", "Connected to Redis",
+		zap.String("host", cfg.Host), zap.Int("port", cfg.Port))
 
 	return &RedisClient{
 		client:   client,
@@ -69,7 +71,9 @@ func (c *RedisClient) EnqueueTranslation(ctx context.Context, job *TranslationJo
 		return fmt.Errorf("failed to push to Redis: %w", err)
 	}
 
-	logger.Infof("Queued translation job to Redis: key=%s, job_id=%s", c.queueKey, job.JobID)
+	ctx = logger.WithJobID(ctx, job.JobID)
+	logger.Component("redis").Info(ctx, "job_enqueued", "Translation job queued",
+		zap.String("queue", c.queueKey), zap.String("stage", "translation"))
 	return nil
 }
 

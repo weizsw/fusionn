@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"github.com/fusionn/internal/service/subtitle"
 	"github.com/fusionn/pkg/logger"
@@ -25,6 +26,9 @@ const (
 	WebhookEventGrab     = "Grab"
 	WebhookEventRename   = "Rename"
 )
+
+// webhookLog is the handler-level logger; request_id comes from the request context.
+var webhookLog = logger.Component("webhook")
 
 // NewWebhookHandler creates a new webhook handler.
 func NewWebhookHandler(subtitleService *subtitle.Service) *WebhookHandler {
@@ -88,45 +92,48 @@ type MovieFile struct {
 
 // HandleSonarr processes Sonarr webhook requests.
 func (h *WebhookHandler) HandleSonarr(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	var payload SonarrPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		logger.Errorf("Invalid Sonarr payload: %v", err)
+		webhookLog.Warn(ctx, "webhook_invalid", "Invalid Sonarr payload", zap.String("source", "sonarr"), zap.String("reason", "invalid_payload"), zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload"})
 		return
 	}
 
 	// Validate event type
 	if !shouldProcessEvent(payload.EventType) {
-		logger.Infof("Ignoring Sonarr event type: %s", payload.EventType)
+		webhookLog.Info(ctx, "webhook_ignored", "Event type ignored", zap.String("source", "sonarr"), zap.String("webhook_event", payload.EventType))
 		c.JSON(http.StatusOK, gin.H{"message": "Event type ignored"})
 		return
 	}
 
 	// Validate required fields
 	if payload.EpisodeFile.Path == "" {
-		logger.Error("Missing episodeFile.path in Sonarr payload")
+		webhookLog.Warn(ctx, "webhook_invalid", "Missing episode file path in Sonarr payload", zap.String("source", "sonarr"), zap.String("reason", "missing_path"))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing episodeFile.path"})
 		return
 	}
-
-	logger.Infof("📺 Sonarr webhook received: %s S%02dE%02d",
-		payload.Series.Title,
-		getSeasonNumber(payload.Episodes),
-		getEpisodeNumber(payload.Episodes))
-
-	logger.Debugf("File path: %s", payload.EpisodeFile.Path)
 
 	// Build media title
 	mediaTitle := formatEpisodeTitle(payload.Series.Title, payload.Episodes)
 	params := sonarrMediaParams(payload)
 
+	webhookLog.Info(ctx, "webhook_received", "Sonarr webhook received",
+		zap.String("source", "sonarr"),
+		zap.String("media_title", mediaTitle),
+		zap.Int("season", getSeasonNumber(payload.Episodes)),
+		zap.Int("episode", getEpisodeNumber(payload.Episodes)))
+	webhookLog.Debug(ctx, "webhook_detail", "Webhook detail", logger.Preview(payload.EpisodeFile.Path))
+
 	// Process subtitle in background (non-blocking)
 	if h.subtitleService != nil {
 		go func(params subtitle.MediaParams) {
-			ctx := context.Background()
-			if err := h.subtitleService.ProcessMedia(ctx, params); err != nil {
-				logger.Errorf("Subtitle processing failed for %s: %v", mediaTitle, err)
-			}
+			// ProcessMedia is the operation boundary and reports its own
+			// ERROR exactly once; this goroutine only owns the trigger. The
+			// request's correlation values (request_id) survive, but its
+			// cancellation does not: the 202 response must not cancel the job.
+			_ = h.subtitleService.ProcessMedia(context.WithoutCancel(ctx), params)
 		}(params)
 	}
 
@@ -137,44 +144,47 @@ func (h *WebhookHandler) HandleSonarr(c *gin.Context) {
 
 // HandleRadarr processes Radarr webhook requests.
 func (h *WebhookHandler) HandleRadarr(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	var payload RadarrPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		logger.Errorf("Invalid Radarr payload: %v", err)
+		webhookLog.Warn(ctx, "webhook_invalid", "Invalid Radarr payload", zap.String("source", "radarr"), zap.String("reason", "invalid_payload"), zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload"})
 		return
 	}
 
 	// Validate event type
 	if !shouldProcessEvent(payload.EventType) {
-		logger.Infof("Ignoring Radarr event type: %s", payload.EventType)
+		webhookLog.Info(ctx, "webhook_ignored", "Event type ignored", zap.String("source", "radarr"), zap.String("webhook_event", payload.EventType))
 		c.JSON(http.StatusOK, gin.H{"message": "Event type ignored"})
 		return
 	}
 
 	// Validate required fields
 	if payload.MovieFile.Path == "" {
-		logger.Error("Missing movieFile.path in Radarr payload")
+		webhookLog.Warn(ctx, "webhook_invalid", "Missing movie file path in Radarr payload", zap.String("source", "radarr"), zap.String("reason", "missing_path"))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing movieFile.path"})
 		return
 	}
-
-	logger.Infof("🎬 Radarr webhook received: %s (%d)",
-		payload.Movie.Title,
-		payload.Movie.Year)
-
-	logger.Debugf("File path: %s", payload.MovieFile.Path)
 
 	// Build media title
 	mediaTitle := formatMovieTitle(payload.Movie.Title, payload.Movie.Year)
 	params := radarrMediaParams(payload)
 
+	webhookLog.Info(ctx, "webhook_received", "Radarr webhook received",
+		zap.String("source", "radarr"),
+		zap.String("media_title", mediaTitle),
+		zap.Int("year", payload.Movie.Year))
+	webhookLog.Debug(ctx, "webhook_detail", "Webhook detail", logger.Preview(payload.MovieFile.Path))
+
 	// Process subtitle in background (non-blocking)
 	if h.subtitleService != nil {
 		go func(params subtitle.MediaParams) {
-			ctx := context.Background()
-			if err := h.subtitleService.ProcessMedia(ctx, params); err != nil {
-				logger.Errorf("Subtitle processing failed for %s: %v", mediaTitle, err)
-			}
+			// ProcessMedia is the operation boundary and reports its own
+			// ERROR exactly once; this goroutine only owns the trigger. The
+			// request's correlation values (request_id) survive, but its
+			// cancellation does not: the 202 response must not cancel the job.
+			_ = h.subtitleService.ProcessMedia(context.WithoutCancel(ctx), params)
 		}(params)
 	}
 

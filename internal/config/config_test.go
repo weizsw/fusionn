@@ -1135,12 +1135,15 @@ func TestLogChangesRedactsSecrets(t *testing.T) {
 			t.Errorf("log output leaked secret %q:\n%s", secret, logged)
 		}
 	}
-	if !strings.Contains(logged, "Subtitle.LLM.APIKey: [REDACTED] → [REDACTED]") {
-		t.Errorf("expected redacted LLM API key line, got:\n%s", logged)
+	if !strings.Contains(logged, `"field": "Subtitle.LLM.APIKey"`) ||
+		!strings.Contains(logged, `"new_value": "[REDACTED]"`) {
+		t.Errorf("expected redacted LLM API key field, got:\n%s", logged)
 	}
 	if strings.Contains(logged, "[REDACTED]") && strings.Contains(logged, "APIKeyEnv") {
 		// APIKeyEnv is a variable name, not a secret, and should be shown.
-		if !strings.Contains(logged, "Subtitle.LLM.APIKeyEnv: OLD_ENV → NEW_ENV") {
+		if !strings.Contains(logged, `"field": "Subtitle.LLM.APIKeyEnv"`) ||
+			!strings.Contains(logged, `"old_value": "OLD_ENV"`) ||
+			!strings.Contains(logged, `"new_value": "NEW_ENV"`) {
 			t.Errorf("expected APIKeyEnv values to remain visible, got:\n%s", logged)
 		}
 	}
@@ -1151,8 +1154,45 @@ func TestLogChangesRedactsSecrets(t *testing.T) {
 	if strings.Contains(buf.String(), "now-set") || strings.Contains(buf.String(), emptyBuf+emptyBuf) {
 		t.Errorf("unexpected log output:\n%s", buf.String())
 	}
-	if !strings.Contains(buf.String(), "Subtitle.LLM.APIKey: (empty) → [REDACTED]") {
-		t.Errorf("expected (empty) → [REDACTED], got:\n%s", buf.String())
+	if !strings.Contains(buf.String(), `"field": "Subtitle.LLM.APIKey"`) ||
+		!strings.Contains(buf.String(), `"old_value": "(empty)"`) ||
+		!strings.Contains(buf.String(), `"new_value": "[REDACTED]"`) {
+		t.Errorf("expected (empty) -> [REDACTED], got:\n%s", buf.String())
+	}
+}
+
+func TestLogChangesBoundsLongValues(t *testing.T) {
+	logger.Init(true)
+	defer logger.Sync()
+
+	var buf bytes.Buffer
+	core := zapcore.NewCore(
+		zapcore.NewConsoleEncoder(zapcore.EncoderConfig{MessageKey: "msg", LevelKey: "level"}),
+		zapcore.AddSync(&buf),
+		zapcore.DebugLevel,
+	)
+	prev := logger.Log
+	logger.Log = zap.New(core).Sugar()
+	defer func() { logger.Log = prev }()
+
+	// A 600-character value with a canary past the preview bound: DEBUG is not
+	// a full-text exemption.
+	longValue := strings.Repeat("p", 520) + "CANARY_BEYOND_THE_BOUND" + strings.Repeat("q", 60)
+	logChanges(
+		&Config{Subtitle: SubtitleConfig{LLM: LLMConfig{Model: "short"}}},
+		&Config{Subtitle: SubtitleConfig{LLM: LLMConfig{Model: longValue}}},
+		"",
+	)
+
+	logged := buf.String()
+	if strings.Contains(logged, "CANARY_BEYOND_THE_BOUND") {
+		t.Errorf("value past the preview bound was logged:\n%s", logged)
+	}
+	if !strings.Contains(logged, `"field": "Subtitle.LLM.Model"`) {
+		t.Errorf("expected the changed field to be logged:\n%s", logged)
+	}
+	if !strings.Contains(logged, strings.Repeat("p", 512)) {
+		t.Errorf("expected the first 512 characters to remain:\n%s", logged)
 	}
 }
 

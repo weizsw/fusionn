@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/fusionn/internal/client/duosubs"
 	"github.com/fusionn/pkg/logger"
 )
@@ -69,9 +71,9 @@ func NewDuoSubsExecutor(cfg DuoSubsConfig) (*DuoSubsConfig, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := cfg.httpClient.HealthCheck(ctx); err != nil {
-			logger.Warnf("DuoSubs HTTP service health check failed: %v", err)
+			toolLogger().Warn(ctx, "service_unhealthy", "DuoSubs HTTP service health check failed", zap.String("tool", "duosubs"), zap.Error(err))
 		} else {
-			logger.Info("✅ DuoSubs HTTP service is healthy")
+			toolLogger().Info(ctx, "service_healthy", "DuoSubs HTTP service is healthy", zap.String("tool", "duosubs"))
 		}
 	}
 
@@ -88,21 +90,30 @@ func MergeDuoSubs(ctx context.Context, chinesePath, englishPath, outputDir strin
 
 // mergeDuoSubsHTTP calls the HTTP service
 func mergeDuoSubsHTTP(ctx context.Context, chinesePath, englishPath, outputDir string, cfg DuoSubsConfig) (string, error) {
-	log := logger.Indent()
-	log.Infof("Calling DuoSubs HTTP service: %s", cfg.HTTPURL)
-	log.Infof("Primary (Chinese): %s", chinesePath)
-	log.Infof("Secondary (English): %s", englishPath)
+	log := toolLogger()
+	start := time.Now()
+	log.Info(ctx, "tool_started", "Tool started", zap.String("tool", "duosubs"), zap.String("stream", "http"))
+	log.Debug(ctx, "tool_invocation", "Tool invocation", zap.String("tool", "duosubs"),
+		logger.Preview(cfg.HTTPURL+" primary="+chinesePath+" secondary="+englishPath))
 
 	if cfg.httpClient == nil {
 		return "", fmt.Errorf("http client not initialized")
 	}
 
 	outputPath, err := cfg.httpClient.Merge(ctx, chinesePath, englishPath, outputDir)
+	fields := []zap.Field{
+		zap.String("tool", "duosubs"),
+		zap.String("stream", "http"),
+		logger.DurMs(time.Since(start)),
+		zap.Int("exit_code", exitCode(err)),
+	}
 	if err != nil {
+		fields = append(fields, zap.Error(err))
+		log.Warn(ctx, "tool_completed", "Tool failed", fields...)
 		return "", fmt.Errorf("http merge failed: %w", err)
 	}
 
-	log.Infof("✅ DuoSubs HTTP merge completed: %s", outputPath)
+	log.Info(ctx, "tool_completed", "Tool completed", fields...)
 	return outputPath, nil
 }
 
@@ -114,8 +125,7 @@ func mergeDuoSubsHTTP(ctx context.Context, chinesePath, englishPath, outputDir s
 //
 // This function extracts the zip and returns the path to the combined ASS file.
 func mergeDuoSubsLocal(ctx context.Context, chinesePath, englishPath, outputDir string, cfg DuoSubsConfig) (string, error) {
-	log := logger.Indent()
-	log.Infof("Running DuoSubs: primary=%s, secondary=%s, out=%s", chinesePath, englishPath, outputDir)
+	log := toolLogger()
 
 	// Determine basename for output files (use Chinese subtitle filename as base)
 	basename := filepath.Base(chinesePath)
@@ -151,12 +161,16 @@ func mergeDuoSubsLocal(ctx context.Context, chinesePath, englishPath, outputDir 
 	// Disable Python output buffering for real-time progress
 	cmd.Env = append(os.Environ(), "PYTHONUNBUFFERED=1")
 
-	// Stream stdout/stderr to logs in real-time
-	cmd.Stdout = logger.NewInfoWriter()
-	cmd.Stderr = logger.NewInfoWriter()
+	// Drain both streams into bounded tails: progress output is never
+	// forwarded raw, and the pipes can never block.
+	stdout, stderr := &boundedTail{}, &boundedTail{}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
-	log.Info("🚀 Starting DuoSubs (this may take a while on first run to download models...)")
+	start := toolStarted(ctx, "duosubs", cmd)
 	err := cmd.Run()
+	toolFinished(ctx, "duosubs", start, err, stderr.Diagnostic()+stdout.Diagnostic())
+	log.Debug(ctx, "tool_output", "Tool output", logger.Preview(summarize(stdout.String())))
 	if err != nil {
 		// Check if it was a timeout
 		if timeoutCtx.Err() == context.DeadlineExceeded {
@@ -180,7 +194,7 @@ func mergeDuoSubsLocal(ctx context.Context, chinesePath, englishPath, outputDir 
 
 	// Clean up zip file
 	if err := os.Remove(zipPath); err != nil {
-		log.Warnf("Failed to remove zip file %s: %v", zipPath, err)
+		log.Warn(ctx, "tool_cleanup_failed", "Failed to remove zip file", zap.String("path", zipPath), zap.Error(err))
 	}
 
 	// Locate the combined ASS file
@@ -189,7 +203,6 @@ func mergeDuoSubsLocal(ctx context.Context, chinesePath, englishPath, outputDir 
 		return "", fmt.Errorf("combined file not found in zip: %s", combinedPath)
 	}
 
-	log.Infof("✅ DuoSubs completed: %s", combinedPath)
 	return combinedPath, nil
 }
 

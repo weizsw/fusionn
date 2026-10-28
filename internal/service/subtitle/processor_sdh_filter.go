@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"github.com/fusionn/internal/executor"
 	"github.com/fusionn/pkg/logger"
 )
@@ -39,8 +41,8 @@ func (p *SDHFilterProcessor) ShouldRun(pctx *ProcessingContext) bool {
 // Process runs cleanit on the English SRT to strip SDH content.
 // On failure, logs a warning and returns nil so the pipeline continues with the unfiltered SRT.
 func (p *SDHFilterProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	log := logger.Indent()
-	log.Infof("Filtering SDH content from: %s", pctx.EnglishSubPath)
+	log := logger.Component("sdh_filter")
+	log.Debug(ctx, "sdh_filter_detail", "SDH filter detail", logger.Preview(pctx.EnglishSubPath))
 	return filterSDHFile(ctx, pctx.EnglishSubPath, log)
 }
 
@@ -63,25 +65,25 @@ func (p *BazarrSDHFilterProcessor) ShouldRun(pctx *ProcessingContext) bool {
 }
 
 func (p *BazarrSDHFilterProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	log := logger.Indent()
+	log := logger.Component("sdh_filter")
 	data, err := os.ReadFile(pctx.ChineseSubPath)
 	if err != nil {
-		log.Warnf("Failed to read Bazarr subtitle for SDH filtering: %v", err)
+		log.Warn(ctx, "sdh_filter_read_failed", "Failed to read Bazarr subtitle for SDH filtering", zap.Error(err))
 		return nil
 	}
 
 	if !detectDualLanguageSRT(string(data)) {
-		log.Debug("Bazarr subtitle is not dual-language SRT - skipping SDH filter")
+		log.Debug(ctx, "sdh_filter_skipped", "Bazarr subtitle is not dual-language SRT, skipping SDH filter")
 		return nil
 	}
 
-	log.Infof("Filtering SDH content from Bazarr dual-language subtitle: %s", pctx.ChineseSubPath)
+	log.Debug(ctx, "sdh_filter_detail", "SDH filter detail", logger.Preview(pctx.ChineseSubPath))
 	return filterSDHFile(ctx, pctx.ChineseSubPath, log)
 }
 
-func filterSDHFile(ctx context.Context, path string, log logger.IndentedLogger) error {
+func filterSDHFile(ctx context.Context, path string, log logger.Logger) error {
 	if !isCleanitAvailableFunc() {
-		log.Warn("cleanit not found in PATH - skipping SDH filter")
+		log.Warn(ctx, "sdh_filter_unavailable", "cleanit not found in PATH, skipping SDH filter")
 		return nil
 	}
 
@@ -89,28 +91,28 @@ func filterSDHFile(ctx context.Context, path string, log logger.IndentedLogger) 
 	tempPath := path + ".sdh_tmp"
 	data, err := os.ReadFile(path)
 	if err != nil {
-		log.Warnf("Failed to read SRT for SDH filtering: %v", err)
+		log.Warn(ctx, "sdh_filter_read_failed", "Failed to read SRT for SDH filtering", zap.Error(err))
 		return nil
 	}
 	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		log.Warnf("Failed to create temp file for SDH filtering: %v", err)
+		log.Warn(ctx, "sdh_filter_temp_failed", "Failed to create temp file for SDH filtering", zap.Error(err))
 		return nil
 	}
 	defer os.Remove(tempPath)
 
 	// Run cleanit on the temp copy
 	if err := runCleanitFunc(ctx, tempPath); err != nil {
-		log.Warnf("cleanit failed: %v - continuing with unfiltered SRT", err)
+		log.Warn(ctx, "sdh_filter_failed", "cleanit failed, continuing with unfiltered SRT", zap.Error(err))
 		return nil
 	}
 
 	// Atomic replace: rename temp over original
 	if err := os.Rename(tempPath, path); err != nil {
-		log.Warnf("Failed to replace SRT with filtered version: %v", err)
+		log.Warn(ctx, "sdh_filter_replace_failed", "Failed to replace SRT with filtered version", zap.Error(err))
 		return nil
 	}
 
-	log.Info("✅ SDH content filtered successfully")
+	log.Info(ctx, "sdh_filter_completed", "SDH content filtered")
 	return nil
 }
 

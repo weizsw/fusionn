@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"go.uber.org/zap"
+
 	"github.com/fusionn/pkg/logger"
 )
 
@@ -34,7 +36,7 @@ func (p *OutputProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process copies merged subtitle to final destination.
 func (p *OutputProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	log := logger.Indent()
+	log := logger.Component("output")
 	if pctx.MergedSubPath == "" {
 		return fmt.Errorf("merged subtitle path not set")
 	}
@@ -57,10 +59,10 @@ func (p *OutputProcessor) Process(ctx context.Context, pctx *ProcessingContext) 
 	// If not outputting to same directory, use a configured output directory
 	// For now, we always output to the same directory
 	if !p.outputSameDir {
-		log.Warn("Output to separate directory not yet implemented, using video directory")
+		log.Warn(ctx, "output_dir_unsupported", "Output to separate directory not yet implemented, using video directory")
 	}
 
-	log.Infof("Copying merged subtitle: %s → %s", pctx.MergedSubPath, finalPath)
+	log.Debug(ctx, "output_copy", "Copying merged subtitle", logger.Preview(pctx.MergedSubPath+" -> "+finalPath))
 
 	// Copy file
 	if err := copyFile(pctx.MergedSubPath, finalPath); err != nil {
@@ -70,7 +72,7 @@ func (p *OutputProcessor) Process(ctx context.Context, pctx *ProcessingContext) 
 	// Update context with final path
 	pctx.MergedSubPath = finalPath
 
-	log.Infof("✅ Merged subtitle saved: %s", finalPath)
+	log.Info(ctx, "output_saved", "Merged subtitle saved", zap.String("path", finalPath))
 	return nil
 }
 

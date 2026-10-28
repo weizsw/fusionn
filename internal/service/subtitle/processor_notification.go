@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"go.uber.org/zap"
+
 	"github.com/fusionn/internal/notification"
 	"github.com/fusionn/pkg/logger"
 )
@@ -35,7 +37,7 @@ func (p *NotificationProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process sends a notification based on processing result.
 func (p *NotificationProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	log := logger.Indent()
+	log := logger.Component("notification")
 	var title, body string
 	var notificationType notification.Type
 
@@ -90,11 +92,11 @@ func (p *NotificationProcessor) Process(ctx context.Context, pctx *ProcessingCon
 		notificationType = notification.Warning
 	}
 
-	log.Infof("Sending notification: %s", title)
+	log.Info(ctx, "notification_started", "Sending notification", zap.String("title", title))
 
 	if err := p.appriseClient.Send(ctx, title, body, notificationType); err != nil {
-		// Log error but don't fail the pipeline
-		log.Errorf("Failed to send notification: %v", err)
+		// Log but don't fail the pipeline: the subtitle work itself succeeded.
+		log.Warn(ctx, "notification_failed", "Failed to send notification", zap.Error(err))
 	}
 
 	return nil

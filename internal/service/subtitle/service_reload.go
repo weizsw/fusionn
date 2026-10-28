@@ -1,6 +1,10 @@
 package subtitle
 
 import (
+	"context"
+
+	"go.uber.org/zap"
+
 	"github.com/fusionn/internal/client/bazarr"
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/queue"
@@ -29,10 +33,11 @@ func (s *Service) currentPipelines() *servicePipelines {
 			s.lastConfig = cfg
 			next, err := newConfiguredService(cfg, s.redisClient, s.mergeQueue)
 			if err != nil {
-				logger.Errorf("Failed to apply subtitle configuration; keeping previous pipelines: %v", err)
+				logger.Component("service").Error(context.Background(), "config_apply_failed",
+					"Failed to apply subtitle configuration, keeping previous pipelines", zap.Error(err))
 			} else {
 				s.pipelines = next.pipelines
-				logger.Info("Subtitle configuration applied to new jobs")
+				logger.Component("service").Info(context.Background(), "config_reloaded", "Subtitle configuration applied to new jobs")
 			}
 		}
 	}
@@ -43,7 +48,7 @@ func newConfiguredService(cfg *config.Config, redisClient QueueClient, mergeQueu
 	var bazarrClient *bazarr.Client
 	if cfg.Bazarr.Enabled {
 		bazarrClient = bazarr.NewClient(cfg.Bazarr.URL, cfg.Bazarr.APIKey, cfg.Bazarr.SearchTimeout)
-		logger.Infof("✅ Bazarr integration enabled: %s", cfg.Bazarr.URL)
+		logger.Component("service").Info(context.Background(), "bazarr_enabled", "Bazarr integration enabled")
 	}
 	return NewService(cfg, redisClient, mergeQueue, bazarrClient)
 }

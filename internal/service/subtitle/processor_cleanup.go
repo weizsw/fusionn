@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 
+	"go.uber.org/zap"
+
 	"github.com/fusionn/pkg/logger"
 )
 
@@ -28,29 +30,32 @@ func (p *CleanupProcessor) ShouldRun(pctx *ProcessingContext) bool {
 
 // Process removes temporary files.
 func (p *CleanupProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	log := logger.Indent()
-	log.Info("Cleaning up temporary files")
+	log := logger.Component("cleanup")
+	log.Info(ctx, "cleanup_started", "Cleaning up temporary files")
 
 	// Clean up extracted subtitles. LLM-mode extraction hands out unique hidden
 	// temp paths; removing exactly those paths never touches existing sidecars.
 	if pctx.EnglishSubPath != "" {
 		if err := os.Remove(pctx.EnglishSubPath); err != nil && !os.IsNotExist(err) {
-			log.Warnf("Failed to remove %s: %v", pctx.EnglishSubPath, err)
+			log.Warn(ctx, "cleanup_failed", "Failed to remove temporary file",
+				zap.String("path", pctx.EnglishSubPath), zap.Error(err))
 		}
 	}
 
 	if pctx.ChineseSubPath != "" {
 		if err := os.Remove(pctx.ChineseSubPath); err != nil && !os.IsNotExist(err) {
-			log.Warnf("Failed to remove %s: %v", pctx.ChineseSubPath, err)
+			log.Warn(ctx, "cleanup_failed", "Failed to remove temporary file",
+				zap.String("path", pctx.ChineseSubPath), zap.Error(err))
 		}
 	}
 
 	if pctx.TempMergeDir != "" {
 		if err := os.RemoveAll(pctx.TempMergeDir); err != nil {
-			log.Warnf("Failed to remove temp merge dir %s: %v", pctx.TempMergeDir, err)
+			log.Warn(ctx, "cleanup_failed", "Failed to remove temporary merge directory",
+				zap.String("path", pctx.TempMergeDir), zap.Error(err))
 		}
 	}
 
-	log.Info("✅ Cleanup completed")
+	log.Info(ctx, "cleanup_completed", "Cleanup completed")
 	return nil
 }

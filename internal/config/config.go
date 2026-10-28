@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 
 	"github.com/fusionn/pkg/logger"
 )
@@ -227,7 +229,7 @@ func NewManager(path string) (*Manager, error) {
 	// Start polling for config changes
 	go m.pollForChanges(10 * time.Second)
 
-	logger.Infof("📋 Config loaded (polling every 10s for changes)")
+	logger.Component("config").Info(context.Background(), "config_loaded", "Config loaded, polling for changes")
 
 	return m, nil
 }
@@ -270,19 +272,19 @@ func (m *Manager) pollForChanges(interval time.Duration) {
 func (m *Manager) checkAndReload() {
 	stat, err := os.Stat(m.path)
 	if err != nil {
-		logger.Warnf("Failed to stat config file: %v", err)
+		logger.Component("config").Warn(context.Background(), "config_stat_failed", "Failed to stat config file", zap.Error(err))
 		return
 	}
 
 	if stat.ModTime().After(m.lastModTime) {
-		logger.Info("🔄 Config file changed, reloading...")
+		logger.Component("config").Info(context.Background(), "config_changed", "Config file changed, reloading")
 		m.lastModTime = stat.ModTime()
 
 		// Build a fresh Viper instance so keys removed from the file do not
 		// linger from the previous load.
 		newCfg, err := loadConfig(m.path)
 		if err != nil {
-			logger.Errorf("Failed to reload config: %v", err)
+			logger.Component("config").Error(context.Background(), "config_reload_failed", "Failed to reload config", zap.Error(err))
 			return
 		}
 
@@ -304,7 +306,7 @@ func (m *Manager) checkAndReload() {
 			cb(oldCfg, newCfg)
 		}
 
-		logger.Info("✅ Config reloaded successfully")
+		logger.Component("config").Info(context.Background(), "config_reloaded", "Config reloaded")
 	}
 }
 
@@ -492,12 +494,31 @@ func logChanges(old, cur any, prefix string) {
 				oldStr = redactValue(oldField)
 				newStr = redactValue(newField)
 			}
-			logger.Infof("  📝 %s: %s → %s", fieldName, oldStr, newStr)
+			logger.Component("config").Debug(context.Background(), "config_field_changed", "Config field changed",
+				zap.String("field", fieldName),
+				zap.String("old_value", boundedDebugValue(oldStr)),
+				zap.String("new_value", boundedDebugValue(newStr)))
 		}
 	}
 }
 
 // isSecretField reports whether a config field must never be logged in clear text.
+// debugValueLimit matches the shared preview limit: config values can contain
+// prompts or other long text, so DEBUG is not a full-text exemption.
+const debugValueLimit = 512
+
+// boundedDebugValue truncates a value to the preview limit.
+func boundedDebugValue(s string) string {
+	n := 0
+	for i := range s {
+		if n == debugValueLimit {
+			return s[:i] + "…"
+		}
+		n++
+	}
+	return s
+}
+
 func isSecretField(field reflect.StructField) bool {
 	key := strings.ToLower(strings.ReplaceAll(field.Tag.Get("mapstructure"), "-", "_"))
 	key = strings.TrimSuffix(key, ",omitempty")

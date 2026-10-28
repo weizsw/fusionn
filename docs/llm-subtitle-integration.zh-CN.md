@@ -140,32 +140,32 @@ Compose 为主程序设置 `FUSIONN_SUBTITLE_LLM_WORD_ALIGN_URL=http://word-alig
 
 ### 对齐服务日志
 
-服务在每次对齐请求结束时写一行摘要到标准错误。行首是 UTC 时间、级别和进程号，后面是 `event=` 开头、字段用 `key=value` 表示的固定键值对，方便采集和检索。
+服务把每个事件写成一行到标准错误，格式与 Go 服务、其他 Python 服务一致（见[统一日志规范](design/unified-logging.md)）：固定 UTC+8 毫秒时间、`DEBUG|INFO|WARN|ERROR` 级别、`service=word-align`，随后是 `component=event`，再按固定顺序输出关联字段（`job_id submission_id attempt_id request_id parent_job_id stage tool stream`），其余字段按键名排序，最后是引号包裹的 `msg`。含空格、引号、等号或控制字符的值会转义并加引号；凭据（API key、token、密码、Authorization、URL userinfo）在所有级别都会脱敏。
 
-用 `docker compose logs -f word-align` 查看。典型输出：
+用 `docker compose logs -f word-align` 查看，compose 已把容器日志限制为每文件 20 MiB、每容器 6 份。典型输出：
 
 ```text
-2024-01-01T12:00:00.123Z INFO pid=1 event=service_started port=8767 model=Qwen/Qwen3-ForcedAligner-0.6B-hf threads=4 idle_seconds=300 log_level=INFO
-2024-01-01T12:00:01.001Z INFO pid=1 event=worker_started
-2024-01-01T12:00:14.802Z INFO pid=1 event=request method=POST route=align status=200 request_id=3f2a1c9e4b7d4a6f8c0e5b1d2a7f9c30 duration_ms=13801.4 outcome=ok audio_bytes=812340 text_chars=214 word_count=41 queue_ms=0.1 worker_ms=13800.9 cold_start=true
+2026-07-01T14:20:00.123+08:00 INFO service=word-align component=server event=service_started idle_seconds=300 log_level=INFO model="Qwen/Qwen3-ForcedAligner-0.6B-hf" port=8767 threads=4 msg="Service started"
+2026-07-01T14:20:01.001+08:00 INFO service=word-align component=worker event=worker_started msg="Model worker started"
+2026-07-01T14:20:14.802+08:00 INFO service=word-align component=server event=request_completed request_id=3f2a1c9e4b7d4a6f8c0e5b1d2a7f9c30 duration_ms=13801.4 method=POST route=align status=200 outcome=ok audio_bytes=812340 text_chars=214 word_count=41 queue_ms=0.1 worker_ms=13800.9 cold_start=true msg="Request completed"
 ```
 
-- 每次对齐请求只有一条结束摘要，包含 `method`、`route`、`status`、`request_id`、`duration_ms`、`outcome`，失败时还有 `reason`。成功请求另外记录 `audio_bytes`、`text_chars` 和 `word_count`。进入对齐流程的请求还会记录 `queue_ms`（在 `Aligner.align` 内从开始等锁算起，不含读取和解析 HTTP body 的时间）、`worker_ms`（取得锁之后的执行时间，包含首次启动工作进程和加载模型）和 `cold_start`（取锁时 worker 还没有成功完成过对齐；首次输入无效或加载后推理失败也会是 `true`，所以它不代表本次一定发生了模型加载）。
+- 每次对齐请求只有一条 `request_completed` 摘要，包含 `method`、`route`、`status`、`request_id`、`duration_ms`、`outcome`，失败时还有 `reason`。成功请求另外记录 `audio_bytes`、`text_chars` 和 `word_count`。进入对齐流程的请求还会记录 `queue_ms`（在 `Aligner.align` 内从开始等锁算起，不含读取和解析 HTTP body 的时间）、`worker_ms`（取得锁之后的执行时间，包含首次启动工作进程和加载模型）和 `cold_start`（取锁时 worker 还没有成功完成过对齐；首次输入无效或加载后推理失败也会是 `true`，所以它不代表本次一定发生了模型加载）。
 - 客户端可传 `X-Request-ID` 请求头。值只允许 `A-Z a-z 0-9 . _ -`、长度 1 到 64，合法就沿用，否则服务自己生成。响应头 `X-Request-ID` 始终返回实际使用的值，包括 404、413、501 等错误响应。
-- 成功且词数大于 0 记 INFO；结果为空或客户端输入错误记 WARNING；工作进程或内部错误记 ERROR。
-- 客户端提前断开连接时记 `outcome=client_disconnected`，级别 WARNING，不改变已发送的响应。
-- `GET /health` 只在 DEBUG 级别写请求日志，默认级别下不产生输出。
+- 成功且词数大于 0 记 INFO；结果为空或客户端输入错误记 WARN；工作进程或内部错误记 ERROR。
+- 客户端提前断开连接时记 `outcome=client_disconnected`，级别 WARN，不改变已发送的响应。
+- `GET /health` 的摘要只在 DEBUG 级别记录，默认级别下不产生输出。
 - 机器可读的失败原因：`invalid_input`、`missing_field`、`invalid_utf8`、`bad_content_type`、`unsupported_language`、`request_too_large`、`not_found`、`worker_crashed`、`internal_error`、`not_implemented` 等；`outcome` 取值为 `ok`、`empty_result`、`client_error`、`worker_error`、`client_disconnected`、`protocol_error`。
-- 生命周期事件单独记录：`service_started`、`worker_started`、`model_load_started`、`model_load_completed`、`worker_unloaded`（带 `reason=idle|shutdown|broken` 和实际空闲秒数 `idle_seconds`）、`service_stopping`。工作进程第一次请求就崩溃时 `idle_seconds=0`。
-- 请求摘要不记录音频内容、字幕正文或原始请求行；内部异常会保留诊断堆栈。
+- 生命周期事件单独记录：`service_started`、`worker_started`、`model_load_started`、`model_load_completed`、`worker_unloaded`（带 `reason=idle|shutdown|broken` 和实际空闲秒数 `idle_seconds`）、`service_interrupted`、`service_stopping`。工作进程第一次请求就崩溃时 `idle_seconds=0`。
+- 请求摘要不记录音频内容、字幕正文或原始请求行；内部异常只保留异常类型和有界的 `stack` 字段。`preview` 字段只在 DEBUG 出现，最多 512 个 Unicode 字符。
 
-默认级别 INFO。用 `ALIGN_LOG_LEVEL` 覆盖，取值为标准 Python 级别名，无法识别时回退 INFO。`transformers`、`huggingface_hub`、`httpx`、`httpcore`、`filelock`、`urllib3`、`torch` 的 INFO 日志统一压到 WARNING，下载进度条默认关闭。
+默认级别 INFO，用 `LOG_LEVEL` 覆盖（`DEBUG`、`INFO`、`WARN`、`ERROR`，大小写不敏感，`WARNING` 等同 `WARN`）；未设置 `LOG_LEVEL` 时才读取兼容别名 `ALIGN_LOG_LEVEL`。非法值会写一条 `event=config_invalid` 的 WARN 并回退 INFO，不会静默关闭日志。未知第三方记录在 WARN 以下不进入日志流（`transformers`、`huggingface_hub`、`httpx`、`httpcore`、`filelock`、`urllib3`、`torch` 的 INFO 因此不会刷屏），下载进度条默认关闭。
 
 ```yaml
 services:
   word-align:
     environment:
-      ALIGN_LOG_LEVEL: DEBUG
+      LOG_LEVEL: DEBUG
       ALIGN_IDLE_SECONDS: "300"
 ```
 

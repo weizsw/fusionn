@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/executor"
@@ -38,7 +39,7 @@ func (p *DualLanguageProcessor) ShouldRun(pctx *ProcessingContext) bool {
 }
 
 func (p *DualLanguageProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
-	log := logger.Indent()
+	log := logger.Component("dual_language")
 
 	content, err := os.ReadFile(pctx.ChineseSubPath)
 	if err != nil {
@@ -55,16 +56,17 @@ func (p *DualLanguageProcessor) Process(ctx context.Context, pctx *ProcessingCon
 	case ".ass", ".ssa":
 		isDual = detectDualLanguageASS(text)
 	default:
-		log.Debugf("Unsupported subtitle format %q for dual-language detection, skipping", ext)
+		log.Debug(ctx, "dual_language_skipped", "Unsupported subtitle format for dual-language detection",
+			zap.String("format", ext))
 		return nil
 	}
 
 	if !isDual {
-		log.Info("Subtitle is not dual-language, proceeding with normal merge")
+		log.Debug(ctx, "dual_language_skipped", "Subtitle is not dual-language, proceeding with normal merge")
 		return nil
 	}
 
-	log.Info("Dual-language subtitle detected — converting to styled ASS")
+	log.Info(ctx, "dual_language_detected", "Dual-language subtitle detected, converting to styled ASS")
 
 	var assContent string
 	switch ext {
@@ -80,7 +82,7 @@ func (p *DualLanguageProcessor) Process(ctx context.Context, pctx *ProcessingCon
 	if p.openccConfig.Enabled {
 		assContent, err = p.convertChineseInASS(ctx, assContent, log)
 		if err != nil {
-			log.Warnf("OpenCC conversion failed, using original text: %v", err)
+			log.Warn(ctx, "dual_language_conversion_failed", "OpenCC conversion failed, using original text", zap.Error(err))
 		}
 	}
 
@@ -98,12 +100,12 @@ func (p *DualLanguageProcessor) Process(ctx context.Context, pctx *ProcessingCon
 	}
 
 	pctx.MergedSubPath = outputPath
-	log.Infof("Dual-language ASS written: %s", outputPath)
+	log.Info(ctx, "dual_language_written", "Dual-language ASS written", zap.String("path", outputPath))
 	return nil
 }
 
-func (p *DualLanguageProcessor) convertChineseInASS(ctx context.Context, assContent string, log logger.IndentedLogger) (string, error) {
-	log.Info("Running OpenCC on Chinese text in dual-language ASS")
+func (p *DualLanguageProcessor) convertChineseInASS(ctx context.Context, assContent string, log logger.Logger) (string, error) {
+	log.Debug(ctx, "conversion_started", "Running OpenCC on Chinese text in dual-language ASS")
 
 	lines := strings.Split(assContent, "\n")
 	var chineseTexts []string
@@ -149,8 +151,8 @@ func (p *DualLanguageProcessor) convertChineseInASS(ctx context.Context, assCont
 
 	convertedTexts := strings.Split(string(convertedBytes), "\n")
 	if len(convertedTexts) != len(chineseTexts) {
-		log.Warnf("OpenCC output line count mismatch: got %d, expected %d — skipping replacement",
-			len(convertedTexts), len(chineseTexts))
+		log.Warn(ctx, "dual_language_conversion_mismatch", "OpenCC output line count mismatch, skipping replacement",
+			zap.Int("got", len(convertedTexts)), zap.Int("expected", len(chineseTexts)))
 		return assContent, nil
 	}
 
