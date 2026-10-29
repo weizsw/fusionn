@@ -1,6 +1,7 @@
 package subtitle
 
 import (
+	"context"
 	"testing"
 
 	"github.com/fusionn/internal/executor"
@@ -146,7 +147,7 @@ func TestDetectEnglishSubtitle_SingleTrack(t *testing.T) {
 		makeStream(2, "Forced", map[string]int{"forced": 1}, "23", "496"),
 	}
 
-	track := a.detectEnglishSubtitle(streams)
+	track := a.detectEnglishSubtitle(context.Background(), streams)
 	if track == nil {
 		t.Fatal("single English track should always be selected")
 	}
@@ -164,7 +165,7 @@ func TestDetectEnglishSubtitle_TieBreakByFrameCount(t *testing.T) {
 		makeStream(4, "", nil, "600", "10000"),
 	}
 
-	track := a.detectEnglishSubtitle(streams)
+	track := a.detectEnglishSubtitle(context.Background(), streams)
 	if track == nil {
 		t.Fatal("expected a track to be selected")
 	}
@@ -188,7 +189,7 @@ func TestDetectEnglishSubtitle_RealWorld3Tracks(t *testing.T) {
 		}, "714", "20287"),
 	}
 
-	track := a.detectEnglishSubtitle(streams)
+	track := a.detectEnglishSubtitle(context.Background(), streams)
 	if track == nil {
 		t.Fatal("expected a track to be selected")
 	}
@@ -205,7 +206,7 @@ func TestDetectEnglishSubtitle_PrefersTextSubtitleOverBitmapSDH(t *testing.T) {
 		makeStreamWithCodec(3, "hdmv_pgs_subtitle", "English [SDH]", nil, "3462", "27044840"),
 	}
 
-	track := a.detectEnglishSubtitle(streams)
+	track := a.detectEnglishSubtitle(context.Background(), streams)
 	if track == nil {
 		t.Fatal("expected a track to be selected")
 	}
@@ -221,7 +222,7 @@ func TestDetectEnglishSubtitle_SkipsBitmapOnlySubtitle(t *testing.T) {
 		makeStreamWithCodec(3, "hdmv_pgs_subtitle", "English [PGS]", nil, "3462", "27044840"),
 	}
 
-	track := a.detectEnglishSubtitle(streams)
+	track := a.detectEnglishSubtitle(context.Background(), streams)
 	if track != nil {
 		t.Fatalf("expected bitmap subtitle to be skipped, got index %d", track.Index)
 	}
@@ -242,7 +243,7 @@ func TestDetectChineseSubtitle_SkipsBitmapOnlySubtitle(t *testing.T) {
 		},
 	}
 
-	track := a.detectChineseSubtitle(streams)
+	track := a.detectChineseSubtitle(context.Background(), streams)
 	if track != nil {
 		t.Fatalf("expected bitmap subtitle to be skipped, got index %d", track.Index)
 	}
@@ -274,7 +275,7 @@ func TestDetectChineseSubtitle_PrefersCompleteTrack(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			track := a.detectChineseSubtitle(tt.streams)
+			track := a.detectChineseSubtitle(context.Background(), tt.streams)
 			if track == nil || track.Index != tt.want {
 				t.Fatalf("selected %+v, want index %d", track, tt.want)
 			}
@@ -290,7 +291,7 @@ func TestDetectEnglishSubtitle_FallbackToSDHOverForced(t *testing.T) {
 		makeStream(4, "SDH", map[string]int{"hearing_impaired": 1}, "714", "20287"),
 	}
 
-	track := a.detectEnglishSubtitle(streams)
+	track := a.detectEnglishSubtitle(context.Background(), streams)
 	if track == nil {
 		t.Fatal("expected a track to be selected")
 	}
@@ -309,7 +310,7 @@ func TestDetectEnglishSubtitle_AllMetadataMissingFallsBackToStreamOrder(t *testi
 		makeStream(3, "", nil, "", ""),
 	}
 
-	track := a.detectEnglishSubtitle(streams)
+	track := a.detectEnglishSubtitle(context.Background(), streams)
 	if track == nil {
 		t.Fatal("expected a track to be selected")
 	}
@@ -451,7 +452,7 @@ func TestDetectEnglishSubtitle_SetsIsSDH(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			track := analyzer.detectEnglishSubtitle(tt.streams)
+			track := analyzer.detectEnglishSubtitle(context.Background(), tt.streams)
 			if track == nil {
 				t.Fatal("expected a track, got nil")
 			}

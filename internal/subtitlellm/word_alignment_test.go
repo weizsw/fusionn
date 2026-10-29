@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/fusionn/internal/config"
+	"github.com/fusionn/pkg/logger"
 )
 
 func TestWordAlignmentUploadsAudioAndRestoresVideoClock(t *testing.T) {
@@ -119,5 +120,29 @@ func TestAudioCenterChannelSelection(t *testing.T) {
 		if hasCenterChannel(layout) {
 			t.Errorf("missing center channel was selected: %s", layout)
 		}
+	}
+}
+
+// word-align logs each request under its request_id. Forwarding the job's
+// request ID lets those lines be found from the job that sent them.
+func TestWordAlignmentForwardsRequestID(t *testing.T) {
+	got := make(chan string, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got <- r.Header.Get("X-Request-ID")
+		_ = json.NewEncoder(w).Encode(map[string]any{"words": []any{}})
+	}))
+	defer server.Close()
+
+	ctx := logger.WithRequestID(context.Background(), "req-1")
+	for _, c := range []context.Context{ctx, context.Background()} {
+		if _, err := requestWordTimings(c, http.DefaultClient, server.URL, "word", []byte("WAV"), 0); err != nil {
+			t.Fatalf("requestWordTimings: %v", err)
+		}
+	}
+	if id := <-got; id != "req-1" {
+		t.Errorf("X-Request-ID = %q, want req-1", id)
+	}
+	if id := <-got; id != "" {
+		t.Errorf("X-Request-ID without a request = %q, want none", id)
 	}
 }

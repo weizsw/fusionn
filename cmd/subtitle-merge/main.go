@@ -27,7 +27,7 @@ var mergeLog = logger.Component("subtitle-merge")
 
 func main() {
 	if err := run(); err != nil {
-		mergeLog.Error(context.Background(), "command_failed", "Command failed", zap.Error(err))
+		mergeLog.Error(context.Background(), "command_failed", "Command failed", zap.Error(err), logger.PanicStack(err))
 		os.Exit(1) //nolint:gocritic // defer inside run() already flushed the logger
 	}
 }

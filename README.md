@@ -343,6 +343,12 @@ Timestamps are fixed UTC+8 with milliseconds. The fixed field order is `componen
 
 View the container logs with `docker compose logs -f fusionn`; the compose file caps them at 20 MiB per file with six files per container.
 
+To follow one job across the services:
+
+- A job keeps the `request_id` of the webhook or callback that started it, also on the merge worker. A merge job started by a translation callback also carries the translation job as `parent_job_id`, so a search for the translation `job_id` finds the merge too.
+- fusionn sends the job's request ID to word-align in the `X-Request-ID` header. fusionn-subs sends one `X-Request-ID` for all attempts of a callback, and fusionn reuses it.
+- A panic in a job does not stop the service. The job fails, and its `job_failed` line includes the stack. A panic in one LLM split-check batch only leaves that batch unanswered, as a failed request does, and logs a `panic_recovered` warning with the stack.
+
 ## Development
 
 ```bash

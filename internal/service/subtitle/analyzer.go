@@ -114,8 +114,8 @@ func (a *Analyzer) AnalyzeVideo(ctx context.Context, videoPath string) (*Analysi
 	log.Info(ctx, "tracks_found", "Subtitle tracks found", zap.Int("count", len(subtitleStreams)))
 
 	// Detect English and Chinese subtitles
-	englishTrack := a.detectEnglishSubtitle(subtitleStreams)
-	chineseTrack := a.detectChineseSubtitle(subtitleStreams)
+	englishTrack := a.detectEnglishSubtitle(ctx, subtitleStreams)
+	chineseTrack := a.detectChineseSubtitle(ctx, subtitleStreams)
 
 	if englishTrack != nil {
 		log.Info(ctx, "track_detected", "English subtitle detected",
@@ -162,7 +162,7 @@ type englishScore struct {
 // detectEnglishSubtitle finds the best English subtitle using layered penalty scoring.
 // Pass 1: collect all English candidates and find max frames/bytes.
 // Pass 2: score each candidate, pick the lowest penalty (tie-break by frame count, then stream order).
-func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *Track {
+func (a *Analyzer) detectEnglishSubtitle(ctx context.Context, streams []executor.StreamInfo) *Track {
 	log := logger.Component("analyzer")
 
 	var candidates []englishCandidate
@@ -209,7 +209,7 @@ func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *Track {
 		score := scoreEnglishTrackDetails(c.stream, c.title, c.frames, c.bytes, maxFrames, maxBytes, len(candidates))
 		scores[i] = score
 
-		log.Debug(context.Background(), "candidate_scored", "English candidate scored",
+		log.Debug(ctx, "candidate_scored", "English candidate scored",
 			zap.Int("index", c.stream.Index), zap.Int("total", score.Total),
 			zap.Int("codec", score.CodecPenalty), zap.Int("disposition", score.DispositionPenalty),
 			zap.Int("title", score.TitlePenalty), zap.Int("frame", score.FramePenalty),
@@ -237,11 +237,11 @@ func (a *Analyzer) detectEnglishSubtitle(streams []executor.StreamInfo) *Track {
 		}
 
 		if runnerUpIdx >= 0 {
-			log.Debug(context.Background(), "english_candidate_selected", "Selected English candidate",
+			log.Debug(ctx, "english_candidate_selected", "Selected English candidate",
 				zap.Int("index", candidates[bestIdx].stream.Index), zap.Int("total", bestScore.Total),
 				zap.Int("runner_up_index", candidates[runnerUpIdx].stream.Index), zap.Int("runner_up_total", runnerUpScore.Total))
 		} else {
-			log.Debug(context.Background(), "english_candidate_selected", "Selected English candidate",
+			log.Debug(ctx, "english_candidate_selected", "Selected English candidate",
 				zap.Int("index", candidates[bestIdx].stream.Index), zap.Int("total", bestScore.Total))
 		}
 	}
@@ -387,7 +387,7 @@ func isSDHByTitle(title string) bool {
 // too, so a Simplified signs-only track does not beat a full Traditional one.
 // Among equally complete tracks Simplified beats Traditional beats unknown,
 // then stream order decides.
-func (a *Analyzer) detectChineseSubtitle(streams []executor.StreamInfo) *Track {
+func (a *Analyzer) detectChineseSubtitle(ctx context.Context, streams []executor.StreamInfo) *Track {
 	type candidate struct {
 		track         *Track
 		stream        executor.StreamInfo
@@ -396,7 +396,7 @@ func (a *Analyzer) detectChineseSubtitle(streams []executor.StreamInfo) *Track {
 	var candidates []candidate
 	maxFrames, maxBytes := 0, 0
 	for _, stream := range streams {
-		track := a.matchChineseTrack(stream)
+		track := a.matchChineseTrack(ctx, stream)
 		if track == nil {
 			continue
 		}
@@ -416,7 +416,7 @@ func (a *Analyzer) detectChineseSubtitle(streams []executor.StreamInfo) *Track {
 		}
 	}
 	if len(candidates) > 1 {
-		logger.Component("analyzer").Debug(context.Background(), "chinese_candidate_selected", "Selected Chinese candidate",
+		logger.Component("analyzer").Debug(ctx, "chinese_candidate_selected", "Selected Chinese candidate",
 			zap.Int("index", best.Index), logger.Preview(best.Title), zap.Int("penalty", bestPenalty),
 			zap.Int("priority", best.Priority), zap.Int("candidates", len(candidates)))
 	}
@@ -424,7 +424,7 @@ func (a *Analyzer) detectChineseSubtitle(streams []executor.StreamInfo) *Track {
 }
 
 // matchChineseTrack checks if a stream is a Chinese subtitle.
-func (a *Analyzer) matchChineseTrack(stream executor.StreamInfo) *Track {
+func (a *Analyzer) matchChineseTrack(ctx context.Context, stream executor.StreamInfo) *Track {
 	if !isTextSubtitleCodec(stream.CodecName) {
 		return nil
 	}
@@ -476,7 +476,7 @@ func (a *Analyzer) matchChineseTrack(stream executor.StreamInfo) *Track {
 	// Priority 3: Fallback - assume Traditional if language is Chinese but title is ambiguous
 	// (Most ambiguous Chinese subtitles are Traditional Chinese)
 	log := logger.Component("analyzer")
-	log.Warn(context.Background(), "chinese_type_unknown", "Chinese subtitle type unknown, defaulting to Traditional",
+	log.Warn(ctx, "chinese_type_unknown", "Chinese subtitle type unknown, defaulting to Traditional",
 		zap.String("language", lang), zap.String("title", title))
 	return &Track{
 		Index:           stream.Index,
