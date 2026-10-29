@@ -14,6 +14,8 @@ import (
 // MergeJob represents a subtitle merge job.
 type MergeJob struct {
 	JobID            string
+	ParentJobID      string // translation Job a callback merge job came from
+	RequestID        string // HTTP request that queued the job
 	VideoPath        string
 	EnglishPath      string
 	ChinesePath      string
@@ -124,7 +126,7 @@ func (q *MergeQueue) Enqueue(job *MergeJob) error {
 
 	select {
 	case q.jobs <- job:
-		logger.Component("queue").Info(logger.WithJobID(q.ctx, job.JobID), "job_enqueued", "Job enqueued",
+		logger.Component("queue").Info(jobContext(q.ctx, job), "job_enqueued", "Job enqueued",
 			zap.String("media_title", job.MediaTitle))
 		return nil
 	case <-q.ctx.Done():
@@ -177,12 +179,12 @@ func (q *MergeQueue) processJob(workerID int, job *MergeJob) {
 	job.Status = JobStatusProcessing
 
 	log := logger.Component("queue")
-	ctx := logger.WithJobID(q.ctx, job.JobID)
+	ctx := jobContext(q.ctx, job)
 	log.Info(ctx, "job_started", "Job started",
 		zap.Int("worker", workerID), zap.String("media_title", job.MediaTitle))
 
 	// Execute job handler
-	err := q.handler(ctx, job)
+	err := q.runHandler(ctx, job)
 
 	completedTime := time.Now()
 	job.CompletedAt = &completedTime
@@ -193,7 +195,7 @@ func (q *MergeQueue) processJob(workerID int, job *MergeJob) {
 		job.Error = err.Error()
 		log.Error(ctx, "job_failed", "Job failed",
 			zap.Int("worker", workerID), zap.String("media_title", job.MediaTitle),
-			zap.String("stage", "merge"), logger.DurMs(duration), zap.Error(err))
+			zap.String("stage", "merge"), logger.DurMs(duration), zap.Error(err), logger.PanicStack(err))
 
 		// TODO: Implement retry logic here if needed
 	} else {
@@ -204,6 +206,26 @@ func (q *MergeQueue) processJob(workerID int, job *MergeJob) {
 
 	// Clean up old jobs after 1 hour
 	go q.cleanupOldJob(job.JobID, 1*time.Hour)
+}
+
+// jobContext restores the correlation of the request that queued the job, so a
+// worker's events still name that request and, for a callback merge job, the
+// translation job it came from. Empty IDs render nothing.
+func jobContext(ctx context.Context, job *MergeJob) context.Context {
+	ctx = logger.WithJobID(ctx, job.JobID)
+	ctx = logger.WithRequestID(ctx, job.RequestID)
+	return logger.WithParentJobID(ctx, job.ParentJobID)
+}
+
+// runHandler runs the job handler and returns a panic as a *logger.PanicError,
+// so one bad job fails like any other instead of ending the process.
+func (q *MergeQueue) runHandler(ctx context.Context, job *MergeJob) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = logger.Recovered(r)
+		}
+	}()
+	return q.handler(ctx, job)
 }
 
 // cleanupOldJob removes job from tracking after a delay.

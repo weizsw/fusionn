@@ -11,7 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/fusionn/internal/config"
+	"github.com/fusionn/pkg/logger"
 )
 
 const (
@@ -144,6 +147,15 @@ func (e *Engine) checkSplits(ctx context.Context, bundle Bundle, groups []Group,
 				defer wg.Done()
 				slots <- struct{}{}
 				defer func() { <-slots }()
+				// A panic leaves this batch unanswered, as a failed request
+				// does, instead of ending the process.
+				defer func() {
+					if r := recover(); r != nil {
+						b.err = logger.Recovered(r)
+						logger.Component("llm_alignment").Warn(ctx, "panic_recovered", "Split check batch failed with a panic",
+							zap.Int("questions", len(b.items)), zap.Error(b.err), logger.PanicStack(b.err))
+					}
+				}()
 				b.answers, b.sent, b.cached, b.err = e.requestSplitChecks(ctx, client, bundle, b.items, cfg, cacheDir)
 			}(b)
 		}

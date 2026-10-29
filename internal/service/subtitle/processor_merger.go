@@ -218,7 +218,7 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 		return err
 	}
 
-	if err := p.persistLLMArtifacts(pctx, outputDir, bundle, mapping, audit); err != nil {
+	if err := p.persistLLMArtifacts(ctx, pctx, outputDir, bundle, mapping, audit); err != nil {
 		return fmt.Errorf("persist alignment artifacts: %w", err)
 	}
 	p.logLLMAudit(ctx, audit)
@@ -345,7 +345,7 @@ func (p *MergerProcessor) videoDimensions(ctx context.Context, videoPath string)
 	probeOutput, err := p.probe(ctx, videoPath)
 	if err != nil {
 		if ctx.Err() == nil {
-			logger.Component("merger").Warn(context.Background(), "resolution_probe_failed",
+			logger.Component("merger").Warn(ctx, "resolution_probe_failed",
 				"Failed to detect video resolution, using configured ASS style", zap.Error(err))
 		}
 		return 0, 0
@@ -353,7 +353,7 @@ func (p *MergerProcessor) videoDimensions(ctx context.Context, videoPath string)
 	if width, height, ok := videoDimensions(probeOutput); ok {
 		return width, height
 	}
-	logger.Component("merger").Warn(context.Background(), "resolution_probe_failed",
+	logger.Component("merger").Warn(ctx, "resolution_probe_failed",
 		"Failed to detect video resolution, using configured ASS style")
 	return 0, 0
 }
@@ -368,7 +368,7 @@ func (p *MergerProcessor) videoDimensions(ctx context.Context, videoPath string)
 // directly through subtitle.llm.mapping_path. A configured cache_dir is the
 // persistent, merge-isolation-safe location; without one the diagnostics go to
 // the isolated merge directory for this run.
-func (p *MergerProcessor) persistLLMArtifacts(pctx *ProcessingContext, outputDir string, bundle subtitlellm.Bundle, mapping subtitlellm.Mapping, audit subtitlellm.Audit) error {
+func (p *MergerProcessor) persistLLMArtifacts(ctx context.Context, pctx *ProcessingContext, outputDir string, bundle subtitlellm.Bundle, mapping subtitlellm.Mapping, audit subtitlellm.Audit) error {
 	if !p.llmConfig.CacheEnabled || mapping.Fingerprint == "" {
 		return nil
 	}
@@ -399,7 +399,7 @@ func (p *MergerProcessor) persistLLMArtifacts(pctx *ProcessingContext, outputDir
 		}
 		pctx.Metadata[artifact.key] = artifact.path
 	}
-	log.Debug(context.Background(), "artifacts_saved", "Saved LLM alignment artifacts", zap.String("path", artifactRoot))
+	log.Debug(ctx, "artifacts_saved", "Saved LLM alignment artifacts", zap.String("path", artifactRoot))
 	return nil
 }
 

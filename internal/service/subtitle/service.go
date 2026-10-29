@@ -127,10 +127,21 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 // ProcessMedia processes a media file through the subtitle pipeline.
 // Phase 1: Analyze + Extract (fast, synchronous)
 // Phase 2: Merge (slow, enqueued to worker)
-func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) error {
+func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) (err error) {
 	pipelines := s.currentPipelines()
 	jobID := uuid.New().String()
 	ctx = logger.WithJobID(ctx, jobID)
+
+	// The webhook runs this on its own goroutine, outside gin's recovery, so a
+	// panic here would end the process. It fails this job instead, reported
+	// once like any other failure.
+	stage := "analyze"
+	defer func() {
+		if r := recover(); r != nil {
+			err = logger.Recovered(r)
+			log.Error(ctx, "job_failed", "Job failed", zap.String("stage", stage), zap.Error(err), logger.PanicStack(err))
+		}
+	}()
 
 	pctx := &ProcessingContext{
 		VideoPath:       params.Path,
@@ -159,6 +170,7 @@ func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) error {
 	if pctx.EnglishSubPath != "" && pctx.ChineseSubPath != "" {
 		mergeJob := &queue.MergeJob{
 			JobID:            jobID,
+			RequestID:        logger.RequestID(ctx),
 			VideoPath:        params.Path,
 			EnglishPath:      pctx.EnglishSubPath,
 			ChinesePath:      pctx.ChineseSubPath,
@@ -167,6 +179,7 @@ func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) error {
 			ChineseSubSource: pctx.ChineseSubSource,
 		}
 
+		stage = "enqueue"
 		if err := s.mergeQueue.Enqueue(mergeJob); err != nil {
 			// A full or stopped queue is the final failure of this operation;
 			// the webhook caller only receives the 202 and ignores the error,
@@ -197,6 +210,8 @@ func (s *Service) ProcessWithSubtitles(ctx context.Context, videoPath, engSubPat
 	// Enqueue merge job
 	mergeJob := &queue.MergeJob{
 		JobID:            jobID,
+		ParentJobID:      parentJobID,
+		RequestID:        logger.RequestID(ctx),
 		VideoPath:        videoPath,
 		EnglishPath:      engSubPath,
 		ChinesePath:      chsSubPath,

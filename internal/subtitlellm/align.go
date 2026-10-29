@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/fusionn/internal/config"
+	"github.com/fusionn/pkg/logger"
 )
 
 // prompt is copied verbatim from the prototype; the model only returns IDs.
@@ -545,12 +546,24 @@ func (e *Engine) fetchAll(ctx context.Context, bundle Bundle, windows []window, 
 					results[index] = fetchedWindow{index: index, err: runCtx.Err(), kind: windowErrorContext}
 					continue
 				}
-				results[index] = e.fetchWindow(runCtx, client, bundle, windows[index], cfg, cacheDir)
+				results[index] = e.fetchWindowRecovered(runCtx, client, bundle, windows[index], cfg, cacheDir)
 			}
 		}()
 	}
 	wg.Wait()
 	return results
+}
+
+// fetchWindowRecovered runs fetchWindow and turns a panic into a fatal window
+// error instead of ending the process. Align returns it with its cause intact,
+// so the job's failure report carries the recovered stack.
+func (e *Engine) fetchWindowRecovered(ctx context.Context, client *http.Client, bundle Bundle, w window, cfg config.LLMConfig, cacheDir string) (result fetchedWindow) {
+	defer func() {
+		if r := recover(); r != nil {
+			result = fetchedWindow{index: w.Index, err: logger.Recovered(r), kind: windowErrorFatal}
+		}
+	}()
+	return e.fetchWindow(ctx, client, bundle, w, cfg, cacheDir)
 }
 
 func cacheDirectory(cfg config.LLMConfig) string {

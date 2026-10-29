@@ -136,6 +136,11 @@ func requestWordTimings(ctx context.Context, client *http.Client, baseURL, text 
 		return nil, err
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	// word-align logs each request under this ID, so its lines can be found
+	// from the job that sent them; without one it generates its own.
+	if requestID := logger.RequestID(ctx); requestID != "" {
+		req.Header.Set("X-Request-ID", requestID)
+	}
 	response, err := client.Do(req)
 	if err != nil {
 		return nil, err
