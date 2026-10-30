@@ -130,7 +130,7 @@ func TestToolFailureHidesRawTailAtWarn(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "DEBUG")
 	logger.Configure(logger.Config{Output: zapcore.AddSync(&buf)})
 	toolFinished(ctx, "quiet-tool", start, err, tail.Diagnostic())
-	if !strings.Contains(buf.String(), `event=tool_failure_detail`) ||
+	if !strings.Contains(buf.String(), `event=tool_output tool=`) ||
 		!strings.Contains(buf.String(), `preview="RAW_THIRD_PARTY_TEXT`) {
 		t.Errorf("DEBUG detail preview missing: %q", buf.String())
 	}

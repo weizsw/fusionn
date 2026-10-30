@@ -16,8 +16,8 @@ func TestMergerProcessor_Name(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMergerProcessor() error = %v", err)
 	}
-	if got := p.Name(); got != "Merger" {
-		t.Errorf("Name() = %v, want %v", got, "Merger")
+	if got := p.Name(); got != "merger" {
+		t.Errorf("Name() = %v, want %v", got, "merger")
 	}
 }
 

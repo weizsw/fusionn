@@ -133,7 +133,7 @@ func TestEnqueueFailureSendsAFailureNotification(t *testing.T) {
 func TestMergeFailureSendsAFailureNotification(t *testing.T) {
 	captureLogs(t)
 	service, sent := notifyingService(t, idleQueue(), stubAnalyzingProcessor{})
-	service.pipelines.mergePipeline = NewPipeline().AddProcessor(failingProcessor{errors.New("ffmpeg failed: exit status 1")})
+	service.pipelines.mergePipeline = NewPipeline("merge").AddProcessor(failingProcessor{errors.New("ffmpeg failed: exit status 1")})
 
 	job := &queue.MergeJob{JobID: "j-merge", VideoPath: "/media/Show.S01E01.mkv", MediaType: "episode"}
 	if err := service.ProcessMergeJob(context.Background(), job); err == nil {
@@ -147,7 +147,7 @@ func TestMergeFailureSendsAFailureNotification(t *testing.T) {
 func TestMergePanicSendsAFailureNotification(t *testing.T) {
 	captureLogs(t)
 	service, sent := notifyingService(t, idleQueue(), stubAnalyzingProcessor{})
-	service.pipelines.mergePipeline = NewPipeline().AddProcessor(panicProcessor{"merge bug"})
+	service.pipelines.mergePipeline = NewPipeline("merge").AddProcessor(panicProcessor{"merge bug"})
 
 	err := service.ProcessMergeJob(context.Background(), &queue.MergeJob{JobID: "j-merge", VideoPath: "/media/v.mkv"})
 	var pe *logger.PanicError
@@ -194,7 +194,7 @@ func TestNewServiceWiresFailureNotifications(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
-	service.pipelines.analyzePipeline = NewPipeline().AddProcessor(failingProcessor{errors.New("boom")})
+	service.pipelines.analyzePipeline = NewPipeline("analyze").AddProcessor(failingProcessor{errors.New("boom")})
 
 	_ = service.ProcessMedia(context.Background(), MediaParams{Path: "/media/v.mkv", MediaType: "movie"})
 	requireOneFailure(t, sent(), "Stage: analyze", "Error: processor StubFail failed: boom")

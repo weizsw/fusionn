@@ -362,6 +362,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         LOG.info("service_interrupted", "Service interrupted")
     finally:
-        LOG.info("service_stopping", "Service stopping")
+        LOG.info("shutdown_started", "Shutting down")
         server.server_close()
         ALIGNER.close()

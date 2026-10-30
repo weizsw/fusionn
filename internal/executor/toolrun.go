@@ -112,7 +112,7 @@ func toolFinished(ctx context.Context, tool string, start time.Time, err error, 
 	toolLogger().Warn(ctx, "tool_completed", "Tool failed", fields...)
 	if d := summarize(diag); d != "" {
 		// The whole output is a separate DEBUG event with a bounded preview.
-		toolLogger().Debug(ctx, "tool_failure_detail", "Tool failure detail",
+		toolLogger().Debug(ctx, "tool_output", "Tool output",
 			zap.String("tool", tool), logger.Preview(d))
 	}
 }

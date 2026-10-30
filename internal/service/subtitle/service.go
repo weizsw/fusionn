@@ -61,7 +61,7 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 	}
 
 	// Build analyze pipeline (fast, runs synchronously in webhook)
-	analyzePipeline := NewPipeline()
+	analyzePipeline := NewPipeline("analyze")
 	analyzePipeline.AddProcessor(NewAnalyzerProcessor(analyzer))
 	analyzePipeline.AddProcessor(NewExtractorProcessor(analyzer))
 	// SDH filtering discards lines, which would hide uncertain one-sided
@@ -83,7 +83,7 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 	}
 
 	// Build merge pipeline (slow, runs asynchronously in queue)
-	mergePipeline := NewPipeline()
+	mergePipeline := NewPipeline("merge")
 	// Create the merger selected by subtitle.engine; only that engine's
 	// dependency is initialized.
 	mergerProc, err := NewConfiguredMergerProcessor(cfg.Subtitle)

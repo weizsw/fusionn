@@ -11,8 +11,8 @@ import (
 
 func TestFontEmbeddingProcessor_Name(t *testing.T) {
 	proc := NewFontEmbeddingProcessor(config.FontEmbeddingConfig{})
-	if proc.Name() != "FontEmbedding" {
-		t.Errorf("Expected name 'FontEmbedding', got %s", proc.Name())
+	if proc.Name() != "font_embedding" {
+		t.Errorf("Expected name 'font_embedding', got %s", proc.Name())
 	}
 }
 
