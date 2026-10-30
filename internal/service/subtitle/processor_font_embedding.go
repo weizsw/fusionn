@@ -79,7 +79,7 @@ func (p *FontEmbeddingProcessor) Process(ctx context.Context, pctx *ProcessingCo
 	if err != nil {
 		log.Warn(ctx, "font_embedding_failed", "Font embedding failed, using non-embedded subtitle", zap.Error(err))
 		if output != "" {
-			log.Debug(ctx, "font_embedding_output", "fusionn-font output", logger.Preview(output))
+			log.Debug(ctx, "tool_output", "Tool output", zap.String("tool", "fusionn-font"), logger.Preview(output))
 		}
 		return nil
 	}

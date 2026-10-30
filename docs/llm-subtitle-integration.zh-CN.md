@@ -156,7 +156,7 @@ Compose 为主程序设置 `FUSIONN_SUBTITLE_LLM_WORD_ALIGN_URL=http://word-alig
 - 客户端提前断开连接时记 `outcome=client_disconnected`，级别 WARN，不改变已发送的响应。
 - `GET /health` 的摘要只在 DEBUG 级别记录，默认级别下不产生输出。
 - 机器可读的失败原因：`invalid_input`、`missing_field`、`invalid_utf8`、`bad_content_type`、`unsupported_language`、`request_too_large`、`not_found`、`worker_crashed`、`internal_error`、`not_implemented` 等；`outcome` 取值为 `ok`、`empty_result`、`client_error`、`worker_error`、`client_disconnected`、`protocol_error`。
-- 生命周期事件单独记录：`service_started`、`worker_started`、`model_load_started`、`model_load_completed`、`worker_unloaded`（带 `reason=idle|shutdown|broken` 和实际空闲秒数 `idle_seconds`）、`service_interrupted`、`service_stopping`。工作进程第一次请求就崩溃时 `idle_seconds=0`。
+- 生命周期事件单独记录：`service_started`、`worker_started`、`model_load_started`、`model_load_completed`、`worker_unloaded`（带 `reason=idle|shutdown|broken` 和实际空闲秒数 `idle_seconds`）、`service_interrupted`、`shutdown_started`。工作进程第一次请求就崩溃时 `idle_seconds=0`。
 - 请求摘要不记录音频内容、字幕正文或原始请求行；内部异常只保留异常类型和有界的 `stack` 字段。`preview` 字段只在 DEBUG 出现，最多 512 个 Unicode 字符。
 
 默认级别 INFO，用 `LOG_LEVEL` 覆盖（`DEBUG`、`INFO`、`WARN`、`ERROR`，大小写不敏感，`WARNING` 等同 `WARN`）；未设置 `LOG_LEVEL` 时才读取兼容别名 `ALIGN_LOG_LEVEL`。非法值会写一条 `event=config_invalid` 的 WARN 并回退 INFO，不会静默关闭日志。未知第三方记录在 WARN 以下不进入日志流（`transformers`、`huggingface_hub`、`httpx`、`httpcore`、`filelock`、`urllib3`、`torch` 的 INFO 因此不会刷屏），下载进度条默认关闭。

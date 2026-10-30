@@ -17,20 +17,20 @@ const (
 )
 
 const (
-	ProcessorNameAnalyzer         = "AnalyzerProcessor"
-	ProcessorNameExtractor        = "Extractor"
-	ProcessorNameConversion       = "Conversion"
-	ProcessorNameMerger           = "Merger"
-	ProcessorNameStyle            = "Style"
-	ProcessorNameFontEmbedding    = "FontEmbedding"
-	ProcessorNameOutput           = "Output"
-	ProcessorNameNotification     = "Notification"
-	ProcessorNameCleanup          = "Cleanup"
-	ProcessorNameSDHFilter        = "SDHFilter"
-	ProcessorNameBazarrSDHFilter  = "BazarrSDHFilter"
-	ProcessorNameTranslationQueue = "TranslationQueue"
-	ProcessorNameBazarrSearch     = "BazarrSearch"
-	ProcessorNameDualLanguage     = "DualLanguage"
+	ProcessorNameAnalyzer         = "analyzer"
+	ProcessorNameExtractor        = "extractor"
+	ProcessorNameConversion       = "conversion"
+	ProcessorNameMerger           = "merger"
+	ProcessorNameStyle            = "style"
+	ProcessorNameFontEmbedding    = "font_embedding"
+	ProcessorNameOutput           = "output"
+	ProcessorNameNotification     = "notification"
+	ProcessorNameCleanup          = "cleanup"
+	ProcessorNameSDHFilter        = "sdh_filter"
+	ProcessorNameBazarrSDHFilter  = "bazarr_sdh_filter"
+	ProcessorNameTranslationQueue = "translation_queue"
+	ProcessorNameBazarrSearch     = "bazarr_search"
+	ProcessorNameDualLanguage     = "dual_language"
 )
 
 // ProcessingContext holds the state throughout the subtitle processing pipeline.
@@ -100,12 +100,16 @@ type Processor interface {
 
 // Pipeline executes a sequence of processors.
 type Pipeline struct {
+	// stage is the job stage that the pipeline runs, "analyze" or "merge". Its
+	// events carry it, so they match the job events of the same stage.
+	stage      string
 	processors []Processor
 }
 
-// NewPipeline creates a new processing pipeline.
-func NewPipeline() *Pipeline {
+// NewPipeline creates a processing pipeline for one job stage.
+func NewPipeline(stage string) *Pipeline {
 	return &Pipeline{
+		stage:      stage,
 		processors: make([]Processor, 0),
 	}
 }
@@ -116,32 +120,36 @@ func (p *Pipeline) AddProcessor(proc Processor) *Pipeline {
 	return p
 }
 
-// Execute runs all processors in sequence.
+// Execute runs all processors in sequence. The pipeline's start and end are
+// stage_started and stage_completed; each processor is a step of the stage.
 func (p *Pipeline) Execute(ctx context.Context, pctx *ProcessingContext) error {
 	log := logger.Component("pipeline")
-	log.Info(ctx, "pipeline_started", "Pipeline execution started")
+	stage := zap.String("stage", p.stage)
+	stageStart := time.Now()
+	log.Info(ctx, "stage_started", "Stage started", stage)
 
 	for _, proc := range p.processors {
+		step := zap.String("step", proc.Name())
 		// Check if processor should run
 		if !proc.ShouldRun(pctx) {
-			log.Debug(ctx, "stage_skipped", "Stage skipped", zap.String("stage", proc.Name()))
+			log.Debug(ctx, "step_skipped", "Step skipped", stage, step)
 			continue
 		}
 
 		start := time.Now()
-		log.Info(ctx, "stage_started", "Stage started", zap.String("stage", proc.Name()))
+		log.Info(ctx, "step_started", "Step started", stage, step)
 
 		// Execute processor; the failing operation is reported once by its
-		// boundary (worker/caller), so this layer only adds stage context.
+		// boundary (worker/caller), so this layer only adds step context.
 		if err := proc.Process(ctx, pctx); err != nil {
-			log.Debug(ctx, "stage_failed", "Stage failed", zap.String("stage", proc.Name()), zap.Error(err))
+			log.Debug(ctx, "step_failed", "Step failed", stage, step, zap.Error(err))
 			return fmt.Errorf("processor %s failed: %w", proc.Name(), err)
 		}
 
-		log.Info(ctx, "stage_completed", "Stage completed", zap.String("stage", proc.Name()), logger.DurMs(time.Since(start)))
+		log.Info(ctx, "step_completed", "Step completed", stage, step, logger.DurMs(time.Since(start)))
 	}
 
-	log.Info(ctx, "pipeline_completed", "Pipeline execution completed")
+	log.Info(ctx, "stage_completed", "Stage completed", stage, logger.DurMs(time.Since(stageStart)))
 	return nil
 }
 

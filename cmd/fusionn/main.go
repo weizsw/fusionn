@@ -110,7 +110,7 @@ func run() int {
 	}
 
 	// Gin must not print its own route/debug/panic output: every line is
-	// rendered by the unified logger (routes_registered and request_panic
+	// rendered by the unified logger (routes_registered and request_panicked
 	// below).
 	gin.DefaultWriter = io.Discard
 	gin.DefaultErrorWriter = io.Discard
@@ -261,7 +261,7 @@ func newRouter() *gin.Engine {
 func recoveryLogger() gin.HandlerFunc {
 	log := logger.Component("http")
 	return gin.CustomRecovery(func(c *gin.Context, recovered any) {
-		log.Error(c.Request.Context(), "request_panic", "Panic recovered",
+		log.Error(c.Request.Context(), "request_panicked", "Panic recovered",
 			zap.Any("recovered", recovered), zap.String("stack", string(debug.Stack())))
 		c.AbortWithStatus(http.StatusInternalServerError)
 		handler.MarkErrorReported(c)

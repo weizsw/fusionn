@@ -616,7 +616,7 @@ class ShutdownSignalTest(unittest.TestCase):
         self.assertEqual(process.returncode, 0)
         self.assertIn("event=service_started", stderr)
         self.assertIn("event=service_interrupted", stderr)
-        self.assertIn("event=service_stopping", stderr)
+        self.assertIn("event=shutdown_started", stderr)
 
 
 if __name__ == "__main__":

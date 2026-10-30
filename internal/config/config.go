@@ -279,7 +279,7 @@ func (m *Manager) checkAndReload() {
 	}
 
 	if stat.ModTime().After(m.lastModTime) {
-		logger.Component("config").Info(context.Background(), "config_changed", "Config file changed, reloading")
+		logger.Component("config").Info(context.Background(), "config_reload_detected", "Config file changed, reloading")
 		m.lastModTime = stat.ModTime()
 
 		// Build a fresh Viper instance so keys removed from the file do not

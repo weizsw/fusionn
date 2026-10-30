@@ -17,8 +17,8 @@ func init() {
 
 func TestDualLanguageProcessor_Name(t *testing.T) {
 	p := NewDualLanguageProcessor(config.OpenCCConfig{})
-	if got := p.Name(); got != "DualLanguage" {
-		t.Errorf("Name() = %v, want DualLanguage", got)
+	if got := p.Name(); got != "dual_language" {
+		t.Errorf("Name() = %v, want dual_language", got)
 	}
 }
 

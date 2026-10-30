@@ -127,7 +127,7 @@ func TestRecoveryLogsOneEscapedStack(t *testing.T) {
 	}
 
 	out := strings.TrimRight(buf.String(), "\n")
-	if strings.Count(out, "event=request_panic") != 1 {
+	if strings.Count(out, "event=request_panicked ") != 1 {
 		t.Errorf("expected exactly one recovery event: %q", out)
 	}
 	if !strings.Contains(out, "ERROR") || !strings.Contains(out, `stack="`) || !strings.Contains(out, "recoveryLogger") {
@@ -168,7 +168,7 @@ func TestPanicKeepsTheRequestSummary(t *testing.T) {
 	if lineWith(out, " WARN component=http event=request_completed", `route="/panic"`, "status=500") == "" {
 		t.Errorf("no WARN summary for the panicked request: %q", out)
 	}
-	if n := strings.Count(out, " ERROR "); n != 1 || lineWith(out, " ERROR component=http event=request_panic") == "" {
+	if n := strings.Count(out, " ERROR "); n != 1 || lineWith(out, " ERROR component=http event=request_panicked ") == "" {
 		t.Errorf("want the panic as the only ERROR, got %d: %q", n, out)
 	}
 }

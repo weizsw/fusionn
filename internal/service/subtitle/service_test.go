@@ -102,8 +102,8 @@ func TestProcessMediaReportsEnqueueFailureOnce(t *testing.T) {
 		t.Fatalf("NewService: %v", err)
 	}
 	service.pipelines = &servicePipelines{
-		analyzePipeline: NewPipeline().AddProcessor(stubAnalyzingProcessor{}),
-		mergePipeline:   NewPipeline(),
+		analyzePipeline: NewPipeline("analyze").AddProcessor(stubAnalyzingProcessor{}),
+		mergePipeline:   NewPipeline("merge"),
 	}
 
 	err = service.ProcessMedia(context.Background(), MediaParams{Path: "/media/v.mkv", Title: "My Show"})
@@ -210,8 +210,8 @@ func newStubService(t *testing.T, q *queue.MergeQueue, analyze Processor) *Servi
 		t.Fatalf("NewService: %v", err)
 	}
 	service.pipelines = &servicePipelines{
-		analyzePipeline: NewPipeline().AddProcessor(analyze),
-		mergePipeline:   NewPipeline(),
+		analyzePipeline: NewPipeline("analyze").AddProcessor(analyze),
+		mergePipeline:   NewPipeline("merge"),
 	}
 	return service
 }

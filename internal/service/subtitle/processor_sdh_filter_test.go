@@ -12,8 +12,8 @@ import (
 
 func TestSDHFilterProcessor_Name(t *testing.T) {
 	p := NewSDHFilterProcessor()
-	if p.Name() != "SDHFilter" {
-		t.Errorf("Name() = %q, want %q", p.Name(), "SDHFilter")
+	if p.Name() != "sdh_filter" {
+		t.Errorf("Name() = %q, want %q", p.Name(), "sdh_filter")
 	}
 }
 
