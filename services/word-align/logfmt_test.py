@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Tests for the shared logfmt renderer.
 
-Vendored from fusionn-muse scripts/test_logfmt.py @ 5845dba
-(sha256 7fbe3a6ef53d35a5466b61913f7ba2ab8c14d8c2aa957f81f0ac204c582f2b70); only the service name differs.
+Vendored from fusionn-muse scripts/test_logfmt.py
+(sha256 2cc0e84f6e690cb72bc91126783fef650ad2bafef976fcd1c6ca4e100c0adb69); only the service name differs.
 """
 
 import datetime
@@ -16,6 +16,18 @@ from unittest import mock
 
 import logfmt
 
+# The expected lines below are Asia/Shanghai wall time; pin TZ so a developer's
+# own TZ cannot change them. A test that needs another zone patches TZ itself.
+_PINNED_TZ = mock.patch.dict(os.environ, {"TZ": "Asia/Shanghai"})
+
+
+def setUpModule():
+    _PINNED_TZ.start()
+
+
+def tearDownModule():
+    _PINNED_TZ.stop()
+
 # The module's own name, so a copy under another file name does not have to edit
 # the assertions below.
 MODULE_FILE = pathlib.Path(__file__).name
@@ -25,7 +37,7 @@ FIXED_MOMENT = datetime.datetime(
 )
 
 # The same value matrix is rendered byte for byte by the Go services (which use
-# strconv.Quote) and by scripts/torrent-complete.sh. Verify the Go claim with:
+# strconv.Quote) and by scripts/torrent_complete.py. Verify the Go claim with:
 #   fmt.Printf("%s\n", strconv.Quote(value))
 SHARED_VALUE_MATRIX = [
     ("abc", "abc"),
@@ -101,7 +113,7 @@ class GoldenVectorTest(unittest.TestCase):
         )
         self.assertEqual(
             line,
-            "2026-07-01T14:20:03.456+08:00 WARN component=processor "
+            "2026-07-01T14:20:03.456 WARN component=processor "
             "event=translation_retry job_id=abc submission_id=sub-1 attempt_id=42 "
             "request_id=req-9 stage=translating tool=llm-subtrans stream=stderr "
             'error="provider timeout" note="a=b" retry=1 retry_after_ms=2000 '
@@ -131,11 +143,20 @@ class GoldenVectorTest(unittest.TestCase):
             self.assertIn(required, line)
         self.assertNotIn("service=", line, "the service name is no longer rendered")
 
-    def test_timestamp_is_fixed_utc8_regardless_of_process_tz(self):
-        with mock.patch.dict(os.environ, {"TZ": "America/New_York"}):
-            self.assertEqual(logfmt.format_timestamp(FIXED_MOMENT), "2026-07-01T14:20:03.456+08:00")
+    def test_timestamp_follows_tz_without_offset(self):
+        cases = {
+            "": "2026-07-01T14:20:03.456",
+            "Asia/Shanghai": "2026-07-01T14:20:03.456",
+            "America/New_York": "2026-07-01T02:20:03.456",
+            ":Europe/Paris": "2026-07-01T08:20:03.456",
+            "UTC": "2026-07-01T06:20:03.456",
+            "Mars/Base": "2026-07-01T14:20:03.456",
+        }
+        for tz, want in cases.items():
+            with self.subTest(tz=tz), mock.patch.dict(os.environ, {"TZ": tz}):
+                self.assertEqual(logfmt.format_timestamp(FIXED_MOMENT), want)
         utc_moment = FIXED_MOMENT.astimezone(datetime.timezone.utc)
-        self.assertEqual(logfmt.format_timestamp(utc_moment), "2026-07-01T14:20:03.456+08:00")
+        self.assertEqual(logfmt.format_timestamp(utc_moment), "2026-07-01T14:20:03.456")
 
     def test_absent_correlation_fields_are_omitted(self):
         line = fixed_line(level=logging.INFO, component="queue", event="job_started", msg="Job started")
@@ -465,6 +486,16 @@ class ConfigureTest(unittest.TestCase):
         self.assertIn("log_level=LOUD", output)
         self.assertIn('msg="Invalid LOG_LEVEL, using INFO"', output)
 
+    def test_unknown_tz_is_visible(self):
+        stream = io.StringIO()
+        with mock.patch.dict(os.environ, {"TZ": "Mars/Base"}, clear=True):
+            logfmt.configure(service="word-align", component="llm-subtrans", stream=stream)
+        output = stream.getvalue()
+        self.assertIn("WARN", output)
+        self.assertIn("event=config_invalid", output)
+        self.assertIn('tz="Mars/Base"', output)
+        self.assertIn('msg="Unknown TZ, using Asia/Shanghai for log timestamps"', output)
+
     def test_third_party_records_are_not_bypassed(self):
         stream = io.StringIO()
         with mock.patch.dict(os.environ, {"LOG_LEVEL": "INFO"}, clear=True):
@@ -684,14 +715,14 @@ class ConfigureTest(unittest.TestCase):
             try:
                 raise RuntimeError(canary)
             except RuntimeError:
-                logging.getLogger("word-align").debug(
+                logging.getLogger("fusionn-muse").debug(
                     "provider response",
                     exc_info=True,
                     extra={
                         "event": "provider_response",
                         "fields": {},
                         "component": "llm-subtrans",
-                        "service": "word-align",
+                        "service": "fusionn-muse",
                     },
                 )
         output = stream.getvalue()

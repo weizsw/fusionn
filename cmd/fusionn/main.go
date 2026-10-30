@@ -115,9 +115,7 @@ func run() int {
 	gin.DefaultWriter = io.Discard
 	gin.DefaultErrorWriter = io.Discard
 
-	router := gin.New()
-	router.Use(recoveryLogger())
-	router.Use(requestLogger())
+	router := newRouter()
 
 	// Register routes
 	registerRoutes(router, cfg, subtitleService)
@@ -219,7 +217,9 @@ func requestLogger() gin.HandlerFunc {
 
 		route := c.FullPath()
 		if route == "" {
-			route = c.Request.URL.Path
+			// An unmatched request has no route pattern; its raw path is not
+			// logged, because it can carry anything a client sends.
+			route = "unmatched"
 		}
 		fields := []zap.Field{
 			zap.String("method", c.Request.Method),
@@ -232,6 +232,10 @@ func requestLogger() gin.HandlerFunc {
 		switch {
 		case route == "/health" && status < 400:
 			log.Debug(ctx, "request_completed", "Health check completed", fields...)
+		case status >= 500 && handler.ErrorReported(c):
+			// The failure is already logged once as ERROR; this line adds the
+			// status and duration only.
+			log.Warn(ctx, "request_completed", "Request failed", fields...)
 		case status >= 500:
 			log.Error(ctx, "request_completed", "Request failed", fields...)
 		case status >= 400:
@@ -242,14 +246,24 @@ func requestLogger() gin.HandlerFunc {
 	}
 }
 
+// newRouter builds the engine with the request middleware. The summary wraps
+// the recovery, so a request that panics still leaves its one summary line.
+func newRouter() *gin.Engine {
+	router := gin.New()
+	router.Use(requestLogger())
+	router.Use(recoveryLogger())
+	return router
+}
+
 // recoveryLogger replaces gin's default recovery (which writes raw text that
 // bypasses the unified format): one ERROR event with an escaped, bounded
-// stack, then the usual 500 abort.
+// stack, then the usual 500 abort, marked as reported for the summary.
 func recoveryLogger() gin.HandlerFunc {
 	log := logger.Component("http")
 	return gin.CustomRecovery(func(c *gin.Context, recovered any) {
 		log.Error(c.Request.Context(), "request_panic", "Panic recovered",
 			zap.Any("recovered", recovered), zap.String("stack", string(debug.Stack())))
 		c.AbortWithStatus(http.StatusInternalServerError)
+		handler.MarkErrorReported(c)
 	})
 }

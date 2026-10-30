@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/fusionn/internal/handler"
 	"github.com/fusionn/pkg/logger"
 )
 
@@ -134,5 +135,83 @@ func TestRecoveryLogsOneEscapedStack(t *testing.T) {
 	}
 	if strings.Contains(out, "\n") || strings.Contains(out, "\t") {
 		t.Errorf("stack must be escaped onto one physical line: %q", out)
+	}
+}
+
+// lineWith returns the first log line that holds every want, or "".
+func lineWith(out string, want ...string) string {
+	for _, line := range strings.Split(out, "\n") {
+		found := line != ""
+		for _, w := range want {
+			found = found && strings.Contains(line, w)
+		}
+		if found {
+			return line
+		}
+	}
+	return ""
+}
+
+// The summary wraps the recovery, so a request that panics still leaves its
+// one summary line, and the panic stays the request's only ERROR.
+func TestPanicKeepsTheRequestSummary(t *testing.T) {
+	buf := setupRouterLogger(t)
+	router := newRouter()
+	router.GET("/panic", func(c *gin.Context) { panic("boom") })
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/panic", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	out := buf.String()
+	if lineWith(out, " WARN component=http event=request_completed", `route="/panic"`, "status=500") == "" {
+		t.Errorf("no WARN summary for the panicked request: %q", out)
+	}
+	if n := strings.Count(out, " ERROR "); n != 1 || lineWith(out, " ERROR component=http event=request_panic") == "" {
+		t.Errorf("want the panic as the only ERROR, got %d: %q", n, out)
+	}
+}
+
+// An unmatched request has no route pattern. Its raw path can hold anything a
+// client sends, so the summary names it "unmatched".
+func TestUnmatchedRouteIsNotLoggedRaw(t *testing.T) {
+	buf := setupRouterLogger(t)
+	router := newRouter()
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/wp-login.php?user=admin", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+	out := buf.String()
+	if lineWith(out, "event=request_completed", "route=unmatched", "status=404") == "" {
+		t.Errorf("no summary with route=unmatched: %q", out)
+	}
+	if strings.Contains(out, "wp-login") {
+		t.Errorf("the raw path reached the log: %q", out)
+	}
+}
+
+// A 5xx that its handler already logged as ERROR is not reported again as an
+// ERROR summary; an unreported 5xx still is.
+func TestReportedServerErrorIsNotRepeated(t *testing.T) {
+	buf := setupRouterLogger(t)
+	router := newRouter()
+	router.GET("/reported", func(c *gin.Context) {
+		handler.MarkErrorReported(c)
+		c.Status(http.StatusServiceUnavailable)
+	})
+	router.GET("/unreported", func(c *gin.Context) { c.Status(http.StatusInternalServerError) })
+
+	for _, path := range []string{"/reported", "/unreported"} {
+		router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
+	}
+	out := buf.String()
+	if lineWith(out, " WARN component=http event=request_completed", `route="/reported"`, "status=503") == "" {
+		t.Errorf("reported 5xx is not a WARN summary: %q", out)
+	}
+	if lineWith(out, " ERROR component=http event=request_completed", `route="/unreported"`, "status=500") == "" {
+		t.Errorf("unreported 5xx is not an ERROR summary: %q", out)
 	}
 }

@@ -73,6 +73,7 @@ func (h *CallbackHandler) HandleTranslationCallback(c *gin.Context) {
 		payload.JobID,
 	); err != nil {
 		callbackLog.Error(ctx, "callback_enqueue_failed", "Failed to enqueue merge job", zap.Error(err))
+		MarkErrorReported(c)
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Queue full or unavailable"})
 		return
 	}

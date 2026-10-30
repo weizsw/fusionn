@@ -140,14 +140,14 @@ Compose 为主程序设置 `FUSIONN_SUBTITLE_LLM_WORD_ALIGN_URL=http://word-alig
 
 ### 对齐服务日志
 
-服务把每个事件写成一行到标准错误，格式与 Go 服务、其他 Python 服务一致（见[统一日志规范](design/unified-logging.md)）：固定 UTC+8 毫秒时间、`DEBUG|INFO|WARN|ERROR` 级别，随后是固定字段 `component` 和 `event`，再按固定顺序输出关联字段（`job_id submission_id attempt_id request_id parent_job_id stage tool stream`），其余字段按键名排序，最后是引号包裹的 `msg`。行内不含 `service` 字段：应用/容器身份由收集入口区分。含空格、引号、等号或控制字符的值会转义并加引号；凭据（API key、token、密码、Authorization、URL userinfo）在所有级别都会脱敏。
+服务把每个事件写成一行到标准错误，格式与 Go 服务、其他 Python 服务一致（见[统一日志规范](design/unified-logging.md)）：不带时区后缀的毫秒时间（时区由 `TZ` 环境变量决定，默认 `Asia/Shanghai`）、`DEBUG|INFO|WARN|ERROR` 级别，随后是固定字段 `component` 和 `event`，再按固定顺序输出关联字段（`job_id submission_id attempt_id request_id parent_job_id stage tool stream`），其余字段按键名排序，最后是引号包裹的 `msg`。行内不含 `service` 字段：应用/容器身份由收集入口区分。含空格、引号、等号或控制字符的值会转义并加引号；凭据（API key、token、密码、Authorization、URL userinfo）在所有级别都会脱敏。
 
 用 `docker compose logs -f word-align` 查看，compose 已把容器日志限制为每文件 20 MiB、每容器 6 份。典型输出：
 
 ```text
-2026-07-01T14:20:00.123+08:00 INFO component=server event=service_started idle_seconds=300 log_level=INFO model="Qwen/Qwen3-ForcedAligner-0.6B-hf" port=8767 threads=4 msg="Service started"
-2026-07-01T14:20:01.001+08:00 INFO component=worker event=worker_started msg="Model worker started"
-2026-07-01T14:20:14.802+08:00 INFO component=server event=request_completed request_id=3f2a1c9e4b7d4a6f8c0e5b1d2a7f9c30 duration_ms=13801.4 method=POST route=align status=200 outcome=ok audio_bytes=812340 text_chars=214 word_count=41 queue_ms=0.1 worker_ms=13800.9 cold_start=true msg="Request completed"
+2026-07-01T14:20:00.123 INFO component=server event=service_started idle_seconds=300 log_level=INFO model="Qwen/Qwen3-ForcedAligner-0.6B-hf" port=8767 threads=4 msg="Service started"
+2026-07-01T14:20:01.001 INFO component=worker event=worker_started msg="Model worker started"
+2026-07-01T14:20:14.802 INFO component=server event=request_completed request_id=3f2a1c9e4b7d4a6f8c0e5b1d2a7f9c30 duration_ms=13801.4 method=POST route=align status=200 outcome=ok audio_bytes=812340 text_chars=214 word_count=41 queue_ms=0.1 worker_ms=13800.9 cold_start=true msg="Request completed"
 ```
 
 - 每次对齐请求只有一条 `request_completed` 摘要，包含 `method`、`route`、`status`、`request_id`、`duration_ms`、`outcome`，失败时还有 `reason`。成功请求另外记录 `audio_bytes`、`text_chars` 和 `word_count`。进入对齐流程的请求还会记录 `queue_ms`（在 `Aligner.align` 内从开始等锁算起，不含读取和解析 HTTP body 的时间）、`worker_ms`（取得锁之后的执行时间，包含首次启动工作进程和加载模型）和 `cold_start`（取锁时 worker 还没有成功完成过对齐；首次输入无效或加载后推理失败也会是 `true`，所以它不代表本次一定发生了模型加载）。

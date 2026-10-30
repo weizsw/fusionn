@@ -53,7 +53,7 @@ def render_record(record):
         record_fields(record),
         component=getattr(record, "component", None),
         service=getattr(record, "service", None),
-        moment=logfmt.datetime.datetime.fromtimestamp(record.created, logfmt._UTC8),
+        moment=logfmt.datetime.datetime.fromtimestamp(record.created, logfmt.datetime.timezone.utc),
     )
 
 
