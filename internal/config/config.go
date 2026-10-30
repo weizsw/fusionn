@@ -34,6 +34,8 @@ const (
 
 // Config holds the application configuration.
 type Config struct {
+	// LogLevel overrides LOG_LEVEL at run time; see logger.SetConfigLevel.
+	LogLevel string         `mapstructure:"log_level"`
 	Server   ServerConfig   `mapstructure:"server"`
 	Subtitle SubtitleConfig `mapstructure:"subtitle"`
 	Redis    RedisConfig    `mapstructure:"redis"`
