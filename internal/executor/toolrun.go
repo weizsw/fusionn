@@ -93,9 +93,11 @@ func toolStarted(ctx context.Context, tool string, cmd *exec.Cmd) time.Time {
 }
 
 // toolFinished emits tool_completed with exit code and duration. A non-zero
-// exit is a WARN whose error is the tool's own exit error; third-party output
-// only ever appears as a bounded DEBUG preview. The returned error value is
-// never altered here, so existing failure detection and messages stay intact.
+// exit is a WARN whose error is the tool's own exit error and whose detail
+// holds the error lines of the tool output (see logger.FailureDetail), so the
+// cause shows without DEBUG. The whole output is only ever a bounded DEBUG
+// preview. The returned error value is never altered here, so existing
+// failure detection and messages stay intact.
 func toolFinished(ctx context.Context, tool string, start time.Time, err error, diag string) {
 	fields := []zap.Field{
 		zap.String("tool", tool),
@@ -106,11 +108,10 @@ func toolFinished(ctx context.Context, tool string, start time.Time, err error, 
 		toolLogger().Info(ctx, "tool_completed", "Tool completed", fields...)
 		return
 	}
-	fields = append(fields, zap.Error(err))
+	fields = append(fields, zap.Error(err), logger.FailureDetail(diag))
 	toolLogger().Warn(ctx, "tool_completed", "Tool failed", fields...)
 	if d := summarize(diag); d != "" {
-		// Third-party output only ever appears as a separate DEBUG event with
-		// a bounded preview; the WARN line stays code-authored.
+		// The whole output is a separate DEBUG event with a bounded preview.
 		toolLogger().Debug(ctx, "tool_failure_detail", "Tool failure detail",
 			zap.String("tool", tool), logger.Preview(d))
 	}

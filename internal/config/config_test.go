@@ -1453,3 +1453,14 @@ subtitle:
 		}
 	}
 }
+
+// log_level is read from the file; logger.SetConfigLevel validates and applies it.
+func TestLogLevelConfig(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "server:\n  port: 9090\nlog_level: debug\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.LogLevel != "debug" {
+		t.Errorf("LogLevel = %q, want debug", cfg.LogLevel)
+	}
+}

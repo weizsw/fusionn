@@ -53,7 +53,9 @@ func run() int {
 	}
 	defer cfgMgr.Stop()
 	cfg := cfgMgr.Get()
+	logger.SetConfigLevel(cfg.LogLevel)
 	cfgMgr.OnChange(func(old, updated *config.Config) {
+		logger.SetConfigLevel(updated.LogLevel)
 		if old.Server != updated.Server || old.Redis != updated.Redis || old.Queue != updated.Queue ||
 			old.Subtitle.Enabled != updated.Subtitle.Enabled {
 			log.Warn(context.Background(), "config_restart_required", "Configuration change requires a restart")

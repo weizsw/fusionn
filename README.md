@@ -134,6 +134,8 @@ Configuration is loaded from `config/config.yaml`, or from `CONFIG_PATH`. See [c
 > [!IMPORTANT]
 > The configuration manager checks the file every 10 seconds. After it loads a valid change, new analysis and merge jobs use the updated subtitle, Bazarr and Apprise configuration. Jobs already waiting in the merge queue use the configuration available when a worker starts them. A running pipeline keeps its original configuration until it finishes. Analysis and merge take separate configuration snapshots. If pipeline construction fails, the service keeps the previous pipelines and logs the error.
 >
+> A change to `log_level` applies to the whole process; fusionn logs one `log_level_changed` event.
+>
 > Restart fusionn after changing `server`, `redis`, `queue` or `subtitle.enabled`. These values control resources created at startup. In particular, changing `subtitle.enabled` does not enable or disable processing until a restart.
 
 ### Choosing an engine
@@ -326,7 +328,7 @@ curl -s http://localhost:8080/api/v1/status
 |---|---|
 | `ENV` | Set to `production` for Gin release mode (it no longer changes the log level) |
 | `CONFIG_PATH` | Path to the configuration file (default `config/config.yaml`) |
-| `LOG_LEVEL` | `DEBUG`, `INFO`, `WARN` or `ERROR` (default `INFO`); an invalid value logs a `config_invalid` warning and keeps `INFO` |
+| `LOG_LEVEL` | `DEBUG`, `INFO`, `WARN` or `ERROR` (default `INFO`); an invalid value logs a `config_invalid` warning and keeps `INFO`. The config key `log_level` overrides it without a restart |
 | `FUSIONN_*` | Override any config key, for example `FUSIONN_SERVER_PORT=9090` |
 
 Unknown or malformed values fail at startup rather than at first use.
@@ -339,7 +341,7 @@ Every process writes one event per line to the standard stream:
 2026-07-01T14:20:03.456+08:00 WARN component=worker event=job_failed job_id=abc stage=analyze error="video file not found" msg="Job failed"
 ```
 
-Timestamps are fixed UTC+8 with milliseconds. The fixed field order is `component event`, then the correlation fields (`job_id submission_id attempt_id request_id parent_job_id stage tool stream`) and the remaining fields sorted by name; `msg` is always last. Lines carry no `service` field: the application or container identity comes from the collection entry. Values with spaces, quotes, equals signs or control characters are double-quoted with backslash escapes. Credentials (API keys, tokens, passwords, URL userinfo, `Authorization` headers) are masked at every level; content excerpts and stack traces appear only as bounded fields (`preview` at DEBUG, capped at 512 characters; `stack`, capped at 4096).
+Timestamps are fixed UTC+8 with milliseconds. The fixed field order is `component event`, then the correlation fields (`job_id submission_id attempt_id request_id parent_job_id stage tool stream`) and the remaining fields sorted by name; `msg` is always last. Lines carry no `service` field: the application or container identity comes from the collection entry. Values with spaces, quotes, equals signs or control characters are double-quoted with backslash escapes. Credentials (API keys, tokens, passwords, URL userinfo, `Authorization` headers) are masked at every level; content excerpts and stack traces appear only as bounded fields (`preview` at DEBUG, capped at 512 characters; `stack`, capped at 4096). When a tool fails, its `tool_completed` WARN line carries `detail`: up to three lines of the tool output that look like error messages, capped at 300 characters, so the cause shows without DEBUG.
 
 View the container logs with `docker compose logs -f fusionn`; the compose file caps them at 20 MiB per file with six files per container.
 

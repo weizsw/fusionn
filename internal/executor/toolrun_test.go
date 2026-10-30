@@ -102,8 +102,9 @@ func TestToolFailureKeepsDetectionText(t *testing.T) {
 	}
 }
 
-// Third-party output must never reach the WARN line; it appears only as a
-// bounded DEBUG preview, and a trimmed tail drops its partial first line.
+// Output that does not look like an error never reaches the WARN line; the
+// whole tail appears only as a bounded DEBUG preview, and a trimmed tail drops
+// its partial first line.
 func TestToolFailureHidesRawTailAtWarn(t *testing.T) {
 	var buf bytes.Buffer
 	logger.Configure(logger.Config{Output: zapcore.AddSync(&buf)})
@@ -166,5 +167,35 @@ func TestToolSuccessIsInfo(t *testing.T) {
 	out := buf.String()
 	if strings.Contains(out, "WARN") || !strings.Contains(out, "exit_code=0") {
 		t.Errorf("successful tool must log INFO with exit_code=0: %q", out)
+	}
+}
+
+// The error lines of a failed tool reach the WARN line as a bounded detail, so
+// the cause shows without DEBUG; other output stays out of it.
+func TestToolFailureShowsErrorLinesAtWarn(t *testing.T) {
+	var buf bytes.Buffer
+	logger.Configure(logger.Config{Output: zapcore.AddSync(&buf)})
+	t.Cleanup(func() { logger.Configure(logger.Config{Output: zapcore.AddSync(&bytes.Buffer{})}) })
+
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, "sh", "-c",
+		`printf 'frame=100 progress\nError opening input: Invalid data found when processing input\n' >&2; exit 1`)
+	tail := &boundedTail{}
+	cmd.Stderr = tail
+	start := toolStarted(ctx, "ffmpeg", cmd)
+	err := cmd.Run()
+	toolFinished(ctx, "ffmpeg", start, err, tail.Diagnostic())
+
+	var warn string
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(line, "WARN component=executor event=tool_completed") {
+			warn = line
+		}
+	}
+	if !strings.Contains(warn, ` detail="Error opening input: Invalid data found when processing input" `) {
+		t.Errorf("WARN line lacks the error detail: %q", warn)
+	}
+	if strings.Contains(warn, "frame=100") {
+		t.Errorf("non-error output reached the WARN line: %q", warn)
 	}
 }
