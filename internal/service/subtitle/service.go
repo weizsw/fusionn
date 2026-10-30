@@ -32,6 +32,8 @@ type servicePipelines struct {
 	config          *config.Config
 	analyzePipeline *Pipeline
 	mergePipeline   *Pipeline
+	// notifier sends the failure notification of a job; nil sends nothing.
+	notifier *NotificationProcessor
 }
 
 // NewService creates a new subtitle service with all processors configured.
@@ -98,7 +100,8 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 	mergePipeline.AddProcessor(NewStyleProcessor(cfg.Subtitle.ASSStyle))
 	mergePipeline.AddProcessor(NewFontEmbeddingProcessor(cfg.Subtitle.FontEmbedding))
 	mergePipeline.AddProcessor(NewOutputProcessor(cfg.Subtitle.OutputSameDir))
-	mergePipeline.AddProcessor(NewNotificationProcessor(appriseClient, cfg.Apprise.Enabled))
+	notifier := NewNotificationProcessor(appriseClient, cfg.Apprise.Enabled)
+	mergePipeline.AddProcessor(notifier)
 	mergePipeline.AddProcessor(NewCleanupProcessor())
 
 	// Check if font embedding is enabled and binary is available
@@ -117,6 +120,7 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 			config:          cfg,
 			analyzePipeline: analyzePipeline,
 			mergePipeline:   mergePipeline,
+			notifier:        notifier,
 		},
 		lastConfig:  cfg,
 		mergeQueue:  mergeQueue,
@@ -134,12 +138,15 @@ func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) (err err
 
 	// The webhook runs this on its own goroutine, outside gin's recovery, so a
 	// panic here would end the process. It fails this job instead, reported
-	// once like any other failure.
+	// once like any other failure. Every failure also sends one notification.
 	stage := "analyze"
 	defer func() {
 		if r := recover(); r != nil {
 			err = logger.Recovered(r)
 			log.Error(ctx, "job_failed", "Job failed", zap.String("stage", stage), zap.Error(err), logger.PanicStack(err))
+		}
+		if err != nil {
+			pipelines.notifier.NotifyFailure(ctx, jobID, params.Path, params.MediaType, stage, err)
 		}
 	}()
 
@@ -229,9 +236,20 @@ func (s *Service) ProcessWithSubtitles(ctx context.Context, videoPath, engSubPat
 }
 
 // ProcessMergeJob processes a merge job from the queue (called by worker).
-func (s *Service) ProcessMergeJob(ctx context.Context, job *queue.MergeJob) error {
+func (s *Service) ProcessMergeJob(ctx context.Context, job *queue.MergeJob) (err error) {
 	pipelines := s.currentPipelines()
 	ctx = logger.WithJobID(ctx, job.JobID)
+	// The merge queue reports job_failed. A panic is turned into that error here
+	// first, so the failure notification covers it too; the error keeps the
+	// stack for the queue's report.
+	defer func() {
+		if r := recover(); r != nil {
+			err = logger.Recovered(r)
+		}
+		if err != nil {
+			pipelines.notifier.NotifyFailure(ctx, job.JobID, job.VideoPath, job.MediaType, "merge", err)
+		}
+	}()
 	// Create processing context
 	pctx := &ProcessingContext{
 		VideoPath:        job.VideoPath,

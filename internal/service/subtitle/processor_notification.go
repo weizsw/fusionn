@@ -101,3 +101,25 @@ func (p *NotificationProcessor) Process(ctx context.Context, pctx *ProcessingCon
 
 	return nil
 }
+
+// NotifyFailure sends the failure notification of a job that ended in err. It
+// does nothing when Apprise is off or p is nil. The error text is redacted, and
+// a send failure is only logged, so it never changes the job outcome.
+func (p *NotificationProcessor) NotifyFailure(ctx context.Context, jobID, videoPath, mediaType, stage string, err error) {
+	if p == nil || !p.enabled || p.appriseClient == nil {
+		return
+	}
+	mediaFile := "Unknown"
+	if videoPath != "" {
+		mediaFile = filepath.Base(videoPath)
+	}
+	title := "❌ Subtitle Job Failed"
+	body := fmt.Sprintf("Media: %s\nType: %s\nStage: %s\nJob ID: %s\nError: %s",
+		mediaFile, mediaType, stage, jobID, logger.Redact(err.Error()))
+
+	log := logger.Component("notification")
+	log.Info(ctx, "notification_started", "Sending notification", zap.String("title", title))
+	if sendErr := p.appriseClient.Send(ctx, title, body, notification.Error); sendErr != nil {
+		log.Warn(ctx, "notification_failed", "Failed to send notification", zap.Error(sendErr))
+	}
+}
