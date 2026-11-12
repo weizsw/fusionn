@@ -176,9 +176,8 @@ type AppriseConfig struct {
 
 // QueueConfig holds job queue settings.
 type QueueConfig struct {
-	Workers    int `mapstructure:"workers"`     // Number of concurrent workers (default: 1)
-	QueueSize  int `mapstructure:"queue_size"`  // Max pending jobs (default: 100)
-	MaxRetries int `mapstructure:"max_retries"` // Max retry attempts (default: 3)
+	Workers   int `mapstructure:"workers"`    // Number of concurrent workers (default: 1)
+	QueueSize int `mapstructure:"queue_size"` // Max pending jobs (default: 100)
 }
 
 // BazarrConfig holds Bazarr integration settings.

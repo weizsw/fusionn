@@ -45,11 +45,11 @@ func (traditionalAnalyzeStage) Process(_ context.Context, pctx *ProcessingContex
 func captureMergeJobs(t *testing.T) (*queue.MergeQueue, chan *queue.MergeJob) {
 	t.Helper()
 	jobs := make(chan *queue.MergeJob, 2)
-	q := queue.NewMergeQueue(queue.Config{Workers: 1, QueueSize: 2}, func(_ context.Context, job *queue.MergeJob) error {
+	q := queue.NewMergeQueue(queue.Config{Workers: 1, QueueSize: 2})
+	q.Start(func(_ context.Context, job *queue.MergeJob) error {
 		jobs <- job
 		return nil
 	})
-	q.Start()
 	t.Cleanup(q.Stop)
 	return q, jobs
 }
@@ -116,10 +116,9 @@ func TestMergeJobHandoffMapsEveryField(t *testing.T) {
 	}
 	job := newMergeJob(pctx, "req-1")
 
-	// ParentJobID belongs to the callback path; the queue owns the lifecycle.
+	// ParentJobID belongs to the callback path.
 	excluded := map[string]bool{
-		"ParentJobID": true, "Status": true, "CreatedAt": true,
-		"StartedAt": true, "CompletedAt": true, "Error": true,
+		"ParentJobID": true,
 	}
 	value := reflect.ValueOf(job).Elem()
 	typ := value.Type()

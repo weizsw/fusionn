@@ -58,7 +58,7 @@ func (p panicProcessor) Process(context.Context, *ProcessingContext) error { pan
 var jobIDLine = regexp.MustCompile(`(?m)^Job ID: [0-9a-f-]{36}$`)
 
 func idleQueue() *queue.MergeQueue {
-	return queue.NewMergeQueue(queue.Config{}, func(context.Context, *queue.MergeJob) error { return nil })
+	return queue.NewMergeQueue(queue.Config{})
 }
 
 // notifyingService is a stub service whose failure notifications go to a recorder.
@@ -118,7 +118,7 @@ func TestAnalyzePanicSendsAFailureNotification(t *testing.T) {
 func TestEnqueueFailureSendsAFailureNotification(t *testing.T) {
 	captureLogs(t)
 	// The queue is not started and its one slot is taken, so the merge job cannot be queued.
-	q := queue.NewMergeQueue(queue.Config{Workers: 1, QueueSize: 1}, func(context.Context, *queue.MergeJob) error { return nil })
+	q := queue.NewMergeQueue(queue.Config{Workers: 1, QueueSize: 1})
 	if err := q.Enqueue(&queue.MergeJob{JobID: "filler"}); err != nil {
 		t.Fatalf("enqueue filler: %v", err)
 	}

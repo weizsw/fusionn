@@ -16,9 +16,7 @@ import (
 
 func newServiceForEngine(t *testing.T, subtitleCfg config.SubtitleConfig) *Service {
 	t.Helper()
-	mergeQueue := queue.NewMergeQueue(queue.Config{}, func(context.Context, *queue.MergeJob) error {
-		return nil
-	})
+	mergeQueue := queue.NewMergeQueue(queue.Config{})
 	service, err := NewService(&config.Config{Subtitle: subtitleCfg}, nil, mergeQueue, bazarr.NewClient("http://bazarr", "key", 1))
 	if err != nil {
 		t.Fatalf("NewService: %v", err)

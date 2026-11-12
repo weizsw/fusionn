@@ -175,7 +175,6 @@ apprise:
 queue:
   workers: 1 # Number of concurrent merge workers (1 = sequential, 2+ = parallel)
   queue_size: 100 # Max pending jobs in queue
-  max_retries: 3 # Max retry attempts for failed jobs
 
 # Bazarr integration (search for Chinese subtitles before translating)
 bazarr:

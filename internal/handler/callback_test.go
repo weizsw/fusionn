@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +20,7 @@ import (
 // must not report it again.
 func TestCallbackEnqueueFailureIsMarkedReported(t *testing.T) {
 	// The queue is not started and its one slot is taken, so the next enqueue fails.
-	q := queue.NewMergeQueue(queue.Config{Workers: 1, QueueSize: 1}, func(context.Context, *queue.MergeJob) error { return nil })
+	q := queue.NewMergeQueue(queue.Config{Workers: 1, QueueSize: 1})
 	if err := q.Enqueue(&queue.MergeJob{JobID: "filler"}); err != nil {
 		t.Fatalf("enqueue filler: %v", err)
 	}

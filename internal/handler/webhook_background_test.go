@@ -45,7 +45,7 @@ func TestWebhookBackgroundJobKeepsRequestCorrelation(t *testing.T) {
 	logger.Configure(logger.Config{Output: zapcore.AddSync(buf)})
 	t.Cleanup(func() { logger.Configure(logger.Config{Output: zapcore.AddSync(&syncBuffer{})}) })
 
-	mergeQueue := queue.NewMergeQueue(queue.Config{}, func(context.Context, *queue.MergeJob) error { return nil })
+	mergeQueue := queue.NewMergeQueue(queue.Config{})
 	service, err := subtitle.NewService(
 		&config.Config{Subtitle: config.SubtitleConfig{DuoSubs: config.DuoSubsConfig{Mode: "local"}}},
 		nil,

@@ -26,7 +26,7 @@ flowchart LR
         B1[Analyzer<br/>detect tracks] --> B2[Extractor<br/>English + Chinese] --> B3[Bazarr search] --> B4[Translation queue]
     end
 
-    B --> C[Redis-backed merge queue]
+    B --> C[In-process merge queue]
     C --> D
 
     subgraph D [Merge pipeline - async worker]
@@ -297,7 +297,6 @@ With `subtitle.engine: llm`, translation callbacks bypass LLM matching and pair 
 queue:
   workers: 1 # 1 = sequential, 2+ = concurrent merges
   queue_size: 100
-  max_retries: 3
 
 apprise:
   enabled: false

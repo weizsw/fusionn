@@ -1464,3 +1464,22 @@ func TestLogLevelConfig(t *testing.T) {
 		t.Errorf("LogLevel = %q, want debug", cfg.LogLevel)
 	}
 }
+
+// An existing config file keeps queue.max_retries and still loads: the key is
+// no longer read, and the queue values around it are unaffected.
+func TestQueueMaxRetriesKeyIsIgnored(t *testing.T) {
+	cfg, err := Load(writeConfig(t, `
+server:
+  port: 8080
+queue:
+  workers: 3
+  queue_size: 25
+  max_retries: 3
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Queue.Workers != 3 || cfg.Queue.QueueSize != 25 {
+		t.Errorf("queue = workers %d size %d, want 3 and 25", cfg.Queue.Workers, cfg.Queue.QueueSize)
+	}
+}

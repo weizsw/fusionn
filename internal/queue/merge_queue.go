@@ -23,77 +23,52 @@ type MergeJob struct {
 	MediaType        string
 	ChineseSubSource string
 	NeedsConversion  bool // Traditional Chinese track, converted by the merge stage
-	Status           string
-	CreatedAt        time.Time
-	StartedAt        *time.Time
-	CompletedAt      *time.Time
-	Error            string
 }
-
-const (
-	JobStatusPending    = "pending"
-	JobStatusProcessing = "processing"
-	JobStatusFailed     = "failed"
-	JobStatusCompleted  = "completed"
-)
 
 // JobHandler is a function that processes a merge job.
 type JobHandler func(ctx context.Context, job *MergeJob) error
 
 // MergeQueue is an in-process job queue for subtitle merging.
 type MergeQueue struct {
-	jobs       chan *MergeJob
-	handler    JobHandler
-	workers    int
-	wg         sync.WaitGroup
-	ctx        context.Context
-	cancel     context.CancelFunc
-	mu         sync.RWMutex
-	jobsMap    map[string]*MergeJob // For job status tracking
-	maxRetries int
+	jobs    chan *MergeJob
+	handler JobHandler
+	workers int
+	wg      sync.WaitGroup
+	ctx     context.Context
+	cancel  context.CancelFunc
 }
 
 // Config holds queue configuration.
 type Config struct {
-	Workers    int // Number of concurrent workers (default: 1)
-	QueueSize  int // Max pending jobs (default: 100)
-	MaxRetries int // Max retry attempts (default: 3)
+	Workers   int // Number of concurrent workers (default: 1)
+	QueueSize int // Max pending jobs (default: 100)
 }
 
 // NewMergeQueue creates a new in-process merge queue.
-func NewMergeQueue(cfg Config, handler JobHandler) *MergeQueue {
+func NewMergeQueue(cfg Config) *MergeQueue {
 	if cfg.Workers <= 0 {
 		cfg.Workers = 1 // Sequential processing by default
 	}
 	if cfg.QueueSize <= 0 {
 		cfg.QueueSize = 100
 	}
-	if cfg.MaxRetries <= 0 {
-		cfg.MaxRetries = 3
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	q := &MergeQueue{
-		jobs:       make(chan *MergeJob, cfg.QueueSize),
-		handler:    handler,
-		workers:    cfg.Workers,
-		ctx:        ctx,
-		cancel:     cancel,
-		jobsMap:    make(map[string]*MergeJob),
-		maxRetries: cfg.MaxRetries,
+		jobs:    make(chan *MergeJob, cfg.QueueSize),
+		workers: cfg.Workers,
+		ctx:     ctx,
+		cancel:  cancel,
 	}
 
 	return q
 }
 
-// SetHandler sets the job handler. Must be called before Start.
-func (q *MergeQueue) SetHandler(handler JobHandler) {
+// Start starts the worker pool, handing every job to handler.
+func (q *MergeQueue) Start(handler JobHandler) {
 	q.handler = handler
-}
 
-// Start starts the worker pool.
-func (q *MergeQueue) Start() {
 	logger.Component("queue").Info(context.Background(), "queue_started", "Merge queue started",
 		zap.Int("workers", q.workers))
 
@@ -117,13 +92,6 @@ func (q *MergeQueue) Enqueue(job *MergeJob) error {
 	if job.JobID == "" {
 		job.JobID = uuid.New().String()
 	}
-	job.Status = JobStatusPending
-	job.CreatedAt = time.Now()
-
-	// Store job for status tracking
-	q.mu.Lock()
-	q.jobsMap[job.JobID] = job
-	q.mu.Unlock()
 
 	select {
 	case q.jobs <- job:
@@ -135,19 +103,6 @@ func (q *MergeQueue) Enqueue(job *MergeJob) error {
 	default:
 		return ErrQueueFull
 	}
-}
-
-// GetJob returns the status of a job by ID.
-func (q *MergeQueue) GetJob(jobID string) (*MergeJob, bool) {
-	q.mu.RLock()
-	defer q.mu.RUnlock()
-	job, ok := q.jobsMap[jobID]
-	return job, ok
-}
-
-// GetPendingCount returns the number of jobs waiting in queue.
-func (q *MergeQueue) GetPendingCount() int {
-	return len(q.jobs)
 }
 
 // worker processes jobs from the queue.
@@ -173,11 +128,9 @@ func (q *MergeQueue) worker(id int) {
 	}
 }
 
-// processJob processes a single job with retry logic.
+// processJob processes a single job.
 func (q *MergeQueue) processJob(workerID int, job *MergeJob) {
 	startTime := time.Now()
-	job.StartedAt = &startTime
-	job.Status = JobStatusProcessing
 
 	log := logger.Component("queue")
 	ctx := jobContext(q.ctx, job)
@@ -186,27 +139,16 @@ func (q *MergeQueue) processJob(workerID int, job *MergeJob) {
 
 	// Execute job handler
 	err := q.runHandler(ctx, job)
-
-	completedTime := time.Now()
-	job.CompletedAt = &completedTime
-	duration := completedTime.Sub(startTime)
+	duration := time.Since(startTime)
 
 	if err != nil {
-		job.Status = JobStatusFailed
-		job.Error = err.Error()
 		log.Error(ctx, "job_failed", "Job failed",
 			zap.Int("worker", workerID), zap.String("media_title", job.MediaTitle),
 			zap.String("stage", "merge"), logger.DurMs(duration), zap.Error(err), logger.PanicStack(err))
-
-		// TODO: Implement retry logic here if needed
 	} else {
-		job.Status = JobStatusCompleted
 		log.Info(ctx, "job_completed", "Job completed",
 			zap.Int("worker", workerID), zap.String("media_title", job.MediaTitle), logger.DurMs(duration))
 	}
-
-	// Clean up old jobs after 1 hour
-	go q.cleanupOldJob(job.JobID, 1*time.Hour)
 }
 
 // jobContext restores the correlation of the request that queued the job, so a
@@ -227,14 +169,6 @@ func (q *MergeQueue) runHandler(ctx context.Context, job *MergeJob) (err error) 
 		}
 	}()
 	return q.handler(ctx, job)
-}
-
-// cleanupOldJob removes job from tracking after a delay.
-func (q *MergeQueue) cleanupOldJob(jobID string, delay time.Duration) {
-	time.Sleep(delay)
-	q.mu.Lock()
-	delete(q.jobsMap, jobID)
-	q.mu.Unlock()
 }
 
 // ErrQueueFull is returned when the queue is at capacity.

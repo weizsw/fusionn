@@ -80,11 +80,9 @@ func run() int {
 		// Create merge queue (will be started after subtitle service is created)
 		mergeQueue = queue.NewMergeQueue(
 			queue.Config{
-				Workers:    cfg.Queue.Workers,
-				QueueSize:  cfg.Queue.QueueSize,
-				MaxRetries: cfg.Queue.MaxRetries,
+				Workers:   cfg.Queue.Workers,
+				QueueSize: cfg.Queue.QueueSize,
 			},
-			nil, // Handler will be set after service is created
 		)
 
 		// Create subtitle service
@@ -94,11 +92,8 @@ func run() int {
 			return 1
 		}
 
-		// Wire the queue handler now that the service exists
-		mergeQueue.SetHandler(subtitleService.ProcessMergeJob)
-
-		// Start queue workers
-		mergeQueue.Start()
+		// Start queue workers now that the service exists
+		mergeQueue.Start(subtitleService.ProcessMergeJob)
 
 		log.Info(context.Background(), "service_ready", "Subtitle service initialized",
 			zap.Int("workers", cfg.Queue.Workers), zap.Int("queue_size", cfg.Queue.QueueSize))

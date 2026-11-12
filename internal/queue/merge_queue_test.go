@@ -38,10 +38,10 @@ func TestFailedJobReportsItsStage(t *testing.T) {
 	logger.Configure(logger.Config{Output: zapcore.AddSync(buf)})
 	t.Cleanup(func() { logger.Configure(logger.Config{Output: zapcore.AddSync(&syncBuffer{})}) })
 
-	q := NewMergeQueue(Config{Workers: 1, QueueSize: 4}, func(ctx context.Context, job *MergeJob) error {
+	q := NewMergeQueue(Config{Workers: 1, QueueSize: 4})
+	q.Start(func(ctx context.Context, job *MergeJob) error {
 		return errors.New("merge boom")
 	})
-	q.Start()
 	defer q.Stop()
 
 	job := &MergeJob{VideoPath: "/media/v.mkv", MediaTitle: "My Show S01E02"}
@@ -49,7 +49,7 @@ func TestFailedJobReportsItsStage(t *testing.T) {
 		t.Fatalf("enqueue: %v", err)
 	}
 
-	// The status flips before the log line is written, so wait for the line.
+	// Wait for the line the failure is reported on.
 	var failed string
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -105,11 +105,11 @@ func TestWorkerRestoresTriggerCorrelation(t *testing.T) {
 	t.Cleanup(func() { logger.Configure(logger.Config{Output: zapcore.AddSync(&syncBuffer{})}) })
 
 	seen := make(chan string, 1)
-	q := NewMergeQueue(Config{Workers: 1, QueueSize: 4}, func(ctx context.Context, job *MergeJob) error {
+	q := NewMergeQueue(Config{Workers: 1, QueueSize: 4})
+	q.Start(func(ctx context.Context, job *MergeJob) error {
 		seen <- logger.RequestID(ctx)
 		return nil
 	})
-	q.Start()
 	defer q.Stop()
 
 	if err := q.Enqueue(&MergeJob{JobID: "j2", ParentJobID: "j1", RequestID: "req-1"}); err != nil {
@@ -135,13 +135,13 @@ func TestWorkerSurvivesHandlerPanic(t *testing.T) {
 	logger.Configure(logger.Config{Output: zapcore.AddSync(buf)})
 	t.Cleanup(func() { logger.Configure(logger.Config{Output: zapcore.AddSync(&syncBuffer{})}) })
 
-	q := NewMergeQueue(Config{Workers: 1, QueueSize: 4}, func(ctx context.Context, job *MergeJob) error {
+	q := NewMergeQueue(Config{Workers: 1, QueueSize: 4})
+	q.Start(func(ctx context.Context, job *MergeJob) error {
 		if job.JobID == "boom" {
 			panic("merge bug")
 		}
 		return nil
 	})
-	q.Start()
 	defer q.Stop()
 
 	for _, id := range []string{"boom", "after"} {
@@ -157,7 +157,4 @@ func TestWorkerSurvivesHandlerPanic(t *testing.T) {
 		}
 	}
 	waitForLine(t, buf, "event=job_completed", "job_id=after")
-	if job, ok := q.GetJob("boom"); !ok || job.Status != JobStatusFailed {
-		t.Errorf("panicked job status = %+v, want failed", job)
-	}
 }

@@ -64,7 +64,8 @@ func TestProcessMediaReportsEnqueueFailureOnce(t *testing.T) {
 
 	block := make(chan struct{})
 	workerBusy := make(chan struct{}, 1)
-	q := queue.NewMergeQueue(queue.Config{Workers: 1, QueueSize: 1}, func(context.Context, *queue.MergeJob) error {
+	q := queue.NewMergeQueue(queue.Config{Workers: 1, QueueSize: 1})
+	q.Start(func(context.Context, *queue.MergeJob) error {
 		select {
 		case workerBusy <- struct{}{}:
 		default:
@@ -72,7 +73,6 @@ func TestProcessMediaReportsEnqueueFailureOnce(t *testing.T) {
 		<-block
 		return nil
 	})
-	q.Start()
 	defer func() {
 		close(block)
 		q.Stop()
@@ -130,9 +130,7 @@ func TestProcessMediaReportsEnqueueFailureOnce(t *testing.T) {
 }
 
 func TestNewServiceAnalyzePipelineRunsBazarrSDHFilterAfterBazarrSearch(t *testing.T) {
-	mergeQueue := queue.NewMergeQueue(queue.Config{}, func(context.Context, *queue.MergeJob) error {
-		return nil
-	})
+	mergeQueue := queue.NewMergeQueue(queue.Config{})
 	service, err := NewService(
 		&config.Config{Subtitle: config.SubtitleConfig{DuoSubs: config.DuoSubsConfig{Mode: "local"}}},
 		&recordingQueueClient{},
@@ -168,9 +166,7 @@ func TestNewServiceAnalyzePipelineRunsBazarrSDHFilterAfterBazarrSearch(t *testin
 }
 
 func TestNewServiceAnalyzePipelineSkipsTranslationQueueWithoutRedisClient(t *testing.T) {
-	mergeQueue := queue.NewMergeQueue(queue.Config{}, func(context.Context, *queue.MergeJob) error {
-		return nil
-	})
+	mergeQueue := queue.NewMergeQueue(queue.Config{})
 	service, err := NewService(
 		&config.Config{Subtitle: config.SubtitleConfig{DuoSubs: config.DuoSubsConfig{Mode: "local"}}},
 		nil,
@@ -225,7 +221,7 @@ func TestProcessMediaRecoversPanic(t *testing.T) {
 	logger.Configure(logger.Config{Output: zapcore.AddSync(buf)})
 	t.Cleanup(func() { logger.Configure(logger.Config{Output: zapcore.AddSync(&lockedBuffer{})}) })
 
-	q := queue.NewMergeQueue(queue.Config{}, func(context.Context, *queue.MergeJob) error { return nil })
+	q := queue.NewMergeQueue(queue.Config{})
 	service := newStubService(t, q, panickingProcessor{})
 
 	err := service.ProcessMedia(context.Background(), MediaParams{Path: "/media/v.mkv", Title: "My Show"})
@@ -257,11 +253,11 @@ func TestMergeJobsCarryTriggerCorrelation(t *testing.T) {
 	t.Cleanup(func() { logger.Configure(logger.Config{Output: zapcore.AddSync(&lockedBuffer{})}) })
 
 	jobs := make(chan *queue.MergeJob, 2)
-	q := queue.NewMergeQueue(queue.Config{Workers: 1, QueueSize: 4}, func(_ context.Context, job *queue.MergeJob) error {
+	q := queue.NewMergeQueue(queue.Config{Workers: 1, QueueSize: 4})
+	q.Start(func(_ context.Context, job *queue.MergeJob) error {
 		jobs <- job
 		return nil
 	})
-	q.Start()
 	defer q.Stop()
 	service := newStubService(t, q, stubAnalyzingProcessor{})
 
