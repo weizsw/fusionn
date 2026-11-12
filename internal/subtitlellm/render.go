@@ -557,7 +557,7 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig, word
 		}
 		oneSided := func(cue Cue, isEN bool) block {
 			ee, zz := []Cue{}, []Cue{}
-			cueLyric := hasMusicSymbol(cue.Plain)
+			cueLyric := cueIsLyric(cue)
 			cueTop := top || cueLyric
 			cueAlign := alignment
 			if cueTop && cueAlign < 7 {

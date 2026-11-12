@@ -109,7 +109,7 @@ func isTimingDialogue(c Cue) bool {
 		return false
 	}
 	text := strings.TrimSpace(c.Plain)
-	if text == "" || isLyrics(text) {
+	if text == "" || cueIsLyric(c) {
 		return false
 	}
 	runes := []rune(text)
@@ -118,19 +118,6 @@ func isTimingDialogue(c Cue) bool {
 }
 
 var closingBrackets = map[rune]rune{'(': ')', '（': '）', '[': ']', '【': '】'}
-
-// isLyrics reports whether every line is a song lyric. A cue that mixes a lyric
-// line with a spoken line ("- ♪ Silent night ♪ / - Yeah, thank you.") still
-// counts as dialogue.
-func isLyrics(text string) bool {
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" && !strings.ContainsAny(line, "♪♫") {
-			return false
-		}
-	}
-	return true
-}
 
 // pairRestoredByTiming pairs restored one-sided dialogue cues by time overlap.
 // Model groups, including deliberate one-sided rows, are kept as they are.
