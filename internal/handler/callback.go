@@ -7,22 +7,21 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/fusionn/internal/service/subtitle"
 	"github.com/fusionn/pkg/logger"
 )
 
 // CallbackHandler handles translation completion callbacks.
 type CallbackHandler struct {
-	subtitleService *subtitle.Service
+	processor MediaProcessor
 }
 
 // callbackLog is the handler-level logger; request_id/job_id come from the request context.
 var callbackLog = logger.Component("callback")
 
 // NewCallbackHandler creates a new callback handler.
-func NewCallbackHandler(subtitleService *subtitle.Service) *CallbackHandler {
+func NewCallbackHandler(processor MediaProcessor) *CallbackHandler {
 	return &CallbackHandler{
-		subtitleService: subtitleService,
+		processor: processor,
 	}
 }
 
@@ -65,7 +64,7 @@ func (h *CallbackHandler) HandleTranslationCallback(c *gin.Context) {
 
 	// Enqueue merge job; the new merge job keeps its own Job ID and records
 	// the translation Job ID as parent_job_id.
-	if err := h.subtitleService.ProcessWithSubtitles(
+	if err := h.processor.ProcessWithSubtitles(
 		ctx,
 		payload.VideoPath,
 		payload.EngSubtitlePath,

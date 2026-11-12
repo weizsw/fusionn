@@ -16,7 +16,7 @@ import (
 
 // WebhookHandler handles Sonarr and Radarr webhooks.
 type WebhookHandler struct {
-	subtitleService *subtitle.Service
+	processor MediaProcessor
 }
 
 const (
@@ -31,9 +31,9 @@ const (
 var webhookLog = logger.Component("webhook")
 
 // NewWebhookHandler creates a new webhook handler.
-func NewWebhookHandler(subtitleService *subtitle.Service) *WebhookHandler {
+func NewWebhookHandler(processor MediaProcessor) *WebhookHandler {
 	return &WebhookHandler{
-		subtitleService: subtitleService,
+		processor: processor,
 	}
 }
 
@@ -127,13 +127,13 @@ func (h *WebhookHandler) HandleSonarr(c *gin.Context) {
 	webhookLog.Debug(ctx, "webhook_detail", "Webhook detail", logger.Preview(payload.EpisodeFile.Path))
 
 	// Process subtitle in background (non-blocking)
-	if h.subtitleService != nil {
+	if h.processor != nil {
 		go func(params subtitle.MediaParams) {
 			// ProcessMedia is the operation boundary and reports its own
 			// ERROR exactly once; this goroutine only owns the trigger. The
 			// request's correlation values (request_id) survive, but its
 			// cancellation does not: the 202 response must not cancel the job.
-			_ = h.subtitleService.ProcessMedia(context.WithoutCancel(ctx), params)
+			_ = h.processor.ProcessMedia(context.WithoutCancel(ctx), params)
 		}(params)
 	}
 
@@ -178,13 +178,13 @@ func (h *WebhookHandler) HandleRadarr(c *gin.Context) {
 	webhookLog.Debug(ctx, "webhook_detail", "Webhook detail", logger.Preview(payload.MovieFile.Path))
 
 	// Process subtitle in background (non-blocking)
-	if h.subtitleService != nil {
+	if h.processor != nil {
 		go func(params subtitle.MediaParams) {
 			// ProcessMedia is the operation boundary and reports its own
 			// ERROR exactly once; this goroutine only owns the trigger. The
 			// request's correlation values (request_id) survive, but its
 			// cancellation does not: the 202 response must not cancel the job.
-			_ = h.subtitleService.ProcessMedia(context.WithoutCancel(ctx), params)
+			_ = h.processor.ProcessMedia(context.WithoutCancel(ctx), params)
 		}(params)
 	}
 
