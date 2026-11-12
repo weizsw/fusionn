@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -132,5 +133,79 @@ func TestOneSidedLyricPlacementUsesOnePredicate(t *testing.T) {
 				t.Errorf("one-sided source text changed: want %q got %q\n%s", cue.Display, event.enText, ass)
 			}
 		})
+	}
+}
+
+func TestReview939WrappedOpenLyricNotInventedSpeech(t *testing.T) {
+	b, m := review939Inputs(t,
+		[]Cue{review939Cue(1, 1000, 5000, "♪ Sail into the stars\nand never come back", false)},
+		[]Cue{review939Cue(1, 1500, 5000, "扬帆驶向群星不再归来", false)},
+		[]Group{review939Group([]int{1}, []int{1})})
+	_, events, err := renderWithAudits(b, m, review939Config(), renderTestStyle(), 1920, 1080, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range events {
+		if (strings.Contains(e.enText, "never come back") || strings.Contains(e.zhText, "不再归来")) && e.alignment < 7 {
+			t.Fatalf("an unmarked wrapped continuation and its lyric translation became spoken text: %+v", e)
+		}
+	}
+}
+
+func TestReview939SymmetricWrappedOpenLyricNotInventedSpeech(t *testing.T) {
+	b, m := review939Inputs(t,
+		[]Cue{review939Cue(1, 1500, 5000, "Sail into the stars and never return", false)},
+		[]Cue{review939Cue(1, 1000, 5000, "♪ 驶向群星\n永不回头", false)},
+		[]Group{review939Group([]int{1}, []int{1})})
+	_, events, err := renderWithAudits(b, m, review939Config(), renderTestStyle(), 1920, 1080, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range events {
+		if (strings.Contains(e.enText, "never return") || strings.Contains(e.zhText, "永不回头")) && e.alignment < 7 {
+			t.Fatalf("symmetric unmarked wrapped continuation became spoken text: %+v", e)
+		}
+	}
+}
+
+func TestReview939LyricMoveDoesNotKeepBottomAbsolutePosition(t *testing.T) {
+	cue := review939Cue(1, 1000, 4000, "♪ Sail away ♪", false)
+	pos := [2]float64{960, 900}
+	cue.Position = &pos
+	b, m := review939Inputs(t, []Cue{cue}, nil, []Group{review939Group([]int{1}, nil)})
+	ass, _, err := renderWithAudits(b, m, review939Config(), renderTestStyle(), 1920, 1080, nil)
+	if err != nil {
+		t.Fatalf("moving the lyric must remain renderable: %v", err)
+	}
+	ds := parseDialogues(t, string(ass))
+	if len(ds) != 1 {
+		t.Fatalf("expected one complete lyric, got %v", ds)
+	}
+	if !strings.Contains(ds[0].style, "Top") {
+		t.Fatalf("expected lyric at top, got %+v", ds[0])
+	}
+	if ds[0].hasPos && ds[0].posY >= 540 {
+		t.Fatalf("top style still carries bottom absolute position: %+v", ds[0])
+	}
+}
+
+func TestReview939SymmetricLyricMoveDoesNotKeepBottomAbsolutePosition(t *testing.T) {
+	cue := review939Cue(1, 1000, 4000, "♪ 歌唱 ♪", false)
+	pos := [2]float64{960, 900}
+	cue.Position = &pos
+	b, m := review939Inputs(t, nil, []Cue{cue}, []Group{review939Group(nil, []int{1})})
+	ass, _, err := renderWithAudits(b, m, review939Config(), renderTestStyle(), 1920, 1080, nil)
+	if err != nil {
+		t.Fatalf("moving symmetric lyric must remain renderable: %v", err)
+	}
+	ds := parseDialogues(t, string(ass))
+	if len(ds) != 1 {
+		t.Fatalf("expected one complete lyric, got %v", ds)
+	}
+	if !strings.Contains(ds[0].style, "Top") {
+		t.Fatalf("expected lyric at top, got %+v", ds[0])
+	}
+	if ds[0].hasPos && ds[0].posY >= 540 {
+		t.Fatalf("top style still carries bottom absolute position: %+v", ds[0])
 	}
 }

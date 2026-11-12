@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-const prototypeSources = "../../experiments/llm-subtitle-merge/results/dark-matter-s02e07"
+const prototypeSources = "testdata/dark-matter-s02e07"
 
 func TestLoadSourcesMatchesPrototypeBundle(t *testing.T) {
 	bundle, err := LoadSources(

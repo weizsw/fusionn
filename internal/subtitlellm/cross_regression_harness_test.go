@@ -13,7 +13,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/fusionn/internal/config"
 )
@@ -45,26 +44,6 @@ var (
 	anRegex = regexp.MustCompile(`\\an([1-9])`)
 	qRegex  = regexp.MustCompile(`\\q([0-3])`)
 )
-
-// parseTimeMS converts H:MM:SS.cc into milliseconds.
-func parseTimeMS(text string) int {
-	parts := strings.Split(strings.TrimSpace(text), ":")
-	if len(parts) != 3 {
-		return -1
-	}
-	h, errH := strconv.Atoi(parts[0])
-	m, errM := strconv.Atoi(parts[1])
-	rest := strings.Split(parts[2], ".")
-	if len(rest) != 2 {
-		return -1
-	}
-	sec, errS := strconv.Atoi(rest[0])
-	cs, errC := strconv.Atoi(rest[1])
-	if errH != nil || errM != nil || errS != nil || errC != nil || h < 0 || m < 0 || sec < 0 || cs < 0 {
-		return -1
-	}
-	return ((h*60+m)*60+sec)*1000 + cs*10
-}
 
 func normalizeText(s string) string {
 	replaced := strings.NewReplacer(`\N`, "", `\n`, "", `\h`, "").Replace(s)
@@ -1082,18 +1061,14 @@ func intsKeyHelper(ids []int) string {
 	return strings.Join(parts, ",")
 }
 
-// RunDarkMatterCrossRegression executes the whole regression pipeline on Dark Matter S02E07:
+// RunDarkMatterCrossRegressionToDir executes the whole regression pipeline on
+// Dark Matter S02E07:
 // 1. Loads sources and old mapping (712 groups with empty kind)
 // 2. Renders new independent native ASS and parses serialized events
 // 3. Emits audit-imported-mapping.json via engine.Align import path
 // 4. Executes HTTP mock replay of the 19 recorded responses and emits mapping-recomputed.json & audit-recomputed.json
 // 5. Performs comprehensive verifications (full-text, sequence, windows, ASS vs audit, concurrent lines)
 // 6. Writes validation-report.json and REGRESSION-SUMMARY.md
-func RunDarkMatterCrossRegression(dir string) (*RegressionRunResult, error) {
-	outDir := filepath.Join(os.TempDir(), fmt.Sprintf("fusionn-dark-matter-reg-%d", time.Now().UnixNano()), "artifacts")
-	return RunDarkMatterCrossRegressionToDir(dir, outDir)
-}
-
 func RunDarkMatterCrossRegressionToDir(dir, outDir string) (*RegressionRunResult, error) {
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		return nil, fmt.Errorf("mkdir outDir %q: %w", outDir, err)
@@ -1591,7 +1566,7 @@ func RunDarkMatterCrossRegressionToDir(dir, outDir string) (*RegressionRunResult
 	fmt.Fprintf(&md, "| **综合验证判定** | **%s** |\n\n", judge)
 
 	md.WriteString("## 1. 产物规划与生成文件\n\n")
-	md.WriteString("所有产物统一生成于 `experiments/llm-subtitle-merge/results/dark-matter-s02e07/`：\n\n")
+	md.WriteString("所有产物基于 `internal/subtitlellm/testdata/dark-matter-s02e07/` 的源字幕与录制响应生成：\n\n")
 	md.WriteString("- **`bilingual-native-regression.ass`**: 独立渲染的跨作品回归 ASS，保留原生双语对白样式 (PingFang SC 52 / Helvetica Neue 36, scale 1.125, marginV -32, margins 90, 90)。\n")
 	md.WriteString("- **`audit-imported-mapping.json`**: 导入已有 712 组 mapping.json 渲染生成的独立审计产物。\n")
 	md.WriteString("- **`mapping-recomputed.json`**: 重放 19 个离线录制 LLM 响应重新对齐算出的 mapping 产物。\n")
@@ -1661,14 +1636,10 @@ func RunDarkMatterCrossRegressionToDir(dir, outDir string) (*RegressionRunResult
 	md.WriteString("- 保持现有 layer 逻辑，不进行任何非预期的顶底强制迁移。\n\n")
 
 	md.WriteString("## 5. 执行方式与复用说明\n\n")
-	md.WriteString("本套回归与验证套件已完成双入口接入：\n\n")
-	md.WriteString("1. **Go Test 方式**:\n")
+	md.WriteString("本套回归与验证套件通过 Go Test 运行：\n\n")
+	md.WriteString("**Go Test 方式**:\n")
 	md.WriteString("   ```bash\n")
 	md.WriteString("   go test -v -run TestCrossRegression ./internal/subtitlellm\n")
-	md.WriteString("   ```\n")
-	md.WriteString("2. **命令行 CLI 方式**:\n")
-	md.WriteString("   ```bash\n")
-	md.WriteString("   go run ./cmd/cross-regression -dir experiments/llm-subtitle-merge/results/dark-matter-s02e07\n")
 	md.WriteString("   ```\n")
 
 	if err := os.WriteFile(mdSummaryPath, []byte(md.String()), 0644); err != nil {

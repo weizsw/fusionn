@@ -444,3 +444,43 @@ func TestWrapDropsSpacesAtLineBreaks(t *testing.T) {
 		}
 	}
 }
+
+func TestParent33FallbackWordCandidatesUseASSFloor(t *testing.T) {
+	cfg := fixtureConfig()
+	cfg.EnChars = 8
+	bundle := fixtureBundle(
+		[]Cue{{ID: 1, Start: 1004, End: 2600, Display: "Alpha. Bravo.", Plain: "Alpha.\nBravo."}},
+		[]Cue{{ID: 1, Start: 1004, End: 2600, Display: "甲", Plain: "甲"}},
+	)
+	candidates := WordAlignmentCues(bundle, cfg)
+	if len(candidates) != 1 || candidates[0].ID != 1 {
+		t.Fatalf("1.6s serialized cue supports 2x0.8s fragments and needs optional word alignment, got %v", candidates)
+	}
+}
+
+func TestParent33ChineseSourceCutUsesRoundedFallbackBudget(t *testing.T) {
+	noWidthMeasurer(t)
+	cfg := fixtureConfig()
+	cfg.ZhChars = 4
+	bundle := fixtureBundle(
+		[]Cue{{ID: 1, Start: 1004, End: 2600, Display: "Short.", Plain: "Short."}},
+		[]Cue{{ID: 1, Start: 1004, End: 2600, Display: "甲 乙丙丁戊", Plain: "甲\n乙丙丁戊"}},
+	)
+	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	_, events, err := renderWithAudits(bundle, mapping, cfg, fixtureStyle(), 1920, 1080, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("probe requires 2 fallback fragments, got %d", len(events))
+	}
+	want := []string{"甲", "乙丙丁戊"}
+	for i, e := range events {
+		if normText(e.zhText) != want[i] {
+			t.Errorf("fragment %d lost preferred original line despite exact2x0.8s ASS budget: got %q want %q", i, e.zhText, want[i])
+		}
+		if e.assEnd-e.assStart < 800 {
+			t.Errorf("fragment %d is below final ASS floor", i)
+		}
+	}
+}

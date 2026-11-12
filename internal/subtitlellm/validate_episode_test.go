@@ -823,69 +823,9 @@ func TestWholeEpisodeFixtureIsOptIn(t *testing.T) {
 		v.TotalEvents, v.ENCovered, v.ENSourceCues, v.ZHCovered, v.ZHSourceCues)
 }
 
-// assDialogue is one serialized Dialogue line.
-type assDialogue struct {
-	start, end int // milliseconds as written
-	text       string
-}
-
-// parseSerializedASS reads Dialogue lines from a delivered ASS file.
-func parseSerializedASS(content string) []assDialogue {
-	var out []assDialogue
-	for _, line := range strings.Split(content, "\n") {
-		if !strings.HasPrefix(line, "Dialogue:") {
-			continue
-		}
-		fields := strings.SplitN(strings.TrimSpace(line), ",", 10)
-		if len(fields) < 10 {
-			continue
-		}
-		out = append(out, assDialogue{
-			start: parseASSTimeMS(fields[1]),
-			end:   parseASSTimeMS(fields[2]),
-			text:  fields[9],
-		})
-	}
-	return out
-}
-
-// parseASSTimeMS converts H:MM:SS.cc into milliseconds.
-func parseASSTimeMS(text string) int {
-	parts := strings.Split(strings.TrimSpace(text), ":")
-	if len(parts) != 3 {
-		return -1
-	}
-	h := atoiOrNeg(parts[0])
-	m := atoiOrNeg(parts[1])
-	rest := strings.Split(parts[2], ".")
-	if len(rest) != 2 {
-		return -1
-	}
-	sec := atoiOrNeg(rest[0])
-	cs := atoiOrNeg(rest[1])
-	if h < 0 || m < 0 || sec < 0 || cs < 0 {
-		return -1
-	}
-	return ((h*60+m)*60+sec)*1000 + cs*10
-}
-
-func atoiOrNeg(s string) int {
-	n := 0
-	if s == "" {
-		return -1
-	}
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return -1
-		}
-		n = n*10 + int(r-'0')
-	}
-	return n
-}
-
 // verifySerializedASS checks that the delivered ASS matches the audit events.
 func verifySerializedASS(content string, events []renderedEvent) error {
-	serialized := parseSerializedASS(content)
+	serialized := parseASSDialogues(content)
 	if len(serialized) != len(events) {
 		return fmt.Errorf("delivered ASS has %d dialogue events but audits describe %d", len(serialized), len(events))
 	}

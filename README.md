@@ -371,7 +371,6 @@ Version information is injected with `-ldflags -X github.com/fusionn/internal/ve
 | `internal/client` | Bazarr and DuoSubs HTTP clients |
 | `services/word-align` | CPU word-alignment HTTP service |
 | `duosubs-service` | Host-side DuoSubs HTTP service for macOS GPU use |
-| `experiments/llm-subtitle-merge` | Standalone Python experiment that the Go implementation was ported from |
 
 ## Documentation
 

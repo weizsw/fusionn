@@ -15,7 +15,7 @@ import (
 	"github.com/fusionn/internal/config"
 )
 
-const prototypeRenderRoot = "../../experiments/llm-subtitle-merge/results/dark-matter-s02e07"
+const prototypeRenderRoot = "testdata/dark-matter-s02e07"
 
 func renderTestConfig() config.LLMConfig {
 	return config.LLMConfig{
@@ -91,63 +91,6 @@ func readMapping(path string) (Mapping, error) {
 		return Mapping{}, err
 	}
 	return mapping, nil
-}
-
-type dialogue struct {
-	start, end int
-	style      string
-	text       string
-	an         int
-	posX, posY float64
-	hasPos     bool
-}
-
-var (
-	dialoguePattern = regexp.MustCompile(`^Dialogue: 0,([^,]+),([^,]+),([^,]+),[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,(.*)$`)
-	posParsePattern = regexp.MustCompile(`\\pos\((-?[\d.]+),(-?[\d.]+)\)`)
-	anParsePattern  = regexp.MustCompile(`\\an([1-9])`)
-)
-
-func parseDialogues(t *testing.T, content string) []dialogue {
-	t.Helper()
-	var result []dialogue
-	for _, line := range strings.Split(content, "\n") {
-		match := dialoguePattern.FindStringSubmatch(line)
-		if match == nil {
-			continue
-		}
-		d := dialogue{
-			start: parseASSTimeForTest(t, match[1]),
-			end:   parseASSTimeForTest(t, match[2]),
-			style: match[3],
-			text:  match[4],
-		}
-		if pos := posParsePattern.FindStringSubmatch(d.text); pos != nil {
-			d.posX, _ = strconv.ParseFloat(pos[1], 64)
-			d.posY, _ = strconv.ParseFloat(pos[2], 64)
-			d.hasPos = true
-		}
-		if an := anParsePattern.FindStringSubmatch(d.text); an != nil {
-			d.an, _ = strconv.Atoi(an[1])
-		}
-		result = append(result, d)
-	}
-	return result
-}
-
-func parseASSTimeForTest(t *testing.T, text string) int {
-	t.Helper()
-	parts := strings.Split(strings.TrimSpace(text), ":")
-	if len(parts) != 3 {
-		t.Fatalf("bad ASS time %q", text)
-	}
-	hours, _ := strconv.Atoi(parts[0])
-	minutes, _ := strconv.Atoi(parts[1])
-	seconds, err := strconv.ParseFloat(parts[2], 64)
-	if err != nil {
-		t.Fatalf("bad ASS time %q: %v", text, err)
-	}
-	return hours*3600000 + minutes*60000 + int(seconds*1000+0.5)
 }
 
 // glyphs strips all presentation whitespace and ASS markup added by the

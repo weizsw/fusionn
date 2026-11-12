@@ -1,6 +1,6 @@
 # 原生 Go LLM 双语字幕集成与迁移说明
 
-本轮将已验证的 ID 映射试验接入 fusionn 正常队列流程，采用用户确认的 **Go 原生实现**。合并与排版由 Go 完成；可选的词级对齐服务只提供时间点，随 Docker Compose 运行。独立 Python 实验、Gemini/GLM 请求缓存和结果完整保留，便于对照；生产代码不导入 experiments。
+本轮将已验证的 ID 映射试验接入 fusionn 正常队列流程，采用用户确认的 **Go 原生实现**。合并与排版由 Go 完成；可选的词级对齐服务只提供时间点，随 Docker Compose 运行。独立 Python 原型实验、Gemini/GLM 请求缓存和结果已随本次改动移除，可在本提交前的 git 历史中查看；仓库只保留回归所需的 Dark Matter S02E07 源字幕与录制响应，生产代码不导入原型。
 
 当前目标是尽量每屏一行中文、一行英文，同时保留原文、语序和足够的阅读时间。S02E08 已用 `en_chars: 65`、`zh_chars: 20` 完成整集验证，用户肉眼确认效果。原方案中“为解决倒装而整组保持中文”的处理已调整：允许中英片段暂时不完全对应，超限时优先恢复源分段。后续工作见 [TODO](../TODO.md)。
 
@@ -447,4 +447,4 @@ docker compose up -d --build fusionn word-align
 
 仓库样例：[Go集成ASS](examples/llm-native-dark-matter/bilingual.ass)、[运行摘要](examples/llm-native-dark-matter/run.json)、[文字时间一致性校验](examples/llm-native-dark-matter/validation.json)。媒体及已有字幕未覆盖。
 
-额外构建了Linux arm64静态二进制，在现有Debian容器中验证启动与离线渲染；无Python合并依赖。Dockerfile同步分发主服务。未构建/发布完整新镜像，未替换运行容器、合并分支或部署。原型模型性能对比仍见实验报告，本轮没有重新评估模型速度、价格或整集语义准确率。
+额外构建了Linux arm64静态二进制，在现有Debian容器中验证启动与离线渲染；无Python合并依赖。Dockerfile同步分发主服务。未构建/发布完整新镜像，未替换运行容器、合并分支或部署。原型模型性能对比报告已随原型移除，可在本提交前的 git 历史中查看；本轮没有重新评估模型速度、价格或整集语义准确率。

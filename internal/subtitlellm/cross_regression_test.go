@@ -885,7 +885,7 @@ func TestCrossRegression_GenerateAndVerifyArtifacts(t *testing.T) {
 	}
 	result, err := RunDarkMatterCrossRegressionToDir(dir, outDir)
 	if err != nil {
-		t.Fatalf("RunDarkMatterCrossRegression failed: %v", err)
+		t.Fatalf("RunDarkMatterCrossRegressionToDir failed: %v", err)
 	}
 
 	if !result.Report.AllChecksPassed {

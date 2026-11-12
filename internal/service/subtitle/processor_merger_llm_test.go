@@ -553,7 +553,7 @@ func TestLLMMergerUsesImportMappingWithoutHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prototypeRoot := filepath.Join(repoRoot, "experiments", "llm-subtitle-merge", "results", "dark-matter-s02e07")
+	prototypeRoot := filepath.Join(repoRoot, "internal", "subtitlellm", "testdata", "dark-matter-s02e07")
 	en, err := os.ReadFile(filepath.Join(prototypeRoot, "en.source.srt"))
 	if err != nil {
 		t.Fatalf("read prototype English source: %v", err)

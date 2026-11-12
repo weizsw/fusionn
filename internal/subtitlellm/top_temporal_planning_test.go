@@ -736,8 +736,8 @@ func TestTopTemporal_RecordedE01_DetailedDiffAudit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read delivered ASS: %v", err)
 	}
-	deliveredEvents := parseSerializedASS(string(deliveredRaw))
-	newEvents := parseSerializedASS(res.RenderedASS)
+	deliveredEvents := parseDialogues(t, string(deliveredRaw))
+	newEvents := parseDialogues(t, res.RenderedASS)
 
 	t.Logf("delivered events: %d, new events: %d", len(deliveredEvents), len(newEvents))
 

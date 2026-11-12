@@ -7,52 +7,97 @@ import (
 	"github.com/fusionn/internal/config"
 )
 
-func nToOneFixture(t *testing.T) (Bundle, Mapping, config.LLMConfig, config.ASSStyleConfig) {
-	t.Helper()
-	bundle := Bundle{Version: Version,
-		EN: []Cue{
-			{ID: 1, Start: 1000, End: 4000, Display: "When our memory pathways get disrupted,", Plain: "When our memory pathways\nget disrupted,"},
-			{ID: 2, Start: 4000, End: 7000, Display: "it can lead to things like conflation.", Plain: "it can lead to things like conflation."},
-		},
-		ZH: []Cue{
-			{ID: 1, Start: 1200, End: 6800, Display: "当我们的记忆通道被扰乱时 会导致混淆之类的情况", Plain: "当我们的记忆通道被扰乱时\n会导致混淆之类的情况"},
-		},
-	}
-	digest, err := bundleDigest(bundle)
+func TestParent33AdjacentOriginalRepetitionIsNotHold(t *testing.T) {
+	noWidthMeasurer(t)
+	cfg := fixtureConfig()
+	cfg.EnChars = 3
+	bundle := fixtureBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "No. No.", Plain: "No.\nNo."}},
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "不要", Plain: "不要"}},
+	)
+	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+	v, events, err := validateEpisode(bundle, mapping, cfg, fixtureStyle(), 1920, 1080, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bundle.Fingerprint = digest
-	mapping := Mapping{Version: Version, SourceFingerprint: digest,
-		Groups: []Group{{ENIDs: []int{1, 2}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}}}
-	md, err := mappingDigest(mapping)
+	if len(events) != 2 {
+		t.Fatalf("probe requires 2 real source fragments, got %d", len(events))
+	}
+	if failures := v.Verify(); len(failures) != 0 {
+		t.Fatalf("two adjacent No. source lines are valid, not a removable hold: %v", failures)
+	}
+}
+
+func TestParent33RepeatedPrefixWithHeldChineseRemainsValid(t *testing.T) {
+	noWidthMeasurer(t)
+	cfg := fixtureConfig()
+	cfg.EnChars, cfg.ZhChars = 8, 3
+	bundle := fixtureBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "No. No. Run.", Plain: "No.\nNo. Run."}},
+		[]Cue{
+			{ID: 1, Start: 1000, End: 1500, Display: "甲乙丙丁", Plain: "甲乙丙丁"},
+			{ID: 2, Start: 1500, End: 5000, Display: "戊己庚辛", Plain: "戊己庚辛"},
+		},
+	)
+	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1, 2}, Layer: LayerBottom, Origin: OriginModel}})
+	v, events, err := validateEpisode(bundle, mapping, cfg, fixtureStyle(), 1920, 1080, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mapping.Fingerprint = md
-	cfg := config.LLMConfig{EnChars: 65, ZhChars: 20, EnGapMS: 400, ZhGapMS: 500, SpanMS: 5500, FillGapMS: 500}
-	style := config.ASSStyleConfig{Enabled: true, PlayResX: 1920, PlayResY: 1080,
-		PrimaryFont: "Go", PrimarySize: 40, PrimaryColor: "&H00FFFFFF",
-		SecondaryFont: "Go", SecondarySize: 30, SecondaryColor: "&H00FFFFFF",
-		Outline: 1, OutlineColor: "&H00000000", BackColor: "&H00000000",
-		MarginV: 32, MarginLeft: 80, MarginRight: 80, Alignment: 2, BorderStyle: 1,
-		WrapStyle: "0", ScaleX: 100, Spacing: 0, LineHeightRatio: 1.23, BlockPadding: 16, CollisionGap: 12}
-	return bundle, mapping, cfg, style
+	// No order check confirmed a split, so both Chinese cues are held whole
+	// while the English cue splits at its source lines "No." and "No. Run.".
+	if len(events) != 2 || normText(events[0].enText) != "No." || normText(events[1].enText) != "No.Run." {
+		t.Fatalf("probe must exercise source No./No.Run. with the Chinese held whole: %+v", events)
+	}
+	if failures := v.Verify(); len(failures) > 0 {
+		t.Fatalf("valid split with a genuinely repeated source prefix rejected: %v", failures)
+	}
+}
+
+// TestReview7cRejectsSuffixReplayAsHold ensures that an emission changing from a
+// whole sentence to its trailing suffix is treated as an invalid replay/change,
+// not as an acceptable hold.
+func TestReview7cRejectsSuffixReplayAsHold(t *testing.T) {
+	for _, lang := range []string{"en", "zh"} {
+		t.Run(lang, func(t *testing.T) {
+			bundle := fixtureBundle(
+				[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "Alpha. Beta.", Plain: "Alpha.\nBeta."}},
+				[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "甲乙 丙丁", Plain: "甲乙\n丙丁"}},
+			)
+			mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel}})
+			events := []renderedEvent{
+				{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 1000, assEnd: 3000, enText: "Alpha. Beta.", zhText: "甲乙 丙丁"},
+				{group: 0, enIDs: []int{1}, zhIDs: []int{1}, assStart: 3000, assEnd: 5000, enText: "Alpha. Beta.", zhText: "甲乙 丙丁"},
+			}
+			good, err := verifyEpisode(bundle, mapping, fixtureConfig(), events)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if failures := good.Verify(); len(failures) > 0 {
+				t.Fatalf("baseline whole-sentence freeze must pass: %v", failures)
+			}
+			if lang == "en" {
+				events[1].enText = "Beta."
+			} else {
+				events[1].zhText = "丙丁"
+			}
+			bad, err := verifyEpisode(bundle, mapping, fixtureConfig(), events)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(bad.OrderMismatches) == 0 {
+				t.Fatalf("validator accepted whole sentence followed by its suffix as a hold in %s: %+v", lang, bad)
+			}
+		})
+	}
 }
 
 // zhSequence extracts the Chinese part of each bilingual event in order.
 func zhSequence(t *testing.T, ass string) []string {
 	t.Helper()
 	var seq []string
-	for _, line := range strings.Split(ass, "\n") {
-		if !strings.HasPrefix(line, "Dialogue:") {
-			continue
-		}
-		f := strings.SplitN(line, ",", 10)
-		if len(f) < 10 {
-			continue
-		}
-		zh := strings.Split(f[9], `\N`)[0]
+	for _, d := range parseDialogues(t, ass) {
+		zh := strings.Split(d.text, `\N`)[0]
 		for strings.HasPrefix(zh, "{") {
 			end := strings.Index(zh, "}")
 			if end < 0 {
@@ -115,19 +160,12 @@ func TestOneToNHeldSourceKeepsSinglePassOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	var enSeq []string
-	for _, line := range strings.Split(string(out), "\n") {
-		if !strings.HasPrefix(line, "Dialogue:") {
-			continue
-		}
-		f := strings.SplitN(line, ",", 10)
-		if len(f) < 10 {
-			continue
-		}
-		idx := strings.Index(f[9], `{\rEng}`)
+	for _, d := range parseDialogues(t, string(out)) {
+		idx := strings.Index(d.text, `{\rEng}`)
 		if idx < 0 {
 			continue
 		}
-		en := f[9][idx+len(`{\rEng}`):]
+		en := d.text[idx+len(`{\rEng}`):]
 		for strings.HasPrefix(en, "{") {
 			end := strings.Index(en, "}")
 			if end < 0 {
