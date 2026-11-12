@@ -67,12 +67,7 @@ func NewMergerProcessor(cfg config.DuoSubsConfig) (*MergerProcessor, error) {
 // selected LLM engine never constructs the DuoSubs executor, and a selected
 // DuoSubs engine never constructs the LLM engine.
 func NewConfiguredMergerProcessor(cfg config.SubtitleConfig) (*MergerProcessor, error) {
-	engine := strings.ToLower(strings.TrimSpace(cfg.Engine))
-	if engine == "" {
-		// Directly constructed configs without a resolved engine keep the
-		// legacy DuoSubs behavior; config.Load resolves new files to llm.
-		engine = config.EngineDuoSubs
-	}
+	engine := config.EffectiveEngine(cfg.Engine)
 
 	switch engine {
 	case config.EngineDuoSubs:

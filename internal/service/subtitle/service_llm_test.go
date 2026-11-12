@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -78,6 +79,168 @@ func TestNewServiceDuoSubsModeKeepsSDHProcessors(t *testing.T) {
 	mergeNames := processorNames(service.GetMergePipeline())
 	if !hasProcessorName(mergeNames, ProcessorNameConversion) {
 		t.Fatalf("DuoSubs merge pipeline missing conversion: %v", mergeNames)
+	}
+}
+
+// The engine, the Bazarr client and the Redis client decide the pipeline
+// topology. Every combination is pinned here in exact order, so a step added,
+// dropped or reordered by accident fails.
+func TestNewServicePipelineTopology(t *testing.T) {
+	llmMerge := []string{
+		ProcessorNameDualLanguage,
+		ProcessorNameMerger,
+		ProcessorNameStyle,
+		ProcessorNameFontEmbedding,
+		ProcessorNameOutput,
+		ProcessorNameNotification,
+		ProcessorNameCleanup,
+	}
+	duosubsMerge := []string{
+		ProcessorNameDualLanguage,
+		ProcessorNameConversion,
+		ProcessorNameMerger,
+		ProcessorNameStyle,
+		ProcessorNameFontEmbedding,
+		ProcessorNameOutput,
+		ProcessorNameNotification,
+		ProcessorNameCleanup,
+	}
+
+	llmCfg := config.SubtitleConfig{
+		Engine: config.EngineLLM,
+		LLM:    config.LLMConfig{BaseURL: "http://127.0.0.1:1/v1", Model: "m"},
+	}
+	duosubsCfg := config.SubtitleConfig{
+		Engine:  config.EngineDuoSubs,
+		DuoSubs: config.DuoSubsConfig{Mode: "local"},
+	}
+	unsetCfg := config.SubtitleConfig{DuoSubs: config.DuoSubsConfig{Mode: "local"}}
+
+	tests := []struct {
+		name        string
+		subtitle    config.SubtitleConfig
+		bazarr      bool
+		redis       bool
+		wantAnalyze []string
+		wantMerge   []string
+	}{
+		{
+			name:        "llm engine without clients",
+			subtitle:    llmCfg,
+			wantAnalyze: []string{ProcessorNameAnalyzer, ProcessorNameExtractor},
+			wantMerge:   llmMerge,
+		},
+		{
+			name:        "llm engine with redis",
+			subtitle:    llmCfg,
+			redis:       true,
+			wantAnalyze: []string{ProcessorNameAnalyzer, ProcessorNameExtractor, ProcessorNameTranslationQueue},
+			wantMerge:   llmMerge,
+		},
+		{
+			name:        "llm engine with bazarr",
+			subtitle:    llmCfg,
+			bazarr:      true,
+			wantAnalyze: []string{ProcessorNameAnalyzer, ProcessorNameExtractor, ProcessorNameBazarrSearch},
+			wantMerge:   llmMerge,
+		},
+		{
+			name:        "llm engine with bazarr and redis",
+			subtitle:    llmCfg,
+			bazarr:      true,
+			redis:       true,
+			wantAnalyze: []string{ProcessorNameAnalyzer, ProcessorNameExtractor, ProcessorNameBazarrSearch, ProcessorNameTranslationQueue},
+			wantMerge:   llmMerge,
+		},
+		{
+			name:        "duosubs engine without clients",
+			subtitle:    duosubsCfg,
+			wantAnalyze: []string{ProcessorNameAnalyzer, ProcessorNameExtractor, ProcessorNameSDHFilter},
+			wantMerge:   duosubsMerge,
+		},
+		{
+			name:        "duosubs engine with redis",
+			subtitle:    duosubsCfg,
+			redis:       true,
+			wantAnalyze: []string{ProcessorNameAnalyzer, ProcessorNameExtractor, ProcessorNameSDHFilter, ProcessorNameTranslationQueue},
+			wantMerge:   duosubsMerge,
+		},
+		{
+			name:        "duosubs engine with bazarr",
+			subtitle:    duosubsCfg,
+			bazarr:      true,
+			wantAnalyze: []string{ProcessorNameAnalyzer, ProcessorNameExtractor, ProcessorNameSDHFilter, ProcessorNameBazarrSearch, ProcessorNameBazarrSDHFilter},
+			wantMerge:   duosubsMerge,
+		},
+		{
+			name:     "duosubs engine with bazarr and redis",
+			subtitle: duosubsCfg,
+			bazarr:   true,
+			redis:    true,
+			wantAnalyze: []string{
+				ProcessorNameAnalyzer, ProcessorNameExtractor, ProcessorNameSDHFilter,
+				ProcessorNameBazarrSearch, ProcessorNameBazarrSDHFilter, ProcessorNameTranslationQueue,
+			},
+			wantMerge: duosubsMerge,
+		},
+		{
+			name:        "unresolved engine without clients",
+			subtitle:    unsetCfg,
+			wantAnalyze: []string{ProcessorNameAnalyzer, ProcessorNameExtractor, ProcessorNameSDHFilter},
+			wantMerge:   duosubsMerge,
+		},
+		{
+			name:        "unresolved engine with redis",
+			subtitle:    unsetCfg,
+			redis:       true,
+			wantAnalyze: []string{ProcessorNameAnalyzer, ProcessorNameExtractor, ProcessorNameSDHFilter, ProcessorNameTranslationQueue},
+			wantMerge:   duosubsMerge,
+		},
+		{
+			name:        "unresolved engine with bazarr",
+			subtitle:    unsetCfg,
+			bazarr:      true,
+			wantAnalyze: []string{ProcessorNameAnalyzer, ProcessorNameExtractor, ProcessorNameSDHFilter, ProcessorNameBazarrSearch, ProcessorNameBazarrSDHFilter},
+			wantMerge:   duosubsMerge,
+		},
+		{
+			name:     "unresolved engine with bazarr and redis",
+			subtitle: unsetCfg,
+			bazarr:   true,
+			redis:    true,
+			wantAnalyze: []string{
+				ProcessorNameAnalyzer, ProcessorNameExtractor, ProcessorNameSDHFilter,
+				ProcessorNameBazarrSearch, ProcessorNameBazarrSDHFilter, ProcessorNameTranslationQueue,
+			},
+			wantMerge: duosubsMerge,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var bazarrClient *bazarr.Client
+			if tt.bazarr {
+				bazarrClient = bazarr.NewClient("http://bazarr", "key", 1)
+			}
+			var redisClient QueueClient
+			if tt.redis {
+				redisClient = &recordingQueueClient{}
+			}
+
+			service, err := NewService(
+				&config.Config{Subtitle: tt.subtitle}, redisClient,
+				queue.NewMergeQueue(queue.Config{}), bazarrClient)
+			if err != nil {
+				t.Fatalf("NewService: %v", err)
+			}
+
+			if got := processorNames(service.GetAnalyzePipeline()); !slices.Equal(got, tt.wantAnalyze) {
+				t.Errorf("analyze pipeline = %v, want %v", got, tt.wantAnalyze)
+			}
+			if got := processorNames(service.GetMergePipeline()); !slices.Equal(got, tt.wantMerge) {
+				t.Errorf("merge pipeline = %v, want %v", got, tt.wantMerge)
+			}
+		})
 	}
 }
 

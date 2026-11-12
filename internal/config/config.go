@@ -641,6 +641,17 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("subtitle.ass_style.collision_gap", 12)
 }
 
+// EffectiveEngine resolves the engine of a config that may not have gone
+// through Load. An unresolved empty engine keeps the legacy DuoSubs behavior.
+// resolveEngine is the file-loading rule and always resolves a value.
+func EffectiveEngine(engine string) string {
+	engine = strings.ToLower(strings.TrimSpace(engine))
+	if engine == "" {
+		return EngineDuoSubs
+	}
+	return engine
+}
+
 // resolveEngine applies engine defaults while preserving explicit values.
 // Explicit engine (file or environment) wins; otherwise a legacy config that
 // contains a duosubs section keeps duosubs, and new configs use llm.

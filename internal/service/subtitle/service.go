@@ -2,7 +2,6 @@ package subtitle
 
 import (
 	"context"
-	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -45,7 +44,7 @@ func NewService(cfg *config.Config, redisClient QueueClient, mergeQueue *queue.M
 		cfg.Subtitle.SimplifiedKeywords,
 		cfg.Subtitle.TraditionalKeywords,
 	)
-	engine := effectiveSubtitleEngine(cfg.Subtitle.Engine)
+	engine := config.EffectiveEngine(cfg.Subtitle.Engine)
 	// The LLM renderer needs native ASS alignment/position metadata, and all
 	// uncertain one-sided lines must reach it unmodified.
 	analyzer.SetPreserveNativeASS(engine == config.EngineLLM)
@@ -262,17 +261,6 @@ func (s *Service) GetAnalyzePipeline() *Pipeline {
 // GetMergePipeline returns the merge pipeline (for testing).
 func (s *Service) GetMergePipeline() *Pipeline {
 	return s.currentPipelines().mergePipeline
-}
-
-// effectiveSubtitleEngine resolves the engine for directly constructed configs.
-// config.Load always resolves a value; an unresolved config with no explicit
-// engine keeps the legacy DuoSubs behavior.
-func effectiveSubtitleEngine(engine string) string {
-	engine = strings.ToLower(strings.TrimSpace(engine))
-	if engine == "" {
-		return config.EngineDuoSubs
-	}
-	return engine
 }
 
 // newMergeJob maps a finished analyze stage onto the merge job that carries it

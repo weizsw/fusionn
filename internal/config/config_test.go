@@ -548,6 +548,30 @@ subtitle:
 	}
 }
 
+// EffectiveEngine is the rule for directly constructed configs, which may carry
+// an unset, padded or mixed-case engine.
+func TestEffectiveEngine(t *testing.T) {
+	tests := []struct {
+		name   string
+		engine string
+		want   string
+	}{
+		{name: "empty keeps the legacy DuoSubs behavior", engine: "", want: EngineDuoSubs},
+		{name: "whitespace only", engine: "  ", want: EngineDuoSubs},
+		{name: "explicit llm", engine: EngineLLM, want: EngineLLM},
+		{name: "explicit duosubs", engine: EngineDuoSubs, want: EngineDuoSubs},
+		{name: "padded mixed case", engine: "  LLM\t", want: EngineLLM},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := EffectiveEngine(tt.engine); got != tt.want {
+				t.Errorf("EffectiveEngine(%q) = %q, want %q", tt.engine, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestLLMConfigDefaults(t *testing.T) {
 	cfg, err := Load(writeConfig(t, `
 server:
