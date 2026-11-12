@@ -851,6 +851,22 @@ func checkSerializedASS(t *testing.T, content string, events []renderedEvent) {
 	}
 }
 
+// A delivered file must verify against the audit as a whole, whatever layer an
+// event sits on: an extra Dialogue event on another layer cannot hide behind
+// the audited rows.
+func TestVerifySerializedASSRejectsExtraLayerEvent(t *testing.T) {
+	audited := "Dialogue: 0,0:00:01.00,0:00:02.00,Eng,,0,0,0,,Hello.\n"
+	extra := "Dialogue: 1,0:00:01.00,0:00:02.00,Eng,,0,0,0,,Unexpected extra subtitle\n"
+	events := []renderedEvent{{assStart: 1000, assEnd: 2000, enText: "Hello."}}
+
+	if err := verifySerializedASS(audited, events); err != nil {
+		t.Fatalf("the audited file must verify: %v", err)
+	}
+	if err := verifySerializedASS(audited+extra, events); err == nil {
+		t.Fatal("an extra Dialogue event on layer 1 passed verification")
+	}
+}
+
 // episodeStyleFromEnv returns the exact style used for the delivery. It must be
 // supplied by the caller (the config file the render used); there is no silent
 // fallback to a different font, because a mismatched style would validate a

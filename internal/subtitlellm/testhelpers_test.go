@@ -120,7 +120,7 @@ type dialogue struct {
 }
 
 var (
-	dialoguePattern = regexp.MustCompile(`^Dialogue: 0,([^,]+),([^,]+),([^,]+),[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,(.*)$`)
+	dialoguePattern = regexp.MustCompile(`^Dialogue: [^,]*,([^,]+),([^,]+),([^,]+),[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,(.*)$`)
 	posParsePattern = regexp.MustCompile(`\\pos\((-?[\d.]+),(-?[\d.]+)\)`)
 	anParsePattern  = regexp.MustCompile(`\\an([1-9])`)
 )
@@ -138,12 +138,12 @@ func parseDialogues(t *testing.T, content string) []dialogue {
 	return result
 }
 
-// parseASSDialogues is the shared Dialogue-line parser. It skips lines that are
-// not well-formed Dialogue lines and reports a malformed time as -1, so helpers
-// that return errors can handle it. ParseSerializedASSWithPositions
-// (cross_regression_harness_test.go) additionally normalizes the bilingual text
-// and rejects malformed override tags, so it keeps its own stricter field
-// parsing.
+// parseASSDialogues is the shared Dialogue-line parser. It reads every Dialogue
+// layer, skips lines that are not well-formed Dialogue lines and reports a
+// malformed time as -1, so helpers that return errors can handle it.
+// ParseSerializedASSWithPositions (cross_regression_harness_test.go)
+// additionally normalizes the bilingual text and rejects malformed override
+// tags, so it keeps its own stricter field parsing.
 func parseASSDialogues(content string) []dialogue {
 	var result []dialogue
 	for _, line := range strings.Split(content, "\n") {
