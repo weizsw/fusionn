@@ -120,7 +120,6 @@ type dialogue struct {
 }
 
 var (
-	dialoguePattern = regexp.MustCompile(`^Dialogue: [^,]*,([^,]+),([^,]+),([^,]+),[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,(.*)$`)
 	posParsePattern = regexp.MustCompile(`\\pos\((-?[\d.]+),(-?[\d.]+)\)`)
 	anParsePattern  = regexp.MustCompile(`\\an([1-9])`)
 )
@@ -138,24 +137,29 @@ func parseDialogues(t *testing.T, content string) []dialogue {
 	return result
 }
 
-// parseASSDialogues is the shared Dialogue-line parser. It reads every Dialogue
-// layer, skips lines that are not well-formed Dialogue lines and reports a
-// malformed time as -1, so helpers that return errors can handle it.
-// ParseSerializedASSWithPositions (cross_regression_harness_test.go)
-// additionally normalizes the bilingual text and rejects malformed override
-// tags, so it keeps its own stricter field parsing.
+// parseASSDialogues is the shared Dialogue-line parser. It accepts every
+// Dialogue row the file carries, whatever layer or spacing that row uses, so a
+// whole-file verifier sees them all: the row only has to start with "Dialogue:"
+// and carry the ten comma-separated fields. It reports a malformed time as -1
+// so helpers that return errors can handle it. ParseSerializedASSWithPositions
+// (cross_regression_harness_test.go) additionally normalizes the bilingual text
+// and rejects malformed override tags, so it keeps its own stricter field
+// parsing.
 func parseASSDialogues(content string) []dialogue {
 	var result []dialogue
 	for _, line := range strings.Split(content, "\n") {
-		match := dialoguePattern.FindStringSubmatch(line)
-		if match == nil {
+		if !strings.HasPrefix(line, "Dialogue:") {
+			continue
+		}
+		fields := strings.SplitN(strings.TrimSpace(line), ",", 10)
+		if len(fields) < 10 {
 			continue
 		}
 		d := dialogue{
-			start: parseTimeMS(match[1]),
-			end:   parseTimeMS(match[2]),
-			style: match[3],
-			text:  match[4],
+			start: parseTimeMS(fields[1]),
+			end:   parseTimeMS(fields[2]),
+			style: fields[3],
+			text:  fields[9],
 		}
 		if pos := posParsePattern.FindStringSubmatch(d.text); pos != nil {
 			d.posX, _ = strconv.ParseFloat(pos[1], 64)

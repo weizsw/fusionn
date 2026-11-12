@@ -851,19 +851,31 @@ func checkSerializedASS(t *testing.T, content string, events []renderedEvent) {
 	}
 }
 
-// A delivered file must verify against the audit as a whole, whatever layer an
-// event sits on: an extra Dialogue event on another layer cannot hide behind
-// the audited rows.
+// A delivered file must verify against the audit as a whole: an extra visible
+// Dialogue row must fail verification whatever form its prefix takes, because
+// the whole-file verifier counts every row the file carries.
 func TestVerifySerializedASSRejectsExtraLayerEvent(t *testing.T) {
 	audited := "Dialogue: 0,0:00:01.00,0:00:02.00,Eng,,0,0,0,,Hello.\n"
-	extra := "Dialogue: 1,0:00:01.00,0:00:02.00,Eng,,0,0,0,,Unexpected extra subtitle\n"
 	events := []renderedEvent{{assStart: 1000, assEnd: 2000, enText: "Hello."}}
 
 	if err := verifySerializedASS(audited, events); err != nil {
 		t.Fatalf("the audited file must verify: %v", err)
 	}
-	if err := verifySerializedASS(audited+extra, events); err == nil {
-		t.Fatal("an extra Dialogue event on layer 1 passed verification")
+	for _, tc := range []struct {
+		name string
+		row  string
+	}{
+		{"layer 1", "Dialogue: 1,0:00:01.00,0:00:02.00,Eng,,0,0,0,,Unexpected extra subtitle\n"},
+		{"layer 0 without a space after the colon", "Dialogue:0,0:00:01.00,0:00:02.00,Eng,,0,0,0,,Unexpected extra subtitle\n"},
+		{"layer 1 without a space after the colon", "Dialogue:1,0:00:01.00,0:00:02.00,Eng,,0,0,0,,Unexpected extra subtitle\n"},
+		{"tab-prefixed layer", "Dialogue:\t1,0:00:01.00,0:00:02.00,Eng,,0,0,0,,Unexpected extra subtitle\n"},
+		{"empty style field", "Dialogue: 1,0:00:01.00,0:00:02.00,,,0,0,0,,Unexpected extra subtitle\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := verifySerializedASS(audited+tc.row, events); err == nil {
+				t.Fatalf("an extra Dialogue row passed verification: %q", tc.row)
+			}
+		})
 	}
 }
 
