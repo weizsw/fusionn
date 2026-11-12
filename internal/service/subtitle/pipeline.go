@@ -63,9 +63,10 @@ type ProcessingContext struct {
 	TempMergeDir   string // Temp directory created by merger, cleaned up after pipeline
 
 	// Flags
-	NeedsConversion  bool   // Traditional → Simplified Chinese conversion needed
-	NeedsTranslation bool   // Chinese subtitle missing, needs translation
-	ChineseSubSource string // Where the Chinese subtitle came from: "extracted", "bazarr", "translated"
+	NeedsConversion   bool   // Traditional → Simplified Chinese conversion needed
+	NeedsTranslation  bool   // Chinese subtitle missing, needs translation
+	ChineseSubSource  string // Where the Chinese subtitle came from: "extracted", "bazarr", "translated"
+	ConversionApplied bool   // OpenCC conversion actually replaced the Chinese text
 
 	// Metadata for notifications/logging
 	Metadata map[string]interface{}

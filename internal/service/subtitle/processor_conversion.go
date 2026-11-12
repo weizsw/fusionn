@@ -14,13 +14,15 @@ import (
 
 // ConversionProcessor converts Traditional Chinese to Simplified Chinese using OpenCC.
 type ConversionProcessor struct {
-	openccConfig config.OpenCCConfig
+	openccConfig  config.OpenCCConfig
+	convertOpenCC func(ctx context.Context, inputPath, outputPath, configName string) error
 }
 
 // NewConversionProcessor creates a new conversion processor.
 func NewConversionProcessor(cfg config.OpenCCConfig) *ConversionProcessor {
 	return &ConversionProcessor{
-		openccConfig: cfg,
+		openccConfig:  cfg,
+		convertOpenCC: executor.ConvertOpenCC,
 	}
 }
 
@@ -31,13 +33,17 @@ func (p *ConversionProcessor) Name() string {
 
 // ShouldRun determines if conversion should run.
 func (p *ConversionProcessor) ShouldRun(pctx *ProcessingContext) bool {
-	// Run if OpenCC is enabled and Chinese subtitle needs conversion
+	// Run if OpenCC is enabled and Chinese subtitle needs conversion. A merged
+	// path means the dual-language step already wrote the final subtitle, so
+	// converting the unused Chinese track would only be wasted work.
 	return p.openccConfig.Enabled &&
 		pctx.ChineseSubPath != "" &&
+		pctx.MergedSubPath == "" &&
 		pctx.NeedsConversion
 }
 
-// Process converts Traditional to Simplified Chinese.
+// Process converts Traditional to Simplified Chinese. A conversion failure is
+// not a job failure: the original Traditional text is kept.
 func (p *ConversionProcessor) Process(ctx context.Context, pctx *ProcessingContext) error {
 	log := logger.Component("conversion")
 	if pctx.ChineseSubPath == "" {
@@ -56,8 +62,14 @@ func (p *ConversionProcessor) Process(ctx context.Context, pctx *ProcessingConte
 	}
 
 	// Run OpenCC conversion
-	if err := executor.ConvertOpenCC(ctx, pctx.ChineseSubPath, convertedPath, configName); err != nil {
-		return fmt.Errorf("opencc conversion failed: %w", err)
+	if err := p.convertOpenCC(ctx, pctx.ChineseSubPath, convertedPath, configName); err != nil {
+		// A failed or cancelled conversion must not leave a partial output.
+		os.Remove(convertedPath)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		log.Warn(ctx, "conversion_failed", "OpenCC conversion failed, using original Chinese text", zap.Error(err))
+		return nil
 	}
 
 	// Replace Chinese subtitle path with converted version
@@ -69,6 +81,7 @@ func (p *ConversionProcessor) Process(ctx context.Context, pctx *ProcessingConte
 
 	pctx.ChineseSubPath = convertedPath
 	pctx.NeedsConversion = false
+	pctx.ConversionApplied = true
 
 	log.Info(ctx, "conversion_completed", "Conversion completed")
 	return nil

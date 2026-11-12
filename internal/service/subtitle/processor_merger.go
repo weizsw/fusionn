@@ -185,6 +185,7 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 		}
 		if convertedZh != "" {
 			zhPath = convertedZh
+			pctx.ConversionApplied = true
 		}
 	}
 	bundle, err := subtitlellm.LoadSources(enPath, zhPath)

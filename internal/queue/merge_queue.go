@@ -22,6 +22,7 @@ type MergeJob struct {
 	MediaTitle       string
 	MediaType        string
 	ChineseSubSource string
+	NeedsConversion  bool // Traditional Chinese track, converted by the merge stage
 	Status           string
 	CreatedAt        time.Time
 	StartedAt        *time.Time

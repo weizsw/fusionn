@@ -66,8 +66,8 @@ func (p *NotificationProcessor) Process(ctx context.Context, pctx *ProcessingCon
 			chineseSub,
 		)
 
-		// Add conversion status if Traditional → Simplified conversion occurred
-		if pctx.NeedsConversion {
+		// Report a conversion only when OpenCC actually replaced the text.
+		if pctx.ConversionApplied {
 			body += "\nConversion: Traditional → Simplified Chinese"
 		}
 

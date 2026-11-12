@@ -175,16 +175,7 @@ func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) (err err
 	}
 
 	if pctx.EnglishSubPath != "" && pctx.ChineseSubPath != "" {
-		mergeJob := &queue.MergeJob{
-			JobID:            jobID,
-			RequestID:        logger.RequestID(ctx),
-			VideoPath:        params.Path,
-			EnglishPath:      pctx.EnglishSubPath,
-			ChinesePath:      pctx.ChineseSubPath,
-			MediaTitle:       params.Title,
-			MediaType:        params.MediaType,
-			ChineseSubSource: pctx.ChineseSubSource,
-		}
+		mergeJob := newMergeJob(pctx, logger.RequestID(ctx))
 
 		stage = "enqueue"
 		if err := s.mergeQueue.Enqueue(mergeJob); err != nil {
@@ -251,18 +242,7 @@ func (s *Service) ProcessMergeJob(ctx context.Context, job *queue.MergeJob) (err
 		}
 	}()
 	// Create processing context
-	pctx := &ProcessingContext{
-		VideoPath:        job.VideoPath,
-		MediaType:        job.MediaType,
-		MediaTitle:       job.MediaTitle,
-		JobID:            job.JobID,
-		EnglishSubPath:   job.EnglishPath,
-		ChineseSubPath:   job.ChinesePath,
-		ChineseSubSource: job.ChineseSubSource,
-		NeedsConversion:  false,
-		NeedsTranslation: false,
-		Metadata:         make(map[string]interface{}),
-	}
+	pctx := newMergeProcessingContext(job)
 
 	// Execute merge pipeline (job start/completion lifecycle is owned by the
 	// merge queue worker; this layer reports stage progress).
@@ -293,4 +273,36 @@ func effectiveSubtitleEngine(engine string) string {
 		return config.EngineDuoSubs
 	}
 	return engine
+}
+
+// newMergeJob maps a finished analyze stage onto the merge job that carries it
+// across the queue. It is the only place that performs this mapping.
+func newMergeJob(pctx *ProcessingContext, requestID string) *queue.MergeJob {
+	return &queue.MergeJob{
+		JobID:            pctx.JobID,
+		RequestID:        requestID,
+		VideoPath:        pctx.VideoPath,
+		EnglishPath:      pctx.EnglishSubPath,
+		ChinesePath:      pctx.ChineseSubPath,
+		MediaTitle:       pctx.MediaTitle,
+		MediaType:        pctx.MediaType,
+		ChineseSubSource: pctx.ChineseSubSource,
+		NeedsConversion:  pctx.NeedsConversion,
+	}
+}
+
+// newMergeProcessingContext maps a queued merge job onto a fresh merge-stage
+// context. It is the only place that performs this mapping.
+func newMergeProcessingContext(job *queue.MergeJob) *ProcessingContext {
+	return &ProcessingContext{
+		JobID:            job.JobID,
+		VideoPath:        job.VideoPath,
+		EnglishSubPath:   job.EnglishPath,
+		ChineseSubPath:   job.ChinesePath,
+		MediaTitle:       job.MediaTitle,
+		MediaType:        job.MediaType,
+		ChineseSubSource: job.ChineseSubSource,
+		NeedsConversion:  job.NeedsConversion,
+		Metadata:         make(map[string]interface{}),
+	}
 }
