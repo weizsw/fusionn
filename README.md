@@ -116,17 +116,6 @@ Point Sonarr and Radarr at fusionn, **Settings → Connect → Webhook**:
 | Method | `POST` |
 | Trigger | On Import Complete (Download / Upgrade) |
 
-### Merge without the server
-
-`subtitle-merge` runs the same merger as a standalone binary, which is useful for testing a pair of files:
-
-```bash
-go run ./cmd/subtitle-merge --config config/config.yaml \
-  --en /tmp/english.srt --zh /tmp/chinese.srt --out /tmp/new-bilingual-output
-```
-
-The output directory must not exist yet. Add `--video` with absolute `--en-stream` and `--zh-stream` to extract directly from a media file, or `--mapping` to import a previously validated mapping instead of calling the model. A rendered sample is committed in [docs/examples/llm-native-dark-matter/bilingual.ass](docs/examples/llm-native-dark-matter/bilingual.ass).
-
 ## Configuration
 
 Configuration is loaded from `config/config.yaml`, or from `CONFIG_PATH`. See [config/config.example.yaml](config/config.example.yaml) for every key and its default.
@@ -373,7 +362,6 @@ Version information is injected with `-ldflags -X github.com/fusionn/internal/ve
 | Path | Contents |
 |---|---|
 | `cmd/fusionn` | HTTP server, routing and lifecycle |
-| `cmd/subtitle-merge` | Standalone merge CLI |
 | `internal/config` | Config loading, defaults, validation and legacy migration |
 | `internal/handler` | Sonarr/Radarr webhooks and the translation callback |
 | `internal/service/subtitle` | Pipeline, processors, analyzer, style template |

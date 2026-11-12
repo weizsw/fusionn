@@ -168,13 +168,13 @@ func adaptedRenderStyle(style config.ASSStyleConfig, width, height int) config.A
 	if width <= 0 || height <= 0 || style.PlayResX <= 0 || style.PlayResY <= 0 {
 		return style
 	}
-	scale := referencePlaybackCanvasScale(width, height)
+	scale := ReferencePlaybackCanvasScale(width, height)
 	if scale == 1 || scale <= 0 {
 		return style
 	}
 	style.PrimarySize = int(math.Round(float64(style.PrimarySize) * scale))
 	style.SecondarySize = int(math.Round(float64(style.SecondarySize) * scale))
-	style.MarginV = adaptedMarginV(style.MarginV, width, height, style.PlayResY)
+	style.MarginV = AdaptedMarginV(style.MarginV, width, height, style.PlayResY)
 	if style.MarginLeft > 0 {
 		style.MarginLeft = int(math.Round(float64(style.MarginLeft) * scale))
 	}
@@ -184,10 +184,10 @@ func adaptedRenderStyle(style config.ASSStyleConfig, width, height int) config.A
 	return style
 }
 
-// referencePlaybackCanvasScale is the shared 16:9 output-canvas scale: 1 for
+// ReferencePlaybackCanvasScale is the shared 16:9 output-canvas scale: 1 for
 // frames at least as tall as width*9/16, otherwise the ratio needed to fit the
 // frame inside the reference canvas (wide/letterboxed films).
-func referencePlaybackCanvasScale(width, height int) float64 {
+func ReferencePlaybackCanvasScale(width, height int) float64 {
 	canvasHeight := float64(width) * 9 / 16
 	if float64(height) >= canvasHeight {
 		return 1
@@ -195,10 +195,10 @@ func referencePlaybackCanvasScale(width, height int) float64 {
 	return canvasHeight / float64(height)
 }
 
-// adaptedMarginV preserves the configured distance above the bottom of the
+// AdaptedMarginV preserves the configured distance above the bottom of the
 // centered 16:9 playback canvas when the encoded frame is wider than 16:9.
-func adaptedMarginV(configuredMarginV, width, height, playResY int) int {
-	scale := referencePlaybackCanvasScale(width, height)
+func AdaptedMarginV(configuredMarginV, width, height, playResY int) int {
+	scale := ReferencePlaybackCanvasScale(width, height)
 	if scale == 1 {
 		return configuredMarginV
 	}
@@ -248,7 +248,7 @@ func (g renderGeometry) playbackBars() (float64, float64) {
 	if g.frameWidth <= 0 || g.frameHeight <= 0 {
 		return 0, 0
 	}
-	scale := referencePlaybackCanvasScale(g.frameWidth, g.frameHeight)
+	scale := ReferencePlaybackCanvasScale(g.frameWidth, g.frameHeight)
 	if scale <= 1 {
 		return 0, 0
 	}
@@ -270,7 +270,7 @@ func (g renderGeometry) adaptPositionY(y float64, alignment int) float64 {
 	if g.frameWidth <= 0 || g.frameHeight <= 0 || alignment > 3 {
 		return y
 	}
-	scale := referencePlaybackCanvasScale(g.frameWidth, g.frameHeight)
+	scale := ReferencePlaybackCanvasScale(g.frameWidth, g.frameHeight)
 	if scale == 1 {
 		return y
 	}

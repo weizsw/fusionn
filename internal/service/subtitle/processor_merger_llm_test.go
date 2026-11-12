@@ -139,6 +139,51 @@ func mergerFixture(t *testing.T) (videoPath, enPath, zhPath string) {
 	return videoPath, enPath, zhPath
 }
 
+// llmArtifacts locates the artifacts the merger persisted under root: the
+// sources.json of the single alignment directory, plus its mapping and audit
+// siblings under alignment/.
+func llmArtifacts(t *testing.T, root string) (sourcesPath, mappingPath, auditPath string) {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(root, llmArtifactDirName, "*", "sources.json"))
+	if err != nil {
+		t.Fatalf("glob artifacts under %s: %v", root, err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("persisted artifact dirs under %s = %v, want exactly one", root, matches)
+	}
+	sourcesPath = matches[0]
+	mappingPath = filepath.Join(filepath.Dir(sourcesPath), "alignment", "mapping.json")
+	auditPath = filepath.Join(filepath.Dir(sourcesPath), "alignment", "audit.json")
+	return sourcesPath, mappingPath, auditPath
+}
+
+// llmAudit reads the audit the merger persisted under root.
+func llmAudit(t *testing.T, root string) subtitlellm.Audit {
+	t.Helper()
+	_, _, auditPath := llmArtifacts(t, root)
+	data, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("read audit artifact: %v", err)
+	}
+	var audit subtitlellm.Audit
+	if err := json.Unmarshal(data, &audit); err != nil {
+		t.Fatalf("unmarshal audit: %v", err)
+	}
+	return audit
+}
+
+// assertNoLLMArtifacts fails when root holds a persisted alignment artifact tree.
+func assertNoLLMArtifacts(t *testing.T, root string) {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(root, llmArtifactDirName, "*", "sources.json"))
+	if err != nil {
+		t.Fatalf("glob artifacts under %s: %v", root, err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("unexpected persisted artifacts under %s: %v", root, matches)
+	}
+}
+
 func llmStyleConfig() config.ASSStyleConfig {
 	return config.ASSStyleConfig{
 		Enabled: true, PlayResX: 1920, PlayResY: 1080,
@@ -243,9 +288,9 @@ func TestLLMMergerProcessWritesArtifactsAndMarksStyled(t *testing.T) {
 	if pctx.Metadata[subtitlellm.MetadataLLMStyled] != true {
 		t.Fatal("llm_styled metadata was not set")
 	}
-	if pctx.Metadata[MetadataLLMSourcesPath] == nil || pctx.Metadata[MetadataLLMAuditPath] == nil || pctx.Metadata[MetadataLLMMappingPath] == nil {
-		t.Fatal("artifacts were not persisted with cache enabled")
-	}
+	// The artifacts live under the persistent cache directory, so they survive
+	// the isolated merge directory the cleanup processor removes.
+	sourcesPath, mappingPath, auditPath := llmArtifacts(t, llm.CacheDir)
 	if pctx.TempMergeDir == "" || !strings.HasPrefix(filepath.Base(pctx.TempMergeDir), ".fusionn-merge-") {
 		t.Fatalf("temp merge dir = %q", pctx.TempMergeDir)
 	}
@@ -265,19 +310,6 @@ func TestLLMMergerProcessWritesArtifactsAndMarksStyled(t *testing.T) {
 		}
 	}
 
-	// The persistent cache directory keeps mapping/audit/sources even after
-	// the merge directory is removed by the cleanup processor.
-	mappingPath, _ := pctx.Metadata[MetadataLLMMappingPath].(string)
-	auditPath, _ := pctx.Metadata[MetadataLLMAuditPath].(string)
-	sourcesPath, _ := pctx.Metadata[MetadataLLMSourcesPath].(string)
-	for name, path := range map[string]string{"mapping": mappingPath, "audit": auditPath, "sources": sourcesPath} {
-		if path == "" {
-			t.Fatalf("%s artifact path is not set", name)
-		}
-		if !strings.HasPrefix(path, llm.CacheDir) {
-			t.Fatalf("%s artifact %q is not under persistent cache %q", name, path, llm.CacheDir)
-		}
-	}
 	// Prototype-compatible layout: sources.json sits next to alignment/ so the
 	// mapping is directly re-importable via mapping_path.
 	if filepath.Dir(mappingPath) != filepath.Join(filepath.Dir(sourcesPath), "alignment") {
@@ -427,12 +459,11 @@ func TestLLMMergerRequestFailureFallsBackToNativeASS(t *testing.T) {
 	if len(content) == 0 {
 		t.Fatal("merged ASS is empty")
 	}
-	if degraded, ok := pctx.Metadata["llm_degraded"].(bool); !ok || !degraded {
-		t.Fatalf("expected llm_degraded metadata to be true, got %v", pctx.Metadata["llm_degraded"])
-	}
-	// Fallback audit evidence is still persisted for diagnosis.
-	if path, _ := pctx.Metadata[MetadataLLMAuditPath].(string); path == "" {
-		t.Fatal("audit artifact was not persisted for fallback alignment")
+	// Fallback audit evidence is persisted for diagnosis: the audit records the
+	// failed window the degraded warning reports.
+	audit := llmAudit(t, llm.CacheDir)
+	if len(audit.FailedWindows) == 0 {
+		t.Fatal("fallback alignment recorded no failed window in the audit")
 	}
 }
 
@@ -535,13 +566,14 @@ func TestLLMMergerUsesImportMappingWithoutHTTP(t *testing.T) {
 	enPath := writeSubtitleFixture(t, dir, "Episode.eng.srt", string(en))
 	zhPath := writeSubtitleFixture(t, dir, "Episode.chs.srt", string(zh))
 
-	first := newLLMTestProcessor(t, llmMergerTestConfig(t, pairingHandler(t)))
+	firstLLM := llmMergerTestConfig(t, pairingHandler(t))
+	first := newLLMTestProcessor(t, firstLLM)
 	first.probe = func(context.Context, string) (*executor.FFProbeOutput, error) { return nil, errors.New("no probe") }
 	firstCtx := &ProcessingContext{VideoPath: videoPath, EnglishSubPath: enPath, ChineseSubPath: zhPath, Metadata: map[string]interface{}{}}
 	if err := first.Process(context.Background(), firstCtx); err != nil {
 		t.Fatalf("first Process() error = %v", err)
 	}
-	mappingPath, _ := firstCtx.Metadata[MetadataLLMMappingPath].(string)
+	_, mappingPath, _ := llmArtifacts(t, firstLLM.CacheDir)
 	persisted, err := os.ReadFile(mappingPath)
 	if err != nil {
 		t.Fatalf("read persisted mapping: %v", err)
@@ -569,7 +601,7 @@ func TestLLMMergerUsesImportMappingWithoutHTTP(t *testing.T) {
 		t.Fatal("imported mapping did not produce native bilingual ASS events")
 	}
 
-	auditPath := pctx.Metadata[MetadataLLMAuditPath].(string)
+	_, _, auditPath := llmArtifacts(t, llm.CacheDir)
 	data, err := os.ReadFile(auditPath)
 	if err != nil {
 		t.Fatal(err)
@@ -693,9 +725,8 @@ func TestLLMMergerCacheDisabledWithoutCacheDirKeepsDiagnosticsPrivate(t *testing
 	if err := processor.Process(context.Background(), pctx); err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
-	if pctx.Metadata[MetadataLLMAuditPath] != nil {
-		t.Fatal("cache disabled still persisted artifacts")
-	}
+	// Cache disabled means no diagnostics at all, even with no cache dir.
+	assertNoLLMArtifacts(t, pctx.TempMergeDir)
 	if _, err := os.Stat(pctx.MergedSubPath); err != nil {
 		t.Fatalf("merged output missing: %v", err)
 	}
@@ -713,11 +744,7 @@ func TestLLMMergerCacheDisabledPersistsNothing(t *testing.T) {
 	if err := processor.Process(context.Background(), pctx); err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
-	for _, key := range []string{MetadataLLMSourcesPath, MetadataLLMAuditPath, MetadataLLMMappingPath} {
-		if value := pctx.Metadata[key]; value != nil {
-			t.Fatalf("%s = %v, want nothing persisted when the cache is disabled", key, value)
-		}
-	}
+	assertNoLLMArtifacts(t, cacheDir)
 	entries, err := os.ReadDir(cacheDir)
 	if err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
@@ -745,7 +772,7 @@ func TestLLMMergerPersistedMappingIsReimportable(t *testing.T) {
 	if err := processor.Process(context.Background(), pctx); err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
-	mappingPath := pctx.Metadata[MetadataLLMMappingPath].(string)
+	_, mappingPath, _ := llmArtifacts(t, llm.CacheDir)
 	if _, err := os.Stat(filepath.Join(filepath.Dir(filepath.Dir(mappingPath)), "sources.json")); err != nil {
 		t.Fatalf("persisted sources are not importable siblings: %v", err)
 	}
@@ -781,14 +808,7 @@ func TestLLMMergerPersistedMappingIsReimportable(t *testing.T) {
 	if string(firstOutput) != string(importedOutput) {
 		t.Fatal("reimported mapping rendered different output")
 	}
-	var audit subtitlellm.Audit
-	data, err := os.ReadFile(importCtx.Metadata[MetadataLLMAuditPath].(string))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(data, &audit); err != nil {
-		t.Fatal(err)
-	}
+	audit := llmAudit(t, importLLM.CacheDir)
 	if audit.Provenance == nil || audit.Provenance.Source != "prototype-import" {
 		t.Fatalf("provenance = %+v, want prototype-import", audit.Provenance)
 	}
@@ -824,8 +844,8 @@ func TestLLMMergerArtifactsNeverContainAPIKey(t *testing.T) {
 	if err := processor.Process(context.Background(), pctx); err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
-	for _, key := range []string{MetadataLLMMappingPath, MetadataLLMAuditPath, MetadataLLMSourcesPath} {
-		path := pctx.Metadata[key].(string)
+	sourcesPath, mappingPath, auditPath := llmArtifacts(t, llm.CacheDir)
+	for _, path := range []string{mappingPath, auditPath, sourcesPath} {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read artifact %s: %v", path, err)

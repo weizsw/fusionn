@@ -66,7 +66,7 @@ func TestStyleProcessorLeavesNativeLLMRenderUnchanged(t *testing.T) {
 	content := string(rendered)
 	for _, want := range []string{
 		"Style: Default,", "Style: Eng,", "Style: TopDefault,", "Style: TopEng,",
-		headerMarkerLLMStyled,
+		subtitlellm.HeaderMarker,
 	} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("render output missing %q:\n%s", want, content)
@@ -78,7 +78,7 @@ func TestStyleProcessorLeavesNativeLLMRenderUnchanged(t *testing.T) {
 		meta map[string]interface{}
 	}{
 		{name: "header marker only"},
-		{name: "metadata flag", meta: map[string]interface{}{metadataLLMStyled: true}},
+		{name: "metadata flag", meta: map[string]interface{}{subtitlellm.MetadataLLMStyled: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "llm.ass")

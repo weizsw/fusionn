@@ -12,6 +12,7 @@ import (
 
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/executor"
+	"github.com/fusionn/internal/subtitlellm"
 	"github.com/fusionn/pkg/logger"
 )
 
@@ -253,10 +254,10 @@ func TestStyleProcessorAdaptsFontSizeAndPlacementOnly(t *testing.T) {
 }
 
 func TestAdjustedMarginVDoesNotAdjustTallerVideo(t *testing.T) {
-	current := adjustedMarginV(32, 1440, 1080, 1080)
-	legacy := adjustedMarginV(5, 1440, 1080, 288)
+	current := subtitlellm.AdaptedMarginV(32, 1440, 1080, 1080)
+	legacy := subtitlellm.AdaptedMarginV(5, 1440, 1080, 288)
 	if current != 32 || legacy != 5 {
-		t.Fatalf("adjustedMarginV() = %d/%d, want 32/5", current, legacy)
+		t.Fatalf("subtitlellm.AdaptedMarginV() = %d/%d, want 32/5", current, legacy)
 	}
 }
 
@@ -277,8 +278,8 @@ func TestAdjustedMarginVWorkedExamples(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := adjustedMarginV(5, tt.width, tt.height, 288); got != tt.want {
-				t.Fatalf("adjustedMarginV() legacy = %d, want %d", got, tt.want)
+			if got := subtitlellm.AdaptedMarginV(5, tt.width, tt.height, 288); got != tt.want {
+				t.Fatalf("subtitlellm.AdaptedMarginV() legacy = %d, want %d", got, tt.want)
 			}
 		})
 	}
@@ -299,8 +300,8 @@ func TestAdjustedMarginVWorkedExamples(t *testing.T) {
 	}
 	for _, tt := range tests1080 {
 		t.Run("1080 canvas "+tt.name, func(t *testing.T) {
-			if got := adjustedMarginV(32, tt.width, tt.height, 1080); got != tt.want {
-				t.Fatalf("adjustedMarginV() = %d, want %d", got, tt.want)
+			if got := subtitlellm.AdaptedMarginV(32, tt.width, tt.height, 1080); got != tt.want {
+				t.Fatalf("subtitlellm.AdaptedMarginV() = %d, want %d", got, tt.want)
 			}
 		})
 	}
@@ -514,7 +515,7 @@ Dialogue: 0,0:00:03.00,0:00:04.00,Default,,10,10,10,,{\i1}Italic{\i0}
 		t.Fatalf("styles section placed after events:\n%s", text)
 	}
 	// Header marker allows skipping on a second pass.
-	if !strings.Contains(text, headerMarkerLLMStyled) {
+	if !strings.Contains(text, subtitlellm.HeaderMarker) {
 		t.Fatalf("missing LLM header marker:\n%s", text)
 	}
 }
@@ -542,7 +543,7 @@ Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\an2\pos(960,1048)}你好\N{\
 		meta    map[string]interface{}
 	}{
 		{name: "header marker", content: llmOutput},
-		{name: "metadata flag", content: strings.Replace(llmOutput, "; fusionn-llm-styled\n", "", 1), meta: map[string]interface{}{metadataLLMStyled: true}},
+		{name: "metadata flag", content: strings.Replace(llmOutput, "; fusionn-llm-styled\n", "", 1), meta: map[string]interface{}{subtitlellm.MetadataLLMStyled: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			assFile := filepath.Join(t.TempDir(), "llm.ass")

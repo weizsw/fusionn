@@ -2,7 +2,6 @@ package subtitle
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -44,26 +43,23 @@ func TestLLMMergerTranslatedSkipsModel(t *testing.T) {
 			t.Fatalf("output missing %q", want)
 		}
 	}
-	if pctx.Metadata[subtitlellm.MetadataLLMStyled] != true || pctx.Metadata[MetadataLLMDegraded] != nil {
+	if pctx.Metadata[subtitlellm.MetadataLLMStyled] != true {
 		t.Fatalf("unexpected metadata: %+v", pctx.Metadata)
 	}
-	var audit subtitlellm.Audit
-	data, err := os.ReadFile(pctx.Metadata[MetadataLLMAuditPath].(string))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(data, &audit); err != nil {
-		t.Fatal(err)
-	}
+	audit := llmAudit(t, llm.CacheDir)
 	if audit.Provenance == nil || audit.Provenance.Source != "translation" || audit.HTTPAttempts != 0 {
 		t.Fatalf("unexpected audit: %+v", audit)
+	}
+	if len(audit.FailedWindows) != 0 {
+		t.Fatalf("the translated merge is not degraded, audit failed windows = %+v", audit.FailedWindows)
 	}
 	if audit.Coverage.EN != 2 || audit.Coverage.ZH != 2 {
 		t.Fatalf("coverage = %+v", audit.Coverage)
 	}
 
 	// Persisted direct mappings must remain usable by the offline import path.
-	llm.MappingPath = pctx.Metadata[MetadataLLMMappingPath].(string)
+	_, mappingPath, _ := llmArtifacts(t, llm.CacheDir)
+	llm.MappingPath = mappingPath
 	bundle, err := subtitlellm.LoadSources(enPath, zhPath)
 	if err != nil {
 		t.Fatal(err)

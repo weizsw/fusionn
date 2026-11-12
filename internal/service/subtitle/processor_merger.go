@@ -27,20 +27,6 @@ const (
 	llmArtifactDirName = "llm-alignment"
 )
 
-// Metadata keys published by the LLM merger. They complement
-// subtitlellm.MetadataLLMStyled (the style processor's skip flag) and let
-// diagnostics locate the persisted alignment artifacts.
-const (
-	MetadataLLMMappingPath = "llm_mapping_path"
-	MetadataLLMAuditPath   = "llm_audit_path"
-	MetadataLLMSourcesPath = "llm_sources_path"
-
-	MetadataLLMDegraded       = "llm_degraded"
-	MetadataLLMFailedWindows  = "llm_failed_windows"
-	MetadataLLMWindowFailures = "llm_window_failures"
-	MetadataLLMPairing        = "llm_pairing"
-)
-
 // MergerProcessor merges English and Chinese subtitles with the configured
 // engine: the legacy DuoSubs aligner or the native ID-mapping LLM renderer.
 type MergerProcessor struct {
@@ -214,7 +200,7 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 		return err
 	}
 
-	if err := p.persistLLMArtifacts(ctx, pctx, outputDir, bundle, mapping, audit); err != nil {
+	if err := p.persistLLMArtifacts(ctx, outputDir, bundle, mapping, audit); err != nil {
 		return fmt.Errorf("persist alignment artifacts: %w", err)
 	}
 	p.logLLMAudit(ctx, audit)
@@ -228,13 +214,6 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 	if len(audit.FailedWindows) > 0 {
 		log.Warn(ctx, "alignment_degraded", "LLM alignment partially failed, fell back to timing-based pairing",
 			zap.Int("failed_windows", len(audit.FailedWindows)))
-		if pctx.Metadata != nil {
-			pctx.Metadata[MetadataLLMDegraded] = true
-			pctx.Metadata[MetadataLLMFailedWindows] = audit.FailedWindows
-			if len(audit.WindowFailures) > 0 {
-				pctx.Metadata[MetadataLLMWindowFailures] = audit.WindowFailures
-			}
-		}
 	}
 	// Context cancellation can race a fully cached alignment; never render
 	// after the caller has cancelled the job.
@@ -276,7 +255,6 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 	// The renderer already applied the final styles, PlayRes and explicit
 	// positions; prevent the style processor from rewriting them.
 	pctx.Metadata[subtitlellm.MetadataLLMStyled] = true
-	pctx.Metadata[MetadataLLMPairing] = audit.Pairing
 	pctx.MergedSubPath = mergedPath
 
 	log.Info(ctx, "merge_completed", "Merge completed", zap.String("path", mergedPath))
@@ -356,15 +334,14 @@ func (p *MergerProcessor) videoDimensions(ctx context.Context, videoPath string)
 
 // persistLLMArtifacts writes sources, mapping and audit JSON without any
 // credential fields. Artifacts are only persisted when the alignment cache is
-// enabled; with the cache disabled the merger works request-only and reuses
-// the existing subtitlellm.MetadataLLMStyled flag in the context.
+// enabled; with the cache disabled the merger works request-only.
 //
 // The layout mirrors the prototype (<root>/sources.json +
 // <root>/alignment/mapping.json) so a persisted mapping can be re-imported
 // directly through subtitle.llm.mapping_path. A configured cache_dir is the
 // persistent, merge-isolation-safe location; without one the diagnostics go to
 // the isolated merge directory for this run.
-func (p *MergerProcessor) persistLLMArtifacts(ctx context.Context, pctx *ProcessingContext, outputDir string, bundle subtitlellm.Bundle, mapping subtitlellm.Mapping, audit subtitlellm.Audit) error {
+func (p *MergerProcessor) persistLLMArtifacts(ctx context.Context, outputDir string, bundle subtitlellm.Bundle, mapping subtitlellm.Mapping, audit subtitlellm.Audit) error {
 	if !p.llmConfig.CacheEnabled || mapping.Fingerprint == "" {
 		return nil
 	}
@@ -380,20 +357,15 @@ func (p *MergerProcessor) persistLLMArtifacts(ctx context.Context, pctx *Process
 		name  string
 		path  string
 		value any
-		key   string
 	}{
-		{"sources", filepath.Join(artifactRoot, "sources.json"), bundle, MetadataLLMSourcesPath},
-		{"mapping", filepath.Join(alignmentDir, "mapping.json"), mapping, MetadataLLMMappingPath},
-		{"audit", filepath.Join(alignmentDir, "audit.json"), audit, MetadataLLMAuditPath},
+		{"sources", filepath.Join(artifactRoot, "sources.json"), bundle},
+		{"mapping", filepath.Join(alignmentDir, "mapping.json"), mapping},
+		{"audit", filepath.Join(alignmentDir, "audit.json"), audit},
 	}
 	for _, artifact := range paths {
 		if err := writeJSONFile(artifact.path, artifact.value); err != nil {
 			return fmt.Errorf("save LLM %s artifact %s: %w", artifact.name, artifact.path, err)
 		}
-		if pctx.Metadata == nil {
-			pctx.Metadata = make(map[string]interface{})
-		}
-		pctx.Metadata[artifact.key] = artifact.path
 	}
 	log.Debug(ctx, "artifacts_saved", "Saved LLM alignment artifacts", zap.String("path", artifactRoot))
 	return nil

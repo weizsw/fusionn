@@ -152,7 +152,7 @@ logging:
 
 - `pkg/logger`、主程序启动和 HTTP middleware/recovery、webhook/callback、Redis 投递、合并队列和所有生产 pipeline 关键事件。
 - 子进程收集和独立 `word-align`、DuoSubs Python 服务日志。
-- 回调新 Job 与原翻译 Job 的关联。保留 subtitle-merge CLI 的结果输出，统一其诊断输出。
+- 回调新 Job 与原翻译 Job 的关联。
 - 更新当前 word-align 日志文档，避免留两份相互冲突的格式说明。
 
 ### Fusionn-Muse

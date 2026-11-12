@@ -437,16 +437,6 @@ docker compose up -d --build fusionn word-align
 
 已执行 `go test ./...`、`go vet ./...`，以及 config/subtitlellm/service/subtitle 三个包的 `go test -race`。覆盖引擎依赖隔离、旧配置/env/false/0/密钥日志、严格JSON和ID、失败重试与取消、缓存失效/坏缓存恢复、生产映射重导入、M:N/1:N/单边/顶部/重叠、Unicode换行、旧坐标与上述电视尺寸。
 
-实际本集烟测命令（输出目录必须是新的）：
-
-```bash
-go run ./cmd/subtitle-merge --config config/config.example.yaml \
-  --video '/Volumes/External/media/tv/Dark Matter (2024)/Season 02/Dark Matter (2024) - S02E07 - The Pyramid [ATVP][WEBDL-2160p][EAC3 Atmos 5.1][DV HDR10Plus][h265]-FLUX.mkv' \
-  --en-stream 2 --zh-stream 6 \
-  --mapping experiments/llm-subtitle-merge/results/dark-matter-s02e07/alignment/mapping.json \
-  --out /Users/maverick/.tds/artifacts/llm-subs-dark-matter-s02e07-01a152fd/go-native-integration-final
-```
-
 重新 ffprobe/提取完整英文710、简中722条，精确复现原型源指纹；0个模型请求，使用原Gemini映射712组。约5.067秒包含探测与提取，**不是模型耗时**。720个ASS事件逐条对照，纯文本、顺序和起止时间与Python试验全部相同。1920×1080未知尺寸基准测试也验证了事件样式、alignment、x一致；可调行高替代原硬编码64/46后，15个M:N事件 y 有≤1.76像素差异。实际电视适配样例字号59/41、marginV −32，坐标有意区别于未适配Python输出。
 
 本机可播放文件：
@@ -457,4 +447,4 @@ go run ./cmd/subtitle-merge --config config/config.example.yaml \
 
 仓库样例：[Go集成ASS](examples/llm-native-dark-matter/bilingual.ass)、[运行摘要](examples/llm-native-dark-matter/run.json)、[文字时间一致性校验](examples/llm-native-dark-matter/validation.json)。媒体及已有字幕未覆盖。
 
-额外构建了Linux arm64静态二进制，在现有Debian容器中验证启动与离线渲染；无Python合并依赖。Dockerfile同步分发主服务与subtitle-merge命令。未构建/发布完整新镜像，未替换运行容器、合并分支或部署。原型模型性能对比仍见实验报告，本轮没有重新评估模型速度、价格或整集语义准确率。
+额外构建了Linux arm64静态二进制，在现有Debian容器中验证启动与离线渲染；无Python合并依赖。Dockerfile同步分发主服务。未构建/发布完整新镜像，未替换运行容器、合并分支或部署。原型模型性能对比仍见实验报告，本轮没有重新评估模型速度、价格或整集语义准确率。

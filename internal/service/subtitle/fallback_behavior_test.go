@@ -2,7 +2,6 @@ package subtitle
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/fusionn/internal/executor"
 	"github.com/fusionn/internal/subtitlellm"
+	"github.com/fusionn/pkg/logger"
 )
 
 type parsedDialogueEvent struct {
@@ -144,31 +144,16 @@ func TestFallbackBehavior_LLM503FallbackToNativeASS(t *testing.T) {
 		}
 	}
 
-	// Verify degraded metadata flag is recorded
-	if degraded, ok := pctx.Metadata["llm_degraded"].(bool); !ok || !degraded {
-		t.Errorf("expected llm_degraded metadata to be true, got %v", pctx.Metadata["llm_degraded"])
+	// Verify the persisted audit records the failure: the failed window is the
+	// degraded state the alignment_degraded warning reports.
+	audit := llmAudit(t, llm.CacheDir)
+	if len(audit.FailedWindows) != 1 || audit.FailedWindows[0] != 0 {
+		t.Errorf("expected FailedWindows to record window 0 failure, got %+v", audit.FailedWindows)
 	}
 	// The bracketed sound cue is not counted as dialogue.
 	wantPairing := subtitlellm.Pairing{ENPaired: 1, ENTotal: 1, ZHPaired: 1, ZHTotal: 1}
-	if pairing, ok := pctx.Metadata[MetadataLLMPairing].(subtitlellm.Pairing); !ok || pairing != wantPairing {
-		t.Errorf("llm_pairing metadata = %+v, want %+v", pctx.Metadata[MetadataLLMPairing], wantPairing)
-	}
-
-	// Verify audit evidence is persisted and traceable
-	auditPath, ok := pctx.Metadata[MetadataLLMAuditPath].(string)
-	if !ok || auditPath == "" {
-		t.Fatal("audit artifact path missing in metadata")
-	}
-	auditData, err := os.ReadFile(auditPath)
-	if err != nil {
-		t.Fatalf("read audit file: %v", err)
-	}
-	var audit subtitlellm.Audit
-	if err := json.Unmarshal(auditData, &audit); err != nil {
-		t.Fatalf("unmarshal audit: %v", err)
-	}
-	if len(audit.FailedWindows) != 1 || audit.FailedWindows[0] != 0 {
-		t.Errorf("expected FailedWindows to record window 0 failure, got %+v", audit.FailedWindows)
+	if audit.Pairing != wantPairing {
+		t.Errorf("audit pairing = %+v, want %+v", audit.Pairing, wantPairing)
 	}
 	if len(audit.WindowFailures) != 1 {
 		t.Fatalf("expected 1 WindowFailure, got %+v", audit.WindowFailures)
@@ -322,9 +307,9 @@ func TestFallbackBehavior_HTTP401NoRetryFallbackWithReason(t *testing.T) {
 		t.Fatalf("request count = %d, want 1 (HTTP 401 must not be retried)", requestCount)
 	}
 
-	failures, ok := pctx.Metadata[MetadataLLMWindowFailures].([]subtitlellm.WindowFailure)
-	if !ok || len(failures) == 0 {
-		t.Fatalf("expected WindowFailures in metadata, got %v", pctx.Metadata[MetadataLLMWindowFailures])
+	failures := llmAudit(t, llm.CacheDir).WindowFailures
+	if len(failures) == 0 {
+		t.Fatalf("expected WindowFailures in the persisted audit, got %v", failures)
 	}
 	if !strings.Contains(failures[0].Reason, "HTTP 401") {
 		t.Errorf("expected failure reason to contain HTTP 401, got %q", failures[0].Reason)
@@ -332,8 +317,12 @@ func TestFallbackBehavior_HTTP401NoRetryFallbackWithReason(t *testing.T) {
 }
 
 // TestFallbackBehavior_CacheDisabledTraceability verifies that when cache is disabled,
-// warnings and metadata still preserve the window failure reasons.
+// the warnings still preserve the window failure reasons.
 func TestFallbackBehavior_CacheDisabledTraceability(t *testing.T) {
+	// Without a persisted audit the reason only reaches the DEBUG
+	// window_failure event, so this test captures the log.
+	buf := captureLogs(t)
+	logger.SetConfigLevel("debug")
 	videoPath, enPath, zhPath := mergerFixture(t)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -364,15 +353,12 @@ func TestFallbackBehavior_CacheDisabledTraceability(t *testing.T) {
 		t.Fatalf("Process() error = %v, want fallback", err)
 	}
 
-	if degraded, ok := pctx.Metadata[MetadataLLMDegraded].(bool); !ok || !degraded {
-		t.Errorf("expected MetadataLLMDegraded=true, got %v", pctx.Metadata[MetadataLLMDegraded])
+	// No audit is persisted with the cache disabled, so both the degraded state
+	// and the failure reason must still reach the log.
+	if !strings.Contains(buf.String(), "event=alignment_degraded") || !strings.Contains(buf.String(), "failed_windows=1") {
+		t.Errorf("expected an alignment_degraded warning naming the failed window:\n%s", buf.String())
 	}
-
-	failures, ok := pctx.Metadata[MetadataLLMWindowFailures].([]subtitlellm.WindowFailure)
-	if !ok || len(failures) != 1 {
-		t.Fatalf("expected 1 WindowFailure in metadata with cache disabled, got %v", pctx.Metadata[MetadataLLMWindowFailures])
-	}
-	if !strings.Contains(failures[0].Reason, "HTTP 400") {
-		t.Errorf("expected failure reason to contain HTTP 400, got %q", failures[0].Reason)
+	if !strings.Contains(buf.String(), "HTTP 400") {
+		t.Errorf("expected the window failure reason in the debug log:\n%s", buf.String())
 	}
 }

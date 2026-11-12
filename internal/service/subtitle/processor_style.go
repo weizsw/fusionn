@@ -14,16 +14,8 @@ import (
 
 	"github.com/fusionn/internal/config"
 	"github.com/fusionn/internal/executor"
+	"github.com/fusionn/internal/subtitlellm"
 	"github.com/fusionn/pkg/logger"
-)
-
-const (
-	// metadataLLMStyled marks merged output whose styles, PlayRes and explicit
-	// event positions were already produced by the LLM renderer.
-	metadataLLMStyled = "llm_styled"
-	// headerMarkerLLMStyled identifies an LLM-rendered file after a process
-	// boundary, when ProcessingContext metadata is no longer available.
-	headerMarkerLLMStyled = "; fusionn-llm-styled"
 )
 
 // StyleProcessor injects custom ASS styles into merged subtitle files.
@@ -66,7 +58,7 @@ func (p *StyleProcessor) Process(ctx context.Context, pctx *ProcessingContext) e
 		return nil // Don't fail the job, just skip styling
 	}
 
-	if pctx.Metadata[metadataLLMStyled] == true || doc.llmStyled {
+	if pctx.Metadata[subtitlellm.MetadataLLMStyled] == true || doc.llmStyled {
 		log.Info(ctx, "style_preserved", "Subtitle already styled by the LLM renderer, preserving it")
 		return nil
 	}
@@ -85,8 +77,8 @@ func (p *StyleProcessor) Process(ctx context.Context, pctx *ProcessingContext) e
 		if probeErr != nil {
 			log.Warn(ctx, "style_probe_failed", "Failed to detect video resolution, using configured ASS style", zap.Error(probeErr))
 		} else if width, height, ok := videoDimensions(probeOutput); ok {
-			scale = referencePlaybackCanvasScale(width, height)
-			marginV = adjustedMarginV(styleConfig.MarginV, width, height, playResY)
+			scale = subtitlellm.ReferencePlaybackCanvasScale(width, height)
+			marginV = subtitlellm.AdaptedMarginV(styleConfig.MarginV, width, height, playResY)
 			if scale != 1 {
 				log.Info(ctx, "style_adapted", "Adapting style for playback on the centered 16:9 reference canvas",
 					zap.Int("width", width), zap.Int("height", height),
@@ -124,32 +116,6 @@ func videoDimensions(probeOutput *executor.FFProbeOutput) (int, int, bool) {
 	return 0, 0, false
 }
 
-func referencePlaybackCanvasScale(width, height int) float64 {
-	canvasHeight := float64(width) * 9 / 16
-	if float64(height) >= canvasHeight {
-		return 1
-	}
-	return canvasHeight / float64(height)
-}
-
-// adjustedMarginV keeps the configured margin at the same proportional
-// distance from the bottom edge of the centered 16:9 reference playback canvas,
-// including player-added letterbox bars. playResY is the configured script
-// canvas height; margins are expressed in those coordinates.
-func adjustedMarginV(configuredMarginV, width, height, playResY int) int {
-	scale := referencePlaybackCanvasScale(width, height)
-	if scale == 1 {
-		return configuredMarginV
-	}
-
-	canvasHeight := float64(height) * scale
-	bottomBar := (canvasHeight - float64(height)) / 2
-	verticalScale := float64(height) / float64(playResY)
-	targetBottomGap := float64(configuredMarginV) * canvasHeight / float64(playResY)
-
-	return int(math.Round((targetBottomGap - bottomBar) / verticalScale))
-}
-
 // assSection is one bracketed ASS section; lines include the header line.
 type assSection struct {
 	header string
@@ -179,7 +145,7 @@ func parseASSDocument(content string) (*assDocument, error) {
 			}
 			continue
 		}
-		if strings.Contains(line, headerMarkerLLMStyled) {
+		if strings.Contains(line, subtitlellm.HeaderMarker) {
 			doc.llmStyled = true
 		}
 		if current == nil {
@@ -247,8 +213,8 @@ func (d *assDocument) replaceScriptInfo(scriptInfo string) {
 	}
 	// The marker records that positions/styles are already final, so another
 	// style pass preserves the file even after a process boundary.
-	if !containsString(lines, headerMarkerLLMStyled) {
-		lines = append(lines, headerMarkerLLMStyled)
+	if !containsString(lines, subtitlellm.HeaderMarker) {
+		lines = append(lines, subtitlellm.HeaderMarker)
 	}
 	section.lines = lines
 }
