@@ -135,19 +135,7 @@ func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) (err err
 	jobID := uuid.New().String()
 	ctx = logger.WithJobID(ctx, jobID)
 
-	// The webhook runs this on its own goroutine, outside gin's recovery, so a
-	// panic here would end the process. It fails this job instead, reported
-	// once like any other failure. Every failure also sends one notification.
 	stage := "analyze"
-	defer func() {
-		if r := recover(); r != nil {
-			err = logger.Recovered(r)
-			log.Error(ctx, "job_failed", "Job failed", zap.String("stage", stage), zap.Error(err), logger.PanicStack(err))
-		}
-		if err != nil {
-			pipelines.notifier.NotifyFailure(ctx, jobID, params.Path, params.MediaType, stage, err)
-		}
-	}()
 
 	pctx := &ProcessingContext{
 		VideoPath:       params.Path,
@@ -164,6 +152,29 @@ func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) (err err
 		RadarrID:        params.RadarrID,
 		Metadata:        make(map[string]interface{}),
 	}
+
+	// The webhook runs this on its own goroutine, outside gin's recovery, so a
+	// panic here would end the process. It fails this job instead, reported
+	// once like any other failure. Every failure also sends one notification.
+	//
+	// The analyze stage owns the files the extractor created until it hands
+	// them off: to the merge job on a successful enqueue, or to the translation
+	// job (the English file, which fusionn-subs reads later) when it was queued.
+	// Every other exit - error, panic, or completion without a hand-off -
+	// removes them again.
+	handedOff := false
+	defer func() {
+		if r := recover(); r != nil {
+			err = logger.Recovered(r)
+			log.Error(ctx, "job_failed", "Job failed", zap.String("stage", stage), zap.Error(err), logger.PanicStack(err))
+		}
+		if !handedOff {
+			cleanupExtractedTracks(ctx, pctx.Analysis, pctx.NeedsTranslation)
+		}
+		if err != nil {
+			pipelines.notifier.NotifyFailure(ctx, jobID, params.Path, params.MediaType, stage, err)
+		}
+	}()
 
 	log.Info(ctx, "job_received", "Job received",
 		zap.String("stage", "analyze"), zap.String("media_title", params.Title), zap.String("media_type", params.MediaType))
@@ -184,6 +195,7 @@ func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) (err err
 			log.Error(ctx, "job_failed", "Job failed", zap.String("stage", "enqueue"), zap.Error(err))
 			return err
 		}
+		handedOff = true
 
 		log.Info(ctx, "job_enqueued", "Analysis complete, merge job enqueued", zap.String("stage", "merge"))
 	} else {
@@ -229,19 +241,22 @@ func (s *Service) ProcessWithSubtitles(ctx context.Context, videoPath, engSubPat
 func (s *Service) ProcessMergeJob(ctx context.Context, job *queue.MergeJob) (err error) {
 	pipelines := s.currentPipelines()
 	ctx = logger.WithJobID(ctx, job.JobID)
+	// Create processing context
+	pctx := newMergeProcessingContext(job)
 	// The merge queue reports job_failed. A panic is turned into that error here
 	// first, so the failure notification covers it too; the error keeps the
-	// stack for the queue's report.
+	// stack for the queue's report. A failed or panicking merge removes the temp
+	// files this stage owns before the failure is reported; the success path
+	// keeps the cleanup processor's behavior.
 	defer func() {
 		if r := recover(); r != nil {
 			err = logger.Recovered(r)
 		}
 		if err != nil {
+			cleanupFailedMerge(ctx, pctx)
 			pipelines.notifier.NotifyFailure(ctx, job.JobID, job.VideoPath, job.MediaType, "merge", err)
 		}
 	}()
-	// Create processing context
-	pctx := newMergeProcessingContext(job)
 
 	// Execute merge pipeline (job start/completion lifecycle is owned by the
 	// merge queue worker; this layer reports stage progress).

@@ -589,18 +589,35 @@ func isASSSubtitleCodec(codecName string) bool {
 
 // Cleanup removes temporary extracted subtitle files.
 func (a *Analyzer) Cleanup(result *AnalysisResult) {
+	cleanupExtractedTracks(context.Background(), result, false)
+}
+
+// cleanupExtractedTracks removes the files the extractor created for this
+// analysis. keepEnglish keeps the English extraction that a queued translation
+// job still reads. Only paths the extractor wrote are removed: a Bazarr
+// download is not part of result and is never touched. Removal failures are a
+// WARN and never fail the job.
+func cleanupExtractedTracks(ctx context.Context, result *AnalysisResult, keepEnglish bool) {
 	log := logger.Component("analyzer")
-	if result.EnglishTrack != nil && result.EnglishTrack.ExtractedPath != "" {
-		if err := os.Remove(result.EnglishTrack.ExtractedPath); err != nil {
-			log.Warn(context.Background(), "cleanup_failed", "Failed to clean up extracted subtitle",
-				zap.String("path", result.EnglishTrack.ExtractedPath), zap.Error(err))
-		}
+	if result == nil {
+		return
 	}
 
-	if result.ChineseTrack != nil && result.ChineseTrack.ExtractedPath != "" {
-		if err := os.Remove(result.ChineseTrack.ExtractedPath); err != nil {
-			log.Warn(context.Background(), "cleanup_failed", "Failed to clean up extracted subtitle",
-				zap.String("path", result.ChineseTrack.ExtractedPath), zap.Error(err))
+	paths := make([]string, 0, 2)
+	if result.EnglishTrack != nil && !keepEnglish {
+		paths = append(paths, result.EnglishTrack.ExtractedPath)
+	}
+	if result.ChineseTrack != nil {
+		paths = append(paths, result.ChineseTrack.ExtractedPath)
+	}
+
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			log.Warn(ctx, "cleanup_failed", "Failed to clean up extracted subtitle",
+				zap.String("path", path), zap.Error(err))
 		}
 	}
 }
