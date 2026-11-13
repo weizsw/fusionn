@@ -28,6 +28,15 @@ var (
 	cachePruneLastRun time.Time
 )
 
+// llmArtifactSetMu keeps artifact persistence and artifact pruning out of each
+// other: persistLLMArtifacts holds the read side for its whole write, so a prune
+// cannot land between its files nor unlink the temporary file of a write that is
+// about to rename it into place, and the prune holds the write side for its scan
+// and removal. The record namespace needs no lock: its prune removes only files
+// older than the cutoff (a fresh temporary file is newer), and a pruned record
+// is just a cache miss.
+var llmArtifactSetMu sync.RWMutex
+
 // maybePruneLLMCache drops the cache records and alignment artifacts that no
 // job has used for subtitle.llm.cache_max_age_days. It runs synchronously at
 // the start of an LLM merge, at most once per cachePruneInterval per process,
@@ -77,6 +86,11 @@ func pruneLLMArtifacts(cacheDir string, maxAge time.Duration, mappingPath string
 		return stats, nil
 	}
 
+	// Artifact persistence in flight elsewhere in the process must finish first,
+	// so a removal cannot unlink the temp file of an atomic write.
+	llmArtifactSetMu.Lock()
+	defer llmArtifactSetMu.Unlock()
+
 	root := filepath.Join(cacheDir, llmArtifactDirName)
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
@@ -88,9 +102,7 @@ func pruneLLMArtifacts(cacheDir string, maxAge time.Duration, mappingPath string
 
 	mappingAbs := ""
 	if path := strings.TrimSpace(mappingPath); path != "" {
-		if abs, err := filepath.Abs(path); err == nil {
-			mappingAbs = abs
-		}
+		mappingAbs = resolvePathAlias(path)
 	}
 
 	cutoff := time.Now().Add(-maxAge)
@@ -100,14 +112,9 @@ func pruneLLMArtifacts(cacheDir string, maxAge time.Duration, mappingPath string
 			continue
 		}
 		path := filepath.Join(root, entry.Name())
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		// Absolute-path comparison: the artifact directory that contains the
-		// configured mapping is kept.
-		if mappingAbs != "" && strings.HasPrefix(mappingAbs, absPath+string(filepath.Separator)) {
+		// Absolute, symlink-resolved comparison: the artifact directory that
+		// contains the configured mapping is an input of the current merge.
+		if mappingAbs != "" && strings.HasPrefix(mappingAbs, resolvePathAlias(path)+string(filepath.Separator)) {
 			continue
 		}
 		newest, bytes, err := artifactDirStats(path)
@@ -126,6 +133,20 @@ func pruneLLMArtifacts(cacheDir string, maxAge time.Duration, mappingPath string
 		stats.Bytes += bytes
 	}
 	return stats, errors.Join(errs...)
+}
+
+// resolvePathAlias returns a path with symbolic links resolved, so two names of
+// the same filesystem location compare equal. A path that cannot be resolved,
+// for example because it does not exist, keeps its absolute form.
+func resolvePathAlias(path string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return abs
 }
 
 // artifactDirStats returns the newest modification time and the total file size

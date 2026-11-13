@@ -350,6 +350,10 @@ func (p *MergerProcessor) persistLLMArtifacts(ctx context.Context, outputDir str
 	}
 	log := logger.Component("merger")
 
+	// A prune must not remove an artifact directory while this write runs.
+	llmArtifactSetMu.RLock()
+	defer llmArtifactSetMu.RUnlock()
+
 	artifactRoot := filepath.Join(outputDir, llmArtifactDirName, artifactID(bundle, mapping))
 	if strings.TrimSpace(p.llmConfig.CacheDir) != "" {
 		artifactRoot = filepath.Join(p.llmConfig.CacheDir, llmArtifactDirName, artifactID(bundle, mapping))

@@ -2,6 +2,7 @@ package subtitle
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fusionn/internal/config"
+	"github.com/fusionn/internal/subtitlellm"
 )
 
 // staleCacheAge is older than the 7-day expiry of these tests.
@@ -175,5 +177,174 @@ func stampPath(t *testing.T, path string, age time.Duration) {
 	when := time.Now().Add(-age)
 	if err := os.Chtimes(path, when, when); err != nil {
 		t.Fatalf("stamp %s: %v", path, err)
+	}
+}
+
+// A prune that scans a stale artifact directory while a merge persists into it
+// must never break that merge's artifact write: the prune must not remove a
+// directory while persistLLMArtifacts is writing it.
+func TestArtifactPruneDoesNotBreakConcurrentPersistence(t *testing.T) {
+	cacheDir := t.TempDir()
+	processor := &MergerProcessor{llmConfig: config.LLMConfig{CacheEnabled: true, CacheDir: cacheDir}}
+	bundle := subtitlellm.Bundle{Fingerprint: strings.Repeat("a", 32), EN: artifactBundleCues(20)}
+	mapping := subtitlellm.Mapping{Fingerprint: strings.Repeat("b", 32)}
+	outputDir := t.TempDir()
+
+	type pruneResult struct {
+		stats subtitlellm.PruneStats
+		err   error
+	}
+
+	for trial := 0; trial < 60; trial++ {
+		root := writeArtifactFixture(t, cacheDir, artifactID(bundle, mapping), staleCacheAge)
+		// The fillers keep the staleness walk busy, so the artifact write below
+		// lands inside the window between the scan and the removal.
+		fillStaleArtifactDir(t, root, 80)
+		sourcesPath := filepath.Join(root, "sources.json")
+
+		start := make(chan struct{})
+		written := make(chan error, 1)
+		pruned := make(chan pruneResult, 1)
+		go func() {
+			<-start
+			stats, err := pruneLLMArtifacts(cacheDir, 7*24*time.Hour, "")
+			pruned <- pruneResult{stats: stats, err: err}
+		}()
+		go func() {
+			<-start
+			written <- processor.persistLLMArtifacts(context.Background(), outputDir, bundle, mapping, subtitlellm.Audit{})
+		}()
+		close(start)
+
+		writeErr := <-written
+		result := <-pruned
+		if result.stats.Dirs == 0 {
+			continue // the merge refreshed the directory before the removal
+		}
+		if writeErr != nil {
+			t.Fatalf("trial %d: pruning stale artifacts failed a concurrent persistence: %v (prune err=%v)", trial, writeErr, result.err)
+		}
+		if _, err := os.Stat(sourcesPath); err != nil {
+			t.Fatalf("trial %d: prune removed a successfully refreshed sources.json: %v", trial, err)
+		}
+	}
+}
+
+// artifactBundleCues make the artifact payload long enough that its write lands
+// inside the staleness walk of a prune that starts with it.
+func artifactBundleCues(count int) []subtitlellm.Cue {
+	cues := make([]subtitlellm.Cue, 0, count)
+	for i := 0; i < count; i++ {
+		text := strings.Repeat("cue text ", 12)
+		cues = append(cues, subtitlellm.Cue{
+			ID: i + 1, Start: i * 1000, End: i*1000 + 500,
+			Raw: text, Plain: text, Display: text,
+			Style: "Default", Alignment: 2, Changes: []string{},
+		})
+	}
+	return cues
+}
+
+// fillStaleArtifactDir adds age-old entries to an artifact directory so the
+// staleness walk of the prune lasts longer than the artifact write it races.
+// The names sort before sources.json, the entry the walk visits last.
+func fillStaleArtifactDir(t *testing.T, root string, entries int) {
+	t.Helper()
+	for i := 0; i < entries; i++ {
+		path := filepath.Join(root, fmt.Sprintf("filler-%04d.json", i))
+		if err := os.WriteFile(path, []byte("{}"), 0644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+		stampPath(t, path, staleCacheAge)
+	}
+	// Creating the fillers refreshed the directory itself; keep it stale.
+	stampPath(t, root, staleCacheAge)
+}
+
+// Artifact pruning waits for artifact persistence that is in flight: it takes
+// the write side of the lock a whole artifact write holds.
+func TestArtifactPruneWaitsForInFlightPersistence(t *testing.T) {
+	cacheDir := t.TempDir()
+	root := writeArtifactFixture(t, cacheDir, "aaa-111111111111", staleCacheAge)
+
+	type pruneOutcome struct {
+		stats subtitlellm.PruneStats
+		err   error
+	}
+
+	// Stand in for a merge that is writing its artifacts right now.
+	llmArtifactSetMu.RLock()
+	done := make(chan pruneOutcome, 1)
+	go func() {
+		stats, err := pruneLLMArtifacts(cacheDir, 7*24*time.Hour, "")
+		done <- pruneOutcome{stats: stats, err: err}
+	}()
+
+	select {
+	case outcome := <-done:
+		llmArtifactSetMu.RUnlock()
+		t.Fatalf("prune ran while artifact persistence was in flight: %+v", outcome)
+	case <-time.After(100 * time.Millisecond):
+	}
+	llmArtifactSetMu.RUnlock()
+
+	select {
+	case outcome := <-done:
+		if outcome.err != nil {
+			t.Fatalf("pruneLLMArtifacts: %v", outcome.err)
+		}
+		if outcome.stats.Dirs != 1 {
+			t.Errorf("prune after persistence = %+v, want one directory removed", outcome.stats)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("prune did not finish after persistence ended")
+	}
+	assertGone(t, root)
+}
+
+// The mapping exemption follows filesystem aliases: the configured mapping is
+// kept whether cache_dir or mapping_path goes through the symlink, and an
+// unrelated stale directory is still removed.
+func TestCachePruneKeepsMappingThroughSymlinkAliases(t *testing.T) {
+	tests := []struct {
+		name           string
+		cacheSymlink   bool
+		mappingSymlink bool
+	}{
+		{name: "cache_dir through a symlink", cacheSymlink: true},
+		{name: "mapping_path through a symlink", mappingSymlink: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			realCache := t.TempDir()
+			kept := writeArtifactFixture(t, realCache, "selected-input", staleCacheAge)
+			other := writeArtifactFixture(t, realCache, "other-artifacts", staleCacheAge)
+			alias := filepath.Join(t.TempDir(), "cache-alias")
+			if err := os.Symlink(realCache, alias); err != nil {
+				t.Fatal(err)
+			}
+
+			pruneDir := realCache
+			if tt.cacheSymlink {
+				pruneDir = alias
+			}
+			mappingPath := filepath.Join(kept, "alignment", "mapping.json")
+			if tt.mappingSymlink {
+				mappingPath = filepath.Join(alias, llmArtifactDirName, "selected-input", "alignment", "mapping.json")
+			}
+
+			stats, err := pruneLLMArtifacts(pruneDir, 7*24*time.Hour, mappingPath)
+			if err != nil {
+				t.Fatalf("pruneLLMArtifacts: %v", err)
+			}
+			assertKept(t, kept, true)
+			assertKept(t, filepath.Join(kept, "alignment", "mapping.json"), true)
+			assertKept(t, filepath.Join(kept, "sources.json"), true)
+			assertGone(t, other)
+			if stats.Dirs != 1 {
+				t.Errorf("stats = %+v, want exactly the unrelated directory removed", stats)
+			}
+		})
 	}
 }
