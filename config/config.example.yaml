@@ -60,6 +60,8 @@ subtitle:
     # Must be a persistent path outside temp merge directories.
     cache_enabled: true
     cache_dir: "/data/llm-subtitle-cache"
+    # Drop cache records no job has used for this many days (0 = never expire).
+    cache_max_age_days: 7
     # Optional: reuse a precomputed ID-mapping JSON instead of requesting a model.
     mapping_path: ""
 

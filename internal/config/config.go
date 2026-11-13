@@ -100,9 +100,10 @@ type LLMConfig struct {
 	OverlapSeconds int `mapstructure:"overlap_seconds"`
 
 	// Mapping cache
-	CacheEnabled bool   `mapstructure:"cache_enabled"`
-	CacheDir     string `mapstructure:"cache_dir"`
-	MappingPath  string `mapstructure:"mapping_path"` // Optional precomputed ID mapping to reuse
+	CacheEnabled    bool   `mapstructure:"cache_enabled"`
+	CacheDir        string `mapstructure:"cache_dir"`
+	CacheMaxAgeDays int    `mapstructure:"cache_max_age_days"` // Days an unused cache record is kept; 0 disables expiry
+	MappingPath     string `mapstructure:"mapping_path"`       // Optional precomputed ID mapping to reuse
 
 	// Layout thresholds
 	EnChars      int    `mapstructure:"en_chars"`
@@ -410,6 +411,9 @@ func (c *LLMConfig) validate() error {
 	if c.CacheEnabled && strings.TrimSpace(c.CacheDir) == "" {
 		return fmt.Errorf("subtitle.llm.cache_dir must be set when cache_enabled is true")
 	}
+	if c.CacheMaxAgeDays < 0 {
+		return fmt.Errorf("subtitle.llm.cache_max_age_days must not be negative")
+	}
 	if c.WordAlignURL != "" {
 		u, err := url.Parse(c.WordAlignURL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
@@ -608,6 +612,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("subtitle.llm.overlap_seconds", 15)
 	v.SetDefault("subtitle.llm.cache_enabled", true)
 	v.SetDefault("subtitle.llm.cache_dir", "")
+	v.SetDefault("subtitle.llm.cache_max_age_days", 7)
 	v.SetDefault("subtitle.llm.mapping_path", "")
 	v.SetDefault("subtitle.llm.en_chars", 65)
 	v.SetDefault("subtitle.llm.zh_chars", 25)

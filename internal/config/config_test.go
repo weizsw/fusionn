@@ -615,6 +615,9 @@ subtitle:
 	if !llm.CacheEnabled {
 		t.Error("cache_enabled = false, want true")
 	}
+	if llm.CacheMaxAgeDays != 7 {
+		t.Errorf("cache_max_age_days = %d, want 7", llm.CacheMaxAgeDays)
+	}
 	if llm.EnChars != 65 || llm.ZhChars != 25 {
 		t.Errorf("chars = %d/%d, want 65/25", llm.EnChars, llm.ZhChars)
 	}
@@ -810,6 +813,45 @@ subtitle:
 `))
 		if err != nil {
 			t.Fatalf("Load() error = %v", err)
+		}
+	})
+
+	t.Run("llm rejects negative cache_max_age_days", func(t *testing.T) {
+		_, err := Load(writeConfig(t, `
+server:
+  port: 8080
+subtitle:
+  enabled: true
+  engine: "llm"
+  llm:
+    base_url: "http://127.0.0.1:3425/v1"
+    model: "group/flash-models"
+    cache_dir: "/tmp/fusionn-cache"
+    cache_max_age_days: -1
+`))
+		if err == nil || !strings.Contains(err.Error(), "cache_max_age_days") {
+			t.Fatalf("Load() error = %v, want a cache_max_age_days validation error", err)
+		}
+	})
+
+	t.Run("llm accepts cache_max_age_days zero", func(t *testing.T) {
+		cfg, err := Load(writeConfig(t, `
+server:
+  port: 8080
+subtitle:
+  enabled: true
+  engine: "llm"
+  llm:
+    base_url: "http://127.0.0.1:3425/v1"
+    model: "group/flash-models"
+    cache_dir: "/tmp/fusionn-cache"
+    cache_max_age_days: 0
+`))
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.Subtitle.LLM.CacheMaxAgeDays != 0 {
+			t.Errorf("cache_max_age_days = %d, want 0", cfg.Subtitle.LLM.CacheMaxAgeDays)
 		}
 	})
 

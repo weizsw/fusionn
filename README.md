@@ -161,6 +161,7 @@ subtitle:
     overlap_seconds: 15
     cache_enabled: true
     cache_dir: "/data/llm-subtitle-cache"
+    cache_max_age_days: 7 # drop records unused for this many days; 0 keeps them
     en_chars: 65
     zh_chars: 20 # S02E08 tested value; the code default is 25
     word_align_url: "" # Compose injects http://word-align:8767
@@ -172,7 +173,7 @@ Use `http://127.0.0.1:3425/v1` when fusionn runs on the host. Linux containers n
 - **Validation.** Every group is checked locally before use: reused or unknown IDs, non-integer IDs, empty groups, groups over the 8-second cross-language distance limit, top/bottom layer conflicts and bilingual span over 30 seconds are rejected. Dialogue the model dropped, or that sat in a failed window, is paired by time overlap (`origin: timing`); the rest is restored on its original timing.
 - **Offset and pairing check.** Before alignment, a clear global offset of the Chinese track (0.5 seconds or more, up to 3 minutes) is detected and removed. Each run logs the share of English dialogue that has a Chinese partner and warns below 60%, which usually means the Chinese subtitle belongs to another cut or episode.
 - **Key handling.** `api_key_env` names an environment variable and takes precedence over the inline `api_key`. If the named variable is unset, startup fails loudly rather than silently falling back to plaintext.
-- **Cache.** Successful mappings are stored under `cache_dir/subtitlellm-v1/`. The key covers the source text, model, endpoint, request payload and window settings, but not the style or the key, so re-styling an episode costs no model request. Caches contain full subtitle text: keep the directory readable only by the account running fusionn.
+- **Cache.** Successful mappings are stored under `cache_dir/subtitlellm-v1/`. The key covers the source text, model, endpoint, request payload and window settings, but not the style or the key, so re-styling an episode costs no model request. A record that no job has used for `cache_max_age_days` days (default 7, `0` keeps it forever) is removed on a later run, and so are the per-episode artifacts under `cache_dir/llm-alignment/`; the artifact directory that holds a configured `mapping_path` is kept. Caches contain full subtitle text: keep the directory readable only by the account running fusionn.
 - **Offline import.** `mapping_path` loads an existing mapping file without contacting a model. It is validated against a sibling `sources.json` and fails on a fingerprint mismatch instead of searching for a different source file.
 - **Limits.** `en_chars` and `zh_chars` bound short-sentence joins and flag long cues for time splitting. A cue that was already a single line in the source is kept whole even above the limit; only its display may wrap.
 - **Counting and cleanup.** The limits count letters, digits and spaces. Punctuation and symbols do not count. Source text is cleaned when it is loaded, before alignment: a run of spaces (full-width spaces included) becomes one half-width space, and a speaker dash at the start of a line becomes `- `. Other symbols stay. Joined lines are separated by one half-width space. The cleanup changes the source fingerprint, so older caches and mappings do not match and are made again.

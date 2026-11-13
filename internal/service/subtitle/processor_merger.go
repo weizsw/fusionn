@@ -149,6 +149,9 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 		return err
 	}
 
+	// Cache maintenance runs before alignment and never fails the merge.
+	maybePruneLLMCache(ctx, p.llmConfig)
+
 	outputDir, err := createMergeDir(pctx.VideoPath)
 	if err != nil {
 		return err

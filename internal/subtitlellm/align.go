@@ -607,6 +607,7 @@ func (e *Engine) fetchWindow(ctx context.Context, client *http.Client, bundle Bu
 				}
 			} else {
 				record.CacheHit = true
+				touchCacheRecord(ctx, path)
 				return fetchedWindow{index: w.Index, record: record, cached: true}
 			}
 		}

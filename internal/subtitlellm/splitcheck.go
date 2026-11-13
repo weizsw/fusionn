@@ -218,6 +218,7 @@ func (e *Engine) requestSplitChecks(ctx context.Context, client *http.Client, bu
 		// An unreadable or invalid record is asked again and then replaced.
 		if record, err := readCacheRecord(path, requestHash); err == nil && record != nil {
 			if answers, err := validateSplitCheckResponse(record.Response, len(items)); err == nil {
+				touchCacheRecord(ctx, path)
 				return answers, 0, true, nil
 			}
 		}
