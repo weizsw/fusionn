@@ -179,6 +179,10 @@ func (s *Service) ProcessMedia(ctx context.Context, params MediaParams) (err err
 	log.Info(ctx, "job_received", "Job received",
 		zap.String("stage", "analyze"), zap.String("media_title", params.Title), zap.String("media_type", params.MediaType))
 
+	// A crash or a restart leaves the hidden temp entries of unfinished jobs in
+	// the media directory; sweep the stale ones before this job adds its own.
+	sweepStaleTempFiles(ctx, params.Path)
+
 	if err := pipelines.analyzePipeline.Execute(ctx, pctx); err != nil {
 		log.Error(ctx, "job_failed", "Job failed", zap.String("stage", "analyze"), zap.Error(err))
 		return err

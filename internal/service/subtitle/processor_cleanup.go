@@ -3,11 +3,24 @@ package subtitle
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/fusionn/pkg/logger"
 )
+
+// tempSweepMaxAge is how old a leftover fusionn temp entry must be to be
+// swept: an English extract can be waiting for a fusionn-subs translation that
+// is still queued in Redis across restarts.
+const tempSweepMaxAge = 7 * 24 * time.Hour
+
+// tempSweepPrefixes are the hidden names fusionn reserves in a media
+// directory: the extraction files, both merge directories and the
+// dual-language directory.
+var tempSweepPrefixes = []string{".fusionn-extract-", ".fusionn-merge-", ".fusionn-dual-"}
 
 // CleanupProcessor removes temporary files.
 type CleanupProcessor struct{}
@@ -94,4 +107,69 @@ func removeMergeInput(ctx context.Context, log logger.Logger, path string) {
 		log.Warn(ctx, "cleanup_failed", "Failed to remove temporary file",
 			zap.String("path", path), zap.Error(err))
 	}
+}
+
+// sweepStaleTempFiles removes the temp entries an interrupted job left in the
+// video's own directory. It lists that directory only, without recursion, and
+// matches the fusionn-specific prefixes only, so a Bazarr download and the
+// DuoSubs <video>.eng.srt/<video>.chs.srt sidecars are never touched. Errors
+// are a WARN and never fail the job.
+func sweepStaleTempFiles(ctx context.Context, videoPath string) {
+	log := logger.Component("cleanup")
+	// A relative video path has no media directory of its own; never run a
+	// deletion pass against the process working directory.
+	if !filepath.IsAbs(videoPath) {
+		return
+	}
+	dir := filepath.Dir(videoPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		log.Warn(ctx, "temp_sweep_failed", "Failed to list media directory for stale temp files",
+			zap.String("path", dir), zap.Error(err))
+		return
+	}
+
+	cutoff := time.Now().Add(-tempSweepMaxAge)
+	removed := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if !hasTempSweepPrefix(name) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			log.Warn(ctx, "temp_sweep_failed", "Failed to inspect temp entry",
+				zap.String("path", filepath.Join(dir, name)), zap.Error(err))
+			continue
+		}
+		if info.ModTime().After(cutoff) {
+			continue
+		}
+
+		path := filepath.Join(dir, name)
+		if entry.IsDir() {
+			err = os.RemoveAll(path)
+		} else {
+			err = os.Remove(path)
+		}
+		if err != nil {
+			log.Warn(ctx, "temp_sweep_failed", "Failed to remove stale temp entry",
+				zap.String("path", path), zap.Error(err))
+			continue
+		}
+		removed++
+	}
+
+	if removed > 0 {
+		log.Info(ctx, "temp_swept", "Removed stale temp files", zap.Int("count", removed))
+	}
+}
+
+func hasTempSweepPrefix(name string) bool {
+	for _, prefix := range tempSweepPrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
 }
