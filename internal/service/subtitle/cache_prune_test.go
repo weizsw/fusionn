@@ -303,16 +303,20 @@ func TestArtifactPruneWaitsForInFlightPersistence(t *testing.T) {
 }
 
 // The mapping exemption follows filesystem aliases: the configured mapping is
-// kept whether cache_dir or mapping_path goes through the symlink, and an
+// kept whether cache_dir or mapping_path is a symlink or a relative path, and an
 // unrelated stale directory is still removed.
 func TestCachePruneKeepsMappingThroughSymlinkAliases(t *testing.T) {
 	tests := []struct {
-		name           string
-		cacheSymlink   bool
-		mappingSymlink bool
+		name            string
+		cacheSymlink    bool
+		mappingSymlink  bool
+		cacheRelative   bool
+		mappingRelative bool
 	}{
 		{name: "cache_dir through a symlink", cacheSymlink: true},
 		{name: "mapping_path through a symlink", mappingSymlink: true},
+		{name: "relative cache_dir, absolute mapping_path", cacheRelative: true},
+		{name: "absolute cache_dir, relative mapping_path", mappingRelative: true},
 	}
 
 	for _, tt := range tests {
@@ -324,14 +328,24 @@ func TestCachePruneKeepsMappingThroughSymlinkAliases(t *testing.T) {
 			if err := os.Symlink(realCache, alias); err != nil {
 				t.Fatal(err)
 			}
+			// A relative path resolves against the working directory.
+			if tt.cacheRelative || tt.mappingRelative {
+				chdirTest(t, filepath.Dir(realCache))
+			}
 
 			pruneDir := realCache
-			if tt.cacheSymlink {
+			switch {
+			case tt.cacheSymlink:
 				pruneDir = alias
+			case tt.cacheRelative:
+				pruneDir = filepath.Base(realCache)
 			}
 			mappingPath := filepath.Join(kept, "alignment", "mapping.json")
-			if tt.mappingSymlink {
+			switch {
+			case tt.mappingSymlink:
 				mappingPath = filepath.Join(alias, llmArtifactDirName, "selected-input", "alignment", "mapping.json")
+			case tt.mappingRelative:
+				mappingPath = filepath.Join(filepath.Base(realCache), llmArtifactDirName, "selected-input", "alignment", "mapping.json")
 			}
 
 			stats, err := pruneLLMArtifacts(pruneDir, 7*24*time.Hour, mappingPath)
@@ -347,4 +361,21 @@ func TestCachePruneKeepsMappingThroughSymlinkAliases(t *testing.T) {
 			}
 		})
 	}
+}
+
+// chdirTest moves the process into dir for the rest of the test.
+func chdirTest(t *testing.T, dir string) {
+	t.Helper()
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir %s: %v", dir, err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previous); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
 }

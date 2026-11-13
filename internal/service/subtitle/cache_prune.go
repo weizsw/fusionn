@@ -135,16 +135,16 @@ func pruneLLMArtifacts(cacheDir string, maxAge time.Duration, mappingPath string
 	return stats, errors.Join(errs...)
 }
 
-// resolvePathAlias returns a path with symbolic links resolved, so two names of
-// the same filesystem location compare equal. A path that cannot be resolved,
-// for example because it does not exist, keeps its absolute form.
+// resolvePathAlias returns an absolute path with symbolic links resolved, so two
+// names of the same filesystem location compare equal. A path that cannot be
+// resolved, for example because it does not exist, keeps its absolute form.
 func resolvePathAlias(path string) string {
-	if resolved, err := filepath.EvalSymlinks(path); err == nil {
-		return resolved
-	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return path
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved
 	}
 	return abs
 }
