@@ -60,6 +60,8 @@ services:
       - ./config/config.yaml:/app/config/config.yaml:ro
       # Mount HuggingFace cache for DuoSubs models
       - huggingface_cache:/root/.cache/huggingface
+      # Persistent LLM cache and other /data state (survives image upgrades)
+      - fusionn_data:/data
       # (Optional) Mount fonts directory for font embedding
       # Uncomment to enable font embedding in subtitles:
       # - ./fonts:/app/fonts:ro
@@ -107,4 +109,6 @@ volumes:
   redis_data:
     driver: local
   huggingface_cache:
+    driver: local
+  fusionn_data:
     driver: local
