@@ -375,17 +375,30 @@ const speakerMarks = "-－–—"
 // leading speaker dash becomes "- ". Other characters stay unchanged.
 func cleanLine(line string) string {
 	line = strings.Join(strings.Fields(line), " ")
-	mark, size := utf8.DecodeRuneInString(line)
-	if line == "" || !strings.ContainsRune(speakerMarks, mark) {
-		return line
-	}
-	rest := strings.TrimPrefix(line[size:], " ")
-	next, _ := utf8.DecodeRuneInString(rest)
-	// "--", "——" and "-5" are not speaker marks.
-	if rest == "" || strings.ContainsRune(speakerMarks, next) || unicode.IsDigit(next) {
+	rest, isMark := speakerMarkText(line)
+	if !isMark {
 		return line
 	}
 	return "- " + rest
+}
+
+// speakerMarkText reports whether a line starts a speaker turn and returns the
+// text after the mark. A mark is a leading dash, an optional space, and then
+// text that is neither another dash nor a digit: "--", "——" and "-5" are text,
+// not speakers. One definition keeps the loader, the plan matcher and the
+// display rule in agreement.
+func speakerMarkText(line string) (string, bool) {
+	line = strings.TrimLeft(line, " \t")
+	mark, size := utf8.DecodeRuneInString(line)
+	if line == "" || !strings.ContainsRune(speakerMarks, mark) {
+		return line, false
+	}
+	rest := strings.TrimPrefix(line[size:], " ")
+	next, _ := utf8.DecodeRuneInString(rest)
+	if rest == "" || strings.ContainsRune(speakerMarks, next) || unicode.IsDigit(next) {
+		return line, false
+	}
+	return rest, true
 }
 
 func buildCue(id int, cue rawCue, style styleInfo, playResX, playResY float64) Cue {

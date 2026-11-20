@@ -229,7 +229,9 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 		return err
 	}
 
-	words, wordErr := subtitlellm.AlignWords(ctx, pctx.VideoPath, bundle, p.llmConfig)
+	// Screen plans known from the mapping tell the aligner which English cues it
+	// must time at word level, because the renderer cuts inside them.
+	words, wordErr := subtitlellm.AlignWordsFor(ctx, pctx.VideoPath, bundle, p.llmConfig, mapping.ScreenPlans)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -239,9 +241,18 @@ func (p *MergerProcessor) processLLM(ctx context.Context, pctx *ProcessingContex
 	if len(words) > 0 {
 		log.Debug(ctx, "word_timestamps_received", "Received word timestamps for long English cues", zap.Int("cues", len(words)))
 	}
-	rendered, err := subtitlellm.RenderWithWordTimings(bundle, mapping, p.llmConfig, p.styleConfig, width, height, words)
+	rendered, planAudit, err := subtitlellm.RenderWithScreenPlans(bundle, mapping, p.llmConfig, p.styleConfig, width, height, words)
 	if err != nil {
 		return fmt.Errorf("render bilingual subtitles: %w", err)
+	}
+	// The alignment audit was persisted before rendering; the renderer only
+	// learns which plans it rejects, so its statistics complete the record.
+	if planAudit != nil {
+		audit.ScreenPlans = subtitlellm.MergeScreenPlanAudits(audit.ScreenPlans, planAudit)
+		p.logScreenPlanAudit(ctx, audit.ScreenPlans)
+		if err := p.persistLLMArtifacts(ctx, outputDir, bundle, mapping, audit); err != nil {
+			return fmt.Errorf("persist alignment artifacts: %w", err)
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -416,6 +427,21 @@ func writeJSONFile(path string, value any) error {
 		return err
 	}
 	return os.Rename(tempName, path)
+}
+
+// logScreenPlanAudit reports the screen-plan outcome of one run.
+func (p *MergerProcessor) logScreenPlanAudit(ctx context.Context, audit *subtitlellm.ScreenPlanAudit) {
+	if audit == nil {
+		return
+	}
+	rejected := 0
+	for _, count := range audit.Rejected {
+		rejected += count
+	}
+	logger.Component("merger").Info(ctx, "screen_plan_audit", "Screen plan audit",
+		zap.Int("candidates", audit.Candidates), zap.Int("requested", audit.Requested),
+		zap.Int("applied", audit.Applied), zap.Int("rejected", rejected),
+		zap.Int("requests", audit.Requests), zap.Int("cache_hits", audit.CacheHits))
 }
 
 // logLLMAudit reports deterministic counts and provenance only. Rejected model

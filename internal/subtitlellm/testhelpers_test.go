@@ -2,6 +2,7 @@ package subtitlellm
 
 import (
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -257,4 +258,32 @@ func nToOneFixture(t *testing.T) (Bundle, Mapping, config.LLMConfig, config.ASSS
 		MarginV: 32, MarginLeft: 80, MarginRight: 80, Alignment: 2, BorderStyle: 1,
 		WrapStyle: "0", ScaleX: 100, Spacing: 0, LineHeightRatio: 1.23, BlockPadding: 16, CollisionGap: 12}
 	return bundle, mapping, cfg, style
+}
+
+// screenPlanRequest reports whether a request body is a screen-plan request.
+// A mock HTTP handler answers those with {"plans":[]} so its alignment
+// assertions stay about alignment; a body that matches neither shape fails the
+// test, so mis-routing cannot hide.
+func screenPlanRequest(t *testing.T, body []byte) bool {
+	t.Helper()
+	var envelope struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil || len(envelope.Messages) < 2 {
+		t.Fatalf("unrecognized request body: %s", body)
+	}
+	return strings.Contains(envelope.Messages[0].Content, "re-segment bilingual subtitles")
+}
+
+// answerScreenPlan writes an empty plan answer for a screen-plan request.
+func answerScreenPlan(w http.ResponseWriter) {
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"model": "mock",
+		"choices": []any{
+			map[string]any{"finish_reason": "stop", "message": map[string]any{"content": `{"plans":[]}`}},
+		},
+	})
 }

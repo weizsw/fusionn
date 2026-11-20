@@ -317,6 +317,14 @@ func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig)
 	httpAttempts += splitRequests
 	audit.CacheHits += splitHits
 
+	// Screen plans re-segment the groups the deterministic rules cannot show as
+	// one Chinese line and one English line. A failed request leaves those groups
+	// on the existing rules and never fails the merge.
+	// Their requests and cache hits stay in the screen_plans record, so the
+	// window counters keep counting window requests only.
+	screenPlans, planAudit := e.requestScreenPlans(ctx, bundle, groups, cfg, cacheDir, splitChecks)
+	audit.ScreenPlans = planAudit
+
 	mapping := Mapping{
 		Version:           Version,
 		SourceFingerprint: bundle.Fingerprint,
@@ -331,6 +339,7 @@ func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig)
 		},
 		Groups:      groups,
 		SplitChecks: splitChecks,
+		ScreenPlans: screenPlans,
 	}
 	fingerprint, err := mappingDigest(mapping)
 	if err != nil {

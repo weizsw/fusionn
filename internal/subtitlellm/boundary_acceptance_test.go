@@ -589,7 +589,11 @@ func TestB13_CapCountsSpacesNotPunctuation(t *testing.T) {
 	for _, tt := range []struct {
 		cap    int
 		merged bool
-	}{{cap: 14, merged: false}, {cap: 15, merged: true}} {
+		// A two-speaker dialogue side passes the cap only when its measured width
+		// proves the merged line fits. Here it measures 100px against a 1760px
+		// usable width, so both caps merge; the counted length is still what the
+		// cap comparison uses.
+	}{{cap: 14, merged: true}, {cap: 15, merged: true}} {
 		cfg := fixtureConfig()
 		cfg.EnChars = tt.cap
 		bundle := fixtureBundle(

@@ -297,9 +297,9 @@ func TestDialogue_G26Real0131OverCapChineseKeepsThreeLines(t *testing.T) {
 	}
 	mapping.Fingerprint = md
 
-	// The flat Chinese line counts 16 (punctuation does not count), so a cap
-	// of 15 keeps this real two-speaker cue over the cap.
-	cfg := config.LLMConfig{EnChars: 65, ZhChars: 15, EnGapMS: 400, ZhGapMS: 500, SpanMS: 5500, FillGapMS: 500}
+	// The flat Chinese line counts 13 (punctuation and spaces do not count), so
+	// a cap of 12 keeps this real two-speaker cue over the cap.
+	cfg := config.LLMConfig{EnChars: 65, ZhChars: 12, EnGapMS: 400, ZhGapMS: 500, SpanMS: 5500, FillGapMS: 500}
 	result, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)

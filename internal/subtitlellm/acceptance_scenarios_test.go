@@ -226,6 +226,13 @@ func TestScenario10_FourLineMultiSpeakerOppositeFreePartitionsTopBottom(t *testi
 		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: plainZh, Plain: plainZh, MultiSpeaker: true}},
 	)
 	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+	oldHook := fontWidthMeasurerOverride
+	defer func() { fontWidthMeasurerOverride = oldHook }()
+	// A dialogue side may pass its character cap only when the measured width
+	// proves the merged line fits; here it does not, so partitioning is reached.
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
+		return 10000, true
+	}
 	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 	if err != nil {
 		t.Fatal(err)
@@ -279,8 +286,8 @@ func TestScenario11_ThreeLineDialogueInCapFlattens(t *testing.T) {
 	assertGlyphs(t, events[0].text, "- 什么？- 瑞安- What? - Ryan.")
 }
 
-// Scenario 11b: 对白字幕合并超字符上限，即使宽度放得下也不允许超限合并
-func TestScenario11_ThreeLineDialogueOverCapForbidden(t *testing.T) {
+// Scenario 11b: 对白字幕合并超字符上限，可靠测宽证明放得下一行 -> 允许合并
+func TestScenario11_ThreeLineDialogueOverCapMergesWhenWidthFits(t *testing.T) {
 	cfg := renderTestConfig()
 	cfg.ZhChars = 6 // Merged Chinese counts 7 (dashes and ？ do not count) > 6 (over-cap)
 	plainZh := "- 什么？\n- 瑞安"
@@ -294,7 +301,38 @@ func TestScenario11_ThreeLineDialogueOverCapForbidden(t *testing.T) {
 	oldHook := fontWidthMeasurerOverride
 	defer func() { fontWidthMeasurerOverride = oldHook }()
 	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
-		return 300.0, true // width fits, but cap forbids merging
+		return 300.0, true // the measured width proves the merged line fits
+	}
+
+	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := parseDialogues(t, string(output))
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if strings.Count(events[0].text, `\N`) != 1 {
+		t.Fatalf("dialogue over-cap must merge when measured width fits; expected 2 lines, got text: %s", events[0].text)
+	}
+}
+
+// Scenario 11b2: 无法可靠测宽时，超字符上限的对白仍不合并
+func TestScenario11_ThreeLineDialogueOverCapUnmeasuredStays(t *testing.T) {
+	cfg := renderTestConfig()
+	cfg.ZhChars = 6
+	plainZh := "- 什么？\n- 瑞安"
+	plainEn := "- What? - Ryan."
+	bundle := makeBundle(
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: plainEn, Plain: plainEn, MultiSpeaker: true}},
+		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "- 什么？\n- 瑞安", Plain: plainZh, MultiSpeaker: true}},
+	)
+	mapping := makeMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+
+	oldHook := fontWidthMeasurerOverride
+	defer func() { fontWidthMeasurerOverride = oldHook }()
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
+		return 0, false // no reliable measurement
 	}
 
 	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
@@ -306,7 +344,7 @@ func TestScenario11_ThreeLineDialogueOverCapForbidden(t *testing.T) {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
 	if strings.Count(events[0].text, `\N`) < 2 {
-		t.Fatalf("dialogue over-cap must NOT merge even if width fits; expected 3 lines, got text: %s", events[0].text)
+		t.Fatalf("an unmeasured over-cap dialogue must keep its lines; got text: %s", events[0].text)
 	}
 }
 
@@ -392,6 +430,13 @@ func TestScenario13_FourLineMultiSpeakerOppositeOccupiedKeepsOriginal(t *testing
 		{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
 		{ENIDs: []int{2}, ZHIDs: []int{2}, Layer: LayerTop, Origin: OriginModel, Kind: KindOnScreenText},
 	})
+	oldHook := fontWidthMeasurerOverride
+	defer func() { fontWidthMeasurerOverride = oldHook }()
+	// Merging a dialogue side needs a measured width that proves the fit; make
+	// the measurement too wide so the layout under test is the unmerged one.
+	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
+		return 10000, true
+	}
 	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
 	if err != nil {
 		t.Fatal(err)
@@ -911,9 +956,10 @@ func TestOrdinaryThreeLineSplitBeatsOverCapMerge(t *testing.T) {
 	}
 }
 
-// TestDialogueThreeLineOverCapMergeForbidden: the same shape carrying two
-// speakers must NOT break the configured cap even when the width would fit.
-func TestDialogueThreeLineOverCapMergeForbidden(t *testing.T) {
+// TestDialogueThreeLineOverCapMergeAllowedWhenMeasured: the same shape carrying
+// two speakers may pass the configured cap when the measurement proves the
+// merged line fits.
+func TestDialogueThreeLineOverCapMergeAllowedWhenMeasured(t *testing.T) {
 	cfg := renderTestConfig()
 	cfg.ZhChars = 8
 	bundle := makeBundle(
@@ -925,7 +971,7 @@ func TestDialogueThreeLineOverCapMergeForbidden(t *testing.T) {
 	oldHook := fontWidthMeasurerOverride
 	defer func() { fontWidthMeasurerOverride = oldHook }()
 	fontWidthMeasurerOverride = func(text, fontName string, fontSize float64, scaleX int, spacing float64, bold bool) (float64, bool) {
-		return 400, true // width would fit; the cap still forbids merging
+		return 400, true // the measured width proves the merged line fits
 	}
 
 	output, err := Render(bundle, mapping, cfg, renderTestStyle(), 1920, 1080)
@@ -936,8 +982,8 @@ func TestDialogueThreeLineOverCapMergeForbidden(t *testing.T) {
 	for _, e := range events {
 		zh, _, _ := strings.Cut(e.text, `{\rEng}`)
 		if strings.Contains(zh, "第一行中文内容") && strings.Contains(zh, "第二行中文内容") &&
-			!strings.Contains(strings.TrimSuffix(zh, `\N`), `\N`) {
-			t.Fatalf("dialogue subtitle merged past its cap using the ordinary exemption: %q", e.text)
+			strings.Contains(strings.TrimSuffix(zh, `\N`), `\N`) {
+			t.Fatalf("dialogue was not merged although the measured width fits: %q", e.text)
 		}
 	}
 }

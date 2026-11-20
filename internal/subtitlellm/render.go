@@ -34,6 +34,7 @@ const (
 	strategyOneSided     = "one_sided"
 	strategyMNSourceCuts = "M:N_source_cuts"
 	strategyTimedSplit   = "long_cue_time_slices"
+	strategyScreenPlan   = "screen_plan"
 )
 
 // block is one rendered bilingual event before positioning.
@@ -73,18 +74,31 @@ func Render(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style confi
 // RenderWithWordTimings uses optional audio-derived English word times for
 // long cues. Missing or invalid times use proportional slices of source text.
 func RenderWithWordTimings(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style config.ASSStyleConfig, width, height int, words WordTimings) ([]byte, error) {
-	data, _, err := renderWithAudits(bundle, mapping, llmcfg, style, width, height, words)
+	data, _, _, err := renderPlanWithAudits(bundle, mapping, llmcfg, style, width, height, words)
 	return data, err
 }
 
+// RenderWithScreenPlans renders like RenderWithWordTimings and also returns the
+// screen-plan statistics, which only the renderer can count because it validates
+// each plan. A nil result means the mapping carried no plans.
+func RenderWithScreenPlans(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style config.ASSStyleConfig, width, height int, words WordTimings) ([]byte, *ScreenPlanAudit, error) {
+	data, _, plans, err := renderPlanWithAudits(bundle, mapping, llmcfg, style, width, height, words)
+	return data, plans, err
+}
+
 func renderWithAudits(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style config.ASSStyleConfig, width, height int, words WordTimings) ([]byte, []renderedEvent, error) {
+	data, events, _, err := renderPlanWithAudits(bundle, mapping, llmcfg, style, width, height, words)
+	return data, events, err
+}
+
+func renderPlanWithAudits(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style config.ASSStyleConfig, width, height int, words WordTimings) ([]byte, []renderedEvent, *ScreenPlanAudit, error) {
 	if err := validateRenderInputs(bundle, mapping, llmcfg, style); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	en, zh, err := cueIndex(bundle)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	checks := newSplitChecks(mapping.SplitChecks, false)
 	blocks := splitLongBlocks(buildBlocks(mapping, en, zh, llmcfg, words, checks), en, zh, llmcfg, words, checks)
@@ -105,8 +119,18 @@ func renderWithAudits(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, s
 		frameWidth:   width,
 		frameHeight:  height,
 	}
+	// Screen plans replace a group's blocks before any spatial policy runs, so
+	// on-screen-text grouping and top/bottom placement see the planned layout.
+	blocks, planAudit := applyScreenPlans(blocks, mapping, en, zh, words, planGeometry{
+		enChars: llmcfg.EnChars,
+		zhChars: llmcfg.ZhChars,
+	})
 	blocks = applySpatialPolicies(blocks, mapping, en, zh, geometry, effective, checks)
-	yieldToChineseSingles(blocks, mapping)
+	yieldToChineseSingles(blocks, mapping, zh)
+	// Rule C runs before rule A: a short screen first grows to the reading floor,
+	// then a blank that is still shorter than 100ms closes to the next start.
+	extendShortScreens(blocks)
+	closeTimingGaps(blocks)
 	sort.SliceStable(blocks, func(i, j int) bool {
 		a, b := blocks[i], blocks[j]
 		if a.start != b.start {
@@ -118,7 +142,7 @@ func renderWithAudits(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, s
 		return a.group < b.group
 	})
 	if err := verifySourceCoverage(blocks, en, zh); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	var out assWriter
 	out.writeHeader(effective)
@@ -126,9 +150,9 @@ func renderWithAudits(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, s
 		return out.writeDialogue(start, end, styleName, text, align, x, y, wrap, hasPos)
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return []byte(out.String()), audits, nil
+	return []byte(out.String()), audits, planAudit, nil
 }
 
 // renderBaseStyle returns the style used to render events. The renderer always
@@ -285,6 +309,18 @@ func (g renderGeometry) adaptPositionY(y float64, alignment int) float64 {
 func (g renderGeometry) zhLineHeight() float64 { return g.zhFontSize * g.lineHeight }
 func (g renderGeometry) enLineHeight() float64 { return g.enFontSize * g.lineHeight }
 
+// widthFactor converts measured glyph width into script x units on the actual
+// frame. Glyph advances only scale with the vertical style scale
+// (frameHeight/PlayResY), while a script x unit spans frameWidth/PlayResX
+// pixels, so a wide frame would otherwise overestimate the occupied width.
+// Without a frame size nothing is known and the factor is 1.
+func (g renderGeometry) widthFactor() float64 {
+	if g.frameWidth <= 0 || g.frameHeight <= 0 || g.canvasWidth <= 0 || g.canvasHeight <= 0 {
+		return 1
+	}
+	return (float64(g.frameHeight) / g.canvasHeight) / (float64(g.frameWidth) / g.canvasWidth)
+}
+
 func validateRenderInputs(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, style config.ASSStyleConfig) error {
 	if bundle.Version != Version {
 		return fmt.Errorf("unsupported source bundle version %d", bundle.Version)
@@ -353,16 +389,87 @@ const (
 	minYieldedPairMS = 1000
 )
 
+// assCentis converts a source time to the centiseconds the subtitle file shows,
+// so every threshold below matches what a viewer sees.
+func assCentis(ms int) int { return roundCentiseconds(ms) / 10 }
+
+// closeTimingGaps closes a blank shorter than gapCloseMS between two
+// consecutive screens of one region, which the player would otherwise show as
+// a one-frame flicker. Only the earlier end moves; starts never change.
+func closeTimingGaps(blocks []block) {
+	for _, top := range []bool{false, true} {
+		order := regionOrder(blocks, top)
+		for k := 1; k < len(order); k++ {
+			previous, next := &blocks[order[k-1]], blocks[order[k]]
+			gap := assCentis(next.start) - assCentis(previous.end)
+			if gap > 0 && gap < gapCloseMS/10 {
+				previous.end = next.start
+			}
+		}
+	}
+}
+
+// regionOrder returns the indexes of one region's blocks in start order.
+func regionOrder(blocks []block, top bool) []int {
+	var order []int
+	for i := range blocks {
+		if blocks[i].top == top {
+			order = append(order, i)
+		}
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		if blocks[order[a]].start != blocks[order[b]].start {
+			return blocks[order[a]].start < blocks[order[b]].start
+		}
+		return blocks[order[a]].end < blocks[order[b]].end
+	})
+	return order
+}
+
+// extendShortScreens grows the end time of a screen shorter than shortScreenMS
+// toward a full reading time. The end never moves past the start of a later
+// screen of the same region and a screen that already overlaps another one in
+// its region keeps its own end. Starts never change, and regions are
+// independent: the other side's timing is not a limit.
+func extendShortScreens(blocks []block) {
+	for _, top := range []bool{false, true} {
+		order := regionOrder(blocks, top)
+		for _, index := range order {
+			b := &blocks[index]
+			if short := shortScreenMS/10 - (assCentis(b.end) - assCentis(b.start)); short > 0 {
+				// The floor is measured on the centiseconds the file shows, so
+				// the end lands exactly on start+1200 as the player sees it.
+				limit := (assCentis(b.start) + shortScreenMS/10) * 10
+				overlapping := false
+				for _, otherIndex := range order {
+					if otherIndex == index {
+						continue
+					}
+					other := blocks[otherIndex]
+					if assCentis(other.start) >= assCentis(b.end) {
+						limit = min(limit, other.start)
+					} else if assCentis(other.end) > assCentis(b.start) {
+						overlapping = true
+					}
+				}
+				if !overlapping && assCentis(limit) > assCentis(b.end) {
+					b.end = limit
+				}
+			}
+		}
+	}
+}
+
 // yieldToChineseSingles removes short overlaps between a Chinese-only
 // dialogue line and the paired line next to it. The pair shows on English
 // time while the single keeps its Chinese time, so two timings of one pause
 // can overlap and the player stacks three lines. The pair yields, which
 // restores the Chinese track's own order, unless it would drop below
 // minYieldedPairMS; then the single is cut.
-func yieldToChineseSingles(blocks []block, mapping Mapping) {
+func yieldToChineseSingles(blocks []block, mapping Mapping, zh map[int]Cue) {
 	single := func(b block) bool {
 		return len(b.enIDs) == 0 && len(b.zhIDs) > 0 && !b.isLyric && b.position == nil &&
-			b.group >= 0 && b.group < len(mapping.Groups) && mapping.Groups[b.group].Kind != KindOnScreenText
+			!groupPlacementKind(mapping, b.group, zh)
 	}
 	paired := func(b block) bool {
 		return len(b.enIDs) > 0 && len(b.zhIDs) > 0 && !b.isLyric && b.position == nil
@@ -385,15 +492,20 @@ func yieldToChineseSingles(blocks []block, mapping Mapping) {
 			}
 			switch {
 			case p.start < s.start && p.end < s.end:
+				// The single comes after the pair. The pair yields its end unless
+				// that would leave it under minYieldedPairMS; then the single is
+				// cut to start where the pair ends.
 				if s.start-p.start >= minYieldedPairMS {
 					p.end = s.start
 				} else {
 					s.start = p.end
 				}
 			case p.start > s.start && p.end > s.end:
-				if p.end-s.end >= minYieldedPairMS {
-					p.start = s.end
-				} else {
+				// The single comes before the pair. English keeps its timeline, so
+				// the pair's start never moves; the single's end is cut to it.
+				// A cut that leaves the single no positive duration on ASS
+				// centiseconds keeps both original times.
+				if roundCentiseconds(p.start) > roundCentiseconds(s.start) {
 					s.end = p.start
 				}
 			}
@@ -429,6 +541,28 @@ func verifySourceCoverage(blocks []block, en, zh map[int]Cue) error {
 		}
 	}
 	return nil
+}
+
+// oneSidedText returns the text a one-sided cue renders on. It joins the source
+// into one display line when the flattened text fits the language limit, and
+// otherwise keeps exactly the source line breaks without adding wraps. The
+// flattening keeps speaker marks, so a "- A - B" dialogue line stays readable.
+func oneSidedText(plain, display string, limit int, chinese bool) string {
+	source := strings.TrimSpace(plain)
+	if source == "" {
+		// A format-only cue has no source lines; the display text is all it has.
+		return display
+	}
+	flattened := joinCueLines(source)
+	if limit > 0 && countedLengthFor(flattened, chinese) <= limit {
+		return flattened
+	}
+	return source
+}
+
+// joinCueLines flattens a cue's meaningful source lines with single spaces.
+func joinCueLines(text string) string {
+	return strings.Join(sourceLines(text), " ")
 }
 
 func hasMusicSymbol(text string) bool {
@@ -517,7 +651,7 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig, word
 		// it collides with speech, so equal labels do not land on different
 		// sides depending on one window's answer.
 		sourceTop := false
-		top := group.Layer == LayerTop && group.Kind != KindOnScreenText
+		top := group.Layer == LayerTop && !groupPlacementKind(mapping, groupIndex, zh)
 		for _, cue := range append(append([]Cue{}, es...), zs...) {
 			if cue.Top {
 				sourceTop = true
@@ -578,12 +712,23 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig, word
 			return b
 		}
 
+		// A cue with no counterpart (sign text, lyrics without translation) is
+		// never split. Its flattened text goes on one line when it fits that
+		// language's character limit; otherwise it keeps exactly its source line
+		// breaks and gains none. The text override carries the chosen text,
+		// because layout re-reads the flattened Display and would wrap it again.
 		if len(es) == 0 || len(zs) == 0 {
 			for _, cue := range es {
-				result = append(result, oneSided(cue, true))
+				b := oneSided(cue, true)
+				text := oneSidedText(cue.Plain, cue.Display, cfg.EnChars, false)
+				b.enText, b.enFlattened = &text, true
+				result = append(result, b)
 			}
 			for _, cue := range zs {
-				result = append(result, oneSided(cue, false))
+				b := oneSided(cue, false)
+				text := oneSidedText(cue.Plain, cue.Display, cfg.ZhChars, true)
+				b.zhText, b.zhFlattened = &text, true
+				result = append(result, b)
 			}
 			continue
 		}
@@ -708,8 +853,8 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig, word
 			continue
 		}
 
-		enJoinable := joinable(es, cfg.EnChars, cfg.EnGapMS, cfg.SpanMS)
-		zhJoinable := joinable(zs, cfg.ZhChars, cfg.ZhGapMS, 0)
+		enJoinable := joinable(es, cfg.EnChars, cfg.EnGapMS, cfg.SpanMS, false)
+		zhJoinable := joinable(zs, cfg.ZhChars, cfg.ZhGapMS, 0, true)
 		if (len(es) == 1 || len(zs) == 1) && enJoinable && zhJoinable {
 			result = append(result, makeBlock(es[0].Start, maxEnd(es), es, zs, strategyShortJoin))
 			continue
@@ -837,7 +982,7 @@ func mergeDialogueCounterpartSlices(slices []block, en, zh map[int]Cue, cfg conf
 						continue
 					}
 					combinedEN := append(append([]Cue(nil), candidateEN...), newEN...)
-					if !joinable(combinedEN, cfg.EnChars, cfg.EnGapMS, cfg.SpanMS) {
+					if !joinable(combinedEN, cfg.EnChars, cfg.EnGapMS, cfg.SpanMS, false) {
 						break
 					}
 					candidateEN = combinedEN
@@ -881,7 +1026,7 @@ func mergeDialogueCounterpartSlices(slices []block, en, zh map[int]Cue, cfg conf
 						continue
 					}
 					combinedZH := append(append([]Cue(nil), candidateZH...), newZH...)
-					if !joinable(combinedZH, cfg.ZhChars, cfg.ZhGapMS, 0) {
+					if !joinable(combinedZH, cfg.ZhChars, cfg.ZhGapMS, 0, true) {
 						break
 					}
 					candidateZH = combinedZH
@@ -943,20 +1088,21 @@ func maxEnd(cues []Cue) int {
 }
 
 // joinable ports the prototype's short-join predicate. span 0 disables the span
-// check (Chinese uses only the character and gap limits).
-func joinable(cues []Cue, limit, gap, span int) bool {
+// check (Chinese uses only the character and gap limits). The separator space
+// between two cues counts for English only, as the Chinese limit skips spaces.
+func joinable(cues []Cue, limit, gap, span int, chinese bool) bool {
 	if len(cues) == 0 {
 		return false
 	}
 	total := 0
 	for i, cue := range cues {
-		if i > 0 {
+		if i > 0 && !chinese {
 			total++
-			if cue.Start-cues[i-1].End < 0 {
-				return false
-			}
 		}
-		total += countedLength(cue.Display)
+		if i > 0 && cue.Start-cues[i-1].End < 0 {
+			return false
+		}
+		total += countedLengthFor(cue.Display, chinese)
 		if len(cues) > 1 && cue.MultiSpeaker {
 			return false
 		}
@@ -988,11 +1134,12 @@ func startsWithDash(text string) bool {
 // the original line breaks of a whole cue whose lines each fit the limit.
 // Joined source cues still use the configured display limits.
 func wrapSourceDisplay(text, lang string, limit int, balanced bool, cues []Cue) string {
+	chinese := lang == "zh"
 	if len(cues) == 1 && compactText(cues[0].Plain, false) == compactText(text, false) {
 		if sourceSingleLine(cues[0].Plain) {
 			return text
 		}
-		if countedLength(text) > limit && (cues[0].MultiSpeaker || linesWithin(cues[0].Plain, limit)) {
+		if countedLengthFor(text, chinese) > limit && (cues[0].MultiSpeaker || linesWithin(cues[0].Plain, limit, chinese)) {
 			return cues[0].Plain
 		}
 	}
@@ -1000,9 +1147,9 @@ func wrapSourceDisplay(text, lang string, limit int, balanced bool, cues []Cue) 
 }
 
 // linesWithin reports whether every source line of text fits the limit.
-func linesWithin(text string, limit int) bool {
+func linesWithin(text string, limit int, chinese bool) bool {
 	for _, line := range sourceLines(text) {
-		if countedLength(line) > limit {
+		if countedLengthFor(line, chinese) > limit {
 			return false
 		}
 	}
@@ -1016,9 +1163,10 @@ func wrapDisplay(text, lang string, limit int, balanced bool) string {
 	if limit <= 0 {
 		return text
 	}
+	chinese := lang == "zh"
 	var result []string
 	for _, line := range strings.Split(text, "\n") {
-		if balanced && lang == "zh" && countedLength(line) > limit {
+		if balanced && chinese && countedLengthFor(line, true) > limit {
 			result = append(result, wrapBalancedZH(line, limit)...)
 			continue
 		}
@@ -1029,9 +1177,10 @@ func wrapDisplay(text, lang string, limit int, balanced bool) string {
 
 func wrapLine(line, lang string, limit int) []string {
 	var result []string
+	chinese := lang == "zh"
 	runes := []rune(line)
-	for countedLength(string(runes)) > limit {
-		end := limitIndex(runes, limit)
+	for countedLengthFor(string(runes), chinese) > limit {
+		end := limitIndex(runes, limit, chinese)
 		if lang == "en" {
 			cut := lastSpaceCut(runes, end)
 			if cut <= 0 || !isSafeCutIndex(runes, cut) {
@@ -1041,12 +1190,23 @@ func wrapLine(line, lang string, limit int) []string {
 			runes = trimLeftSpace(runes[cut:])
 			continue
 		}
+		// A Chinese space separates clauses and costs nothing toward the limit, so
+		// wrapping there reads better than cutting at the character that fills
+		// the limit. Fall back to the limit position when no space is near.
+		cut := -1
+		if chinese {
+			if space := lastSpaceCut(runes, end); space > 0 && isSafeCutIndex(runes, space) {
+				cut = space
+			}
+		}
 		// Never split a grapheme cluster (ZWJ emoji, combining marks, variation
 		// selectors, flag pairs). If no safe cut exists at or before the limit,
 		// keep the whole remaining text rather than corrupting it.
-		cut := end
-		for cut > 0 && !isSafeCutIndex(runes, cut) {
-			cut--
+		if cut < 0 {
+			cut = end
+			for cut > 0 && !isSafeCutIndex(runes, cut) {
+				cut--
+			}
 		}
 		if cut <= 0 {
 			break
@@ -1084,12 +1244,12 @@ func trimLeftSpace(runes []rune) []rune {
 func wrapBalancedZH(line string, limit int) []string {
 	runes := []rune(line)
 	var result []string
-	remaining := int(math.Ceil(float64(countedLength(line)) / float64(limit)))
+	remaining := int(math.Ceil(float64(countedLengthFor(line, true)) / float64(limit)))
 	closing := "，。！？；：、…）】》”’"
 	isClosing := func(r rune) bool { return strings.ContainsRune(closing, r) }
 	isBreakSpace := unicodeIsSpace
 	for remaining > 1 && len(runes) > 0 {
-		counted := countedPrefix(runes)
+		counted := countedPrefix(runes, true)
 		total := counted[len(runes)]
 		width := int(math.Ceil(float64(total) / float64(remaining)))
 		best := -1
@@ -1111,7 +1271,7 @@ func wrapBalancedZH(line string, limit int) []string {
 		}
 		cut := best
 		if cut < 0 {
-			cut = limitIndex(runes, width)
+			cut = limitIndex(runes, width, true)
 		}
 		// Closing punctuation does not count, so it can always join the line.
 		for cut < len(runes) && isClosing(runes[cut]) {
@@ -1246,12 +1406,62 @@ func emWidthBound(text string, size float64, style config.ASSStyleConfig) float6
 
 // applySpatialPolicies executes multi-speaker spatial layout and on-screen text
 // collision avoidance across the full episode timeline.
-func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, geometry renderGeometry, style config.ASSStyleConfig, checks *splitChecks) []block {
-	isOnScreenText := func(b block) bool {
-		if b.group < 0 || b.group >= len(mapping.Groups) {
+// groupPlacementKind reports whether a group is placed and avoided like on-screen
+// text. Besides the model's own on_screen_text decision, a group with no English
+// text whose every Chinese cue is wholly wrapped in full-width parentheses is
+// display text: a sign, a note, a screen readout. The explicit unknown kind keeps
+// old mappings without a kind on their current behavior, and a dialogue kind is
+// the model's own answer, which stands.
+func groupPlacementKind(mapping Mapping, group int, zh map[int]Cue) bool {
+	if group < 0 || group >= len(mapping.Groups) {
+		return false
+	}
+	g := mapping.Groups[group]
+	if g.Kind == KindOnScreenText {
+		return true
+	}
+	if g.Kind != KindUnknown || len(g.ENIDs) > 0 || len(g.ZHIDs) == 0 {
+		return false
+	}
+	for _, cue := range cuesFor(zh, g.ZHIDs) {
+		if !parenthesizedText(cue.Plain) {
 			return false
 		}
-		return mapping.Groups[b.group].Kind == KindOnScreenText
+	}
+	return true
+}
+
+// parenthesizedText reports whether the whole trimmed text is wrapped in one
+// pair of full-width parentheses.
+func parenthesizedText(plain string) bool {
+	text := []rune(strings.TrimSpace(plain))
+	if len(text) < 2 || text[0] != '（' || text[len(text)-1] != '）' {
+		return false
+	}
+	// The whole text must be ONE parenthetical: the bracket opened at the first
+	// rune has to close exactly at the last one. "（低声）快走（关门）" opens and
+	// closes twice, so its main text is not parenthesized. Nesting is allowed.
+	depth := 0
+	for i, r := range text {
+		switch r {
+		case '（':
+			depth++
+		case '）':
+			depth--
+			if depth == 0 && i != len(text)-1 {
+				return false
+			}
+			if depth < 0 {
+				return false
+			}
+		}
+	}
+	return depth == 0
+}
+
+func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, geometry renderGeometry, style config.ASSStyleConfig, checks *splitChecks) []block {
+	isOnScreenText := func(b block) bool {
+		return groupPlacementKind(mapping, b.group, zh)
 	}
 
 	// Pass 1: Contiguous on-screen text grouping and relocation.
@@ -1395,10 +1605,11 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 	// temporal splitting already ran (splitLongBlocks) and this is the late
 	// resort; the merge still needs reliable measured width. Both 3-line and
 	// 4-line cases attempt to merge any 2-line language side. A side that shows
-	// two speakers never gets the over-cap exemption. Lines without speaker
-	// marks count as two speakers only when the other side has them and the
-	// group pairs one cue with one cue; a Chinese line held over from an earlier
-	// English cue keeps the layout it had there.
+	// two speakers passes its character cap only when that measurement itself
+	// proves the merged line fits; an unreliable measurement keeps the cap.
+	// Lines without speaker marks count as two speakers only when the other side
+	// has them and the group pairs one cue with one cue; a Chinese line held over
+	// from an earlier English cue keeps the layout it had there.
 	usableWidth := geometry.canvasWidth - geometry.marginL - geometry.marginR
 	for i := range blocks {
 		b := &blocks[i]
@@ -1414,9 +1625,12 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 			len(mapping.Groups[b.group].ENIDs) == 1 && len(mapping.Groups[b.group].ZHIDs) == 1
 		mergeSide := func(lines []string, font string, size float64, cap int, isZH, multi bool) {
 			merged := lines[0] + mergeSeparator + lines[1]
-			// Dialogue subtitles never exceed their configured cap, including whitespace.
-			if multi && countedLength(merged) > cap {
-				return
+			// A side passes its character cap only when the measurement itself
+			// proves the merged line fits; an unreliable measurement keeps the cap.
+			if multi && countedLengthFor(merged, isZH) > cap {
+				if _, ok := MeasureTextWidth(merged, font, size, style.ScaleX, style.Spacing, style.Bold, ""); !ok {
+					return
+				}
 			}
 			w, ok := MeasureTextWidth(merged, font, size, style.ScaleX, style.Spacing, style.Bold, "")
 			if !ok && isZH && !multi {
@@ -1424,7 +1638,7 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 				// one line when even the upper bound fits the screen.
 				w, ok = emWidthBound(merged, size, style), true
 			}
-			if ok && w <= usableWidth {
+			if ok && w*geometry.widthFactor() <= usableWidth {
 				if isZH {
 					b.zhText = &merged
 					b.zhFlattened = true

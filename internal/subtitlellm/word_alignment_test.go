@@ -40,7 +40,7 @@ func TestWordAlignmentUploadsAudioAndRestoresVideoClock(t *testing.T) {
 		{ID: 3, Start: 11000, End: 15000, Display: text, MultiSpeaker: true},
 	}}
 	extractions := 0
-	words, err := collectWordTimings(context.Background(), bundle, config.LLMConfig{EnChars: 22, WordAlignURL: server.URL}, func(ctx context.Context, cue Cue) ([]byte, int, error) {
+	words, err := collectWordTimings(context.Background(), bundle, config.LLMConfig{EnChars: 22, WordAlignURL: server.URL}, nil, func(ctx context.Context, cue Cue) ([]byte, int, error) {
 		extractions++
 		if cue.ID != 1 {
 			t.Errorf("extracted an unnecessary cue: %d", cue.ID)
@@ -71,7 +71,7 @@ func TestWordAlignmentKeepsCompletedCuesOnServiceFailure(t *testing.T) {
 	for i := 1; i <= 3; i++ {
 		bundle.EN = append(bundle.EN, Cue{ID: i, Start: i * 10000, End: i*10000 + 5000, Display: "The first part and then the second part."})
 	}
-	words, err := collectWordTimings(context.Background(), bundle, config.LLMConfig{EnChars: 22, WordAlignURL: server.URL}, func(ctx context.Context, cue Cue) ([]byte, int, error) {
+	words, err := collectWordTimings(context.Background(), bundle, config.LLMConfig{EnChars: 22, WordAlignURL: server.URL}, nil, func(ctx context.Context, cue Cue) ([]byte, int, error) {
 		return []byte("WAV"), cue.Start - 300, nil
 	})
 	if err == nil || len(words) != 1 || len(words[1]) != 1 || requests != 2 {

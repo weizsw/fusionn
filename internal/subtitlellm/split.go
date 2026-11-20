@@ -28,11 +28,69 @@ const minSyncFragmentMS = 1200
 // Existing short source events retain their original timing.
 const minFallbackFragmentMS = 800
 
+// midCuePlanCues returns the English cues a screen plan cuts strictly inside
+// their text. Only those need word times: a cut on a cue boundary already has a
+// source time, and aligning every cue of a multi-screen plan would cost about a
+// second of CPU each. A plan whose pieces do not match its cue text is skipped.
+func midCuePlanCues(bundle Bundle, plans []ScreenPlan) map[int]bool {
+	result := map[int]bool{}
+	if len(plans) == 0 {
+		return result
+	}
+	en := make(map[int]Cue, len(bundle.EN))
+	for _, cue := range bundle.EN {
+		en[cue.ID] = cue
+	}
+	for _, plan := range plans {
+		lang, err := newPlanLanguage(en, plan.ENIDs, false)
+		if err != nil {
+			continue
+		}
+		pieces := make([]string, len(plan.Screens))
+		for i, screen := range plan.Screens {
+			pieces[i] = normalizeSpaces(screen.EN)
+		}
+		spans, err := lang.matchPieces(pieces)
+		if err != nil {
+			continue
+		}
+		// A piece boundary strictly inside a cue's text range makes that cue a
+		// mid-cue cut; a screen that merely joins whole cues cuts nothing.
+		for i, span := range spans {
+			if !span.present {
+				continue
+			}
+			for _, index := range lang.touched(span) {
+				if span.lo > lang.lo[index] && span.lo < lang.hi[index] {
+					result[lang.cues[index].ID] = true
+				}
+			}
+			if i > 0 && spans[i-1].present {
+				cut := spans[i-1].hi
+				for _, index := range lang.touched(span) {
+					if cut > lang.lo[index] && cut < lang.hi[index] {
+						result[lang.cues[index].ID] = true
+					}
+				}
+			}
+		}
+	}
+	return result
+}
+
 // WordAlignmentCues selects long English speech for optional audio alignment.
 // It includes cues exceeding the character cap as well as 2-line English dialogue
 // eligible for 2+2 synchronized splitting with a matching 2-line Chinese cue.
 func WordAlignmentCues(bundle Bundle, cfg config.LLMConfig) []Cue {
+	return WordAlignmentCuesFor(bundle, cfg, nil)
+}
+
+// WordAlignmentCuesFor also selects the English cues a screen plan cuts inside,
+// so those cuts can use word times instead of a proportional estimate. A plan
+// the renderer later rejects simply leaves unused word times.
+func WordAlignmentCuesFor(bundle Bundle, cfg config.LLMConfig, plans []ScreenPlan) []Cue {
 	var result []Cue
+	planned := midCuePlanCues(bundle, plans)
 	zh2Lines := make(map[int]bool)
 	for _, z := range bundle.ZH {
 		if !z.MultiSpeaker && len(sourceLines(z.Plain)) == 2 {
@@ -40,7 +98,16 @@ func WordAlignmentCues(bundle Bundle, cfg config.LLMConfig) []Cue {
 		}
 	}
 	for _, cue := range bundle.EN {
-		if cue.MultiSpeaker || cue.End-cue.Start > 30000 {
+		if cue.End-cue.Start > 30000 {
+			continue
+		}
+		// A planned cut inside this cue needs word times even when the cue holds
+		// two speakers: the cut time is a word boundary, not a cue boundary.
+		if planned[cue.ID] {
+			result = append(result, cue)
+			continue
+		}
+		if cue.MultiSpeaker {
 			continue
 		}
 		if roundCentiseconds(cue.End)-roundCentiseconds(cue.Start) >= 2*minFallbackFragmentMS && len(textOptions(cue.Display, cue.Plain, cfg.EnChars, "en")) > 0 {
@@ -129,7 +196,7 @@ func trySyncSplit(b block, enCue, zhCue Cue, words WordTimings, cfg config.LLMCo
 	if len(enLines) != 2 || len(zhLines) != 2 {
 		return nil, false
 	}
-	if countedLength(strings.Join(enLines, " ")) <= cfg.EnChars && countedLength(strings.Join(zhLines, " ")) <= cfg.ZhChars {
+	if countedLength(strings.Join(enLines, " ")) <= cfg.EnChars && countedLengthFor(strings.Join(zhLines, " "), true) <= cfg.ZhChars {
 		return nil, false
 	}
 	totalDuration := roundCentiseconds(b.end) - roundCentiseconds(b.start)
@@ -265,6 +332,12 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 			continue
 		}
 		// Only true 1:1 mapping groups can undergo 2+2 synchronized splitting.
+		// A cue with no counterpart is never split: it keeps its whole text and
+		// its source line breaks over its own source time.
+		if b.strategy == strategyOneSided || len(b.enIDs) == 0 || len(b.zhIDs) == 0 {
+			syncSplitResult = append(syncSplitResult, b)
+			continue
+		}
 		// Slices of N:1, 1:N, or M:N groups must retain unified group planning.
 		if b.strategy == strategyOneToOne && len(b.enIDs) == 1 && len(b.zhIDs) == 1 {
 			enCue, zhCue := en[b.enIDs[0]], zh[b.zhIDs[0]]
@@ -319,7 +392,7 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 							enMerged := strings.Join(enLines, " ")
 							zhMerged := strings.Join(zhLines, " ")
 							enOver := countedLength(enMerged) > cfg.EnChars
-							zhOver := countedLength(zhMerged) > cfg.ZhChars
+							zhOver := countedLengthFor(zhMerged, true) > cfg.ZhChars
 							if !enOver && !zhOver {
 								isProtected = true
 							} else if english && !enOver {
@@ -348,6 +421,7 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 		return result
 	}
 	enPlans := plans(en, true)
+
 	for _, p := range enPlans {
 		var timing []WordTiming
 		if len(p.ids) == 1 {
@@ -359,6 +433,7 @@ func splitLongBlocks(blocks []block, en, zh map[int]Cue, cfg config.LLMConfig, w
 		}
 	}
 	zhPlans := plans(zh, false)
+
 	for _, p := range zhPlans {
 		var english []textPiece
 		for _, e := range enPlans {
@@ -602,28 +677,39 @@ func sourceSingleLine(plain string) bool {
 	return plain != "" && !strings.ContainsAny(plain, "\r\n")
 }
 
-// countedLength is the length checked against zh_chars and en_chars.
-// Punctuation and symbols do not count; spaces and every other character do.
+// countedLength is the English length checked against en_chars. Punctuation and
+// symbols do not count; spaces and every other character do.
 func countedLength(text string) int {
+	return countedLengthFor(text, false)
+}
+
+// countedLengthFor is the length checked against one language's character
+// limit. Punctuation and symbols never count. Chinese also skips spaces: a
+// half-width space separates Chinese clauses, is about a third of a glyph wide,
+// and counting it as a character overestimates the line.
+func countedLengthFor(text string, chinese bool) int {
 	n := 0
 	for _, r := range text {
-		if countsTowardLimit(r) {
+		if countsTowardLimit(r, chinese) {
 			n++
 		}
 	}
 	return n
 }
 
-func countsTowardLimit(r rune) bool {
-	return !unicode.IsPunct(r) && !unicode.IsSymbol(r)
+func countsTowardLimit(r rune, chinese bool) bool {
+	if unicode.IsPunct(r) || unicode.IsSymbol(r) {
+		return false
+	}
+	return !chinese || !unicode.IsSpace(r)
 }
 
-// countedPrefix returns p with p[i] = countedLength(string(runes[:i])).
-func countedPrefix(runes []rune) []int {
+// countedPrefix returns p with p[i] = countedLengthFor(string(runes[:i])).
+func countedPrefix(runes []rune, chinese bool) []int {
 	p := make([]int, len(runes)+1)
 	for i, r := range runes {
 		p[i+1] = p[i]
-		if countsTowardLimit(r) {
+		if countsTowardLimit(r, chinese) {
 			p[i+1]++
 		}
 	}
@@ -633,10 +719,10 @@ func countedPrefix(runes []rune) []int {
 // limitIndex returns the largest rune index i such that runes[:i] counts at
 // most limit characters, so punctuation after the last counted character
 // stays with it.
-func limitIndex(runes []rune, limit int) int {
+func limitIndex(runes []rune, limit int, chinese bool) int {
 	count := 0
 	for i, r := range runes {
-		if countsTowardLimit(r) {
+		if countsTowardLimit(r, chinese) {
 			if count == limit {
 				return i
 			}
@@ -649,15 +735,16 @@ func limitIndex(runes []rune, limit int) int {
 // textOptions keeps original single lines. It considers source line breaks
 // when the flattened multiline text exceeds the configured limit.
 func textOptions(text, plain string, limit int, lang string) [][]string {
-	if limit <= 0 || countedLength(text) <= limit || sourceSingleLine(plain) {
+	chinese := lang == "zh"
+	if limit <= 0 || countedLengthFor(text, chinese) <= limit || sourceSingleLine(plain) {
 		return nil
 	}
 	var result [][]string
 	lines := sourceLines(plain)
-	if len(lines) > 1 && compactText(strings.Join(lines, ""), false) == compactText(text, false) && partsFit(lines, limit) {
+	if len(lines) > 1 && compactText(strings.Join(lines, ""), false) == compactText(text, false) && partsFit(lines, limit, chinese) {
 		result = append(result, lines)
 	}
-	if balanced := balancedParts(text, limit, lang); len(balanced) > 1 && partsFit(balanced, limit) {
+	if balanced := balancedParts(text, limit, lang); len(balanced) > 1 && partsFit(balanced, limit, chinese) {
 		if len(result) == 0 || strings.Join(result[0], "\n") != strings.Join(balanced, "\n") {
 			result = append(result, balanced)
 		}
@@ -665,9 +752,9 @@ func textOptions(text, plain string, limit int, lang string) [][]string {
 	return result
 }
 
-func partsFit(parts []string, limit int) bool {
+func partsFit(parts []string, limit int, chinese bool) bool {
 	for _, part := range parts {
-		if strings.TrimSpace(part) == "" || countedLength(part) > limit {
+		if strings.TrimSpace(part) == "" || countedLengthFor(part, chinese) > limit {
 			return false
 		}
 	}
@@ -675,7 +762,8 @@ func partsFit(parts []string, limit int) bool {
 }
 
 func balancedParts(text string, limit int, lang string) []string {
-	count := (countedLength(text) + limit - 1) / limit
+	chinese := lang == "zh"
+	count := (countedLengthFor(text, chinese) + limit - 1) / limit
 	maxParts := utf8.RuneCountInString(text)
 	if lang == "en" {
 		fields := strings.Fields(text)
@@ -696,9 +784,10 @@ func balancedParts(text string, limit int, lang string) []string {
 
 func balancedPartCount(text string, limit, count int, lang string) []string {
 	runes := []rune(text)
+	chinese := lang == "zh"
 	var result []string
 	for remaining := count; remaining > 1; remaining-- {
-		counted := countedPrefix(runes)
+		counted := countedPrefix(runes, chinese)
 		total := counted[len(runes)]
 		target := total / remaining
 		best, score := -1, int(^uint(0)>>1)

@@ -341,10 +341,11 @@ func verifyEpisode(bundle Bundle, mapping Mapping, llmcfg config.LLMConfig, even
 		}
 	}
 
+	emitted := collectScreenWindows(events)
 	for key, wantInts := range baselineInts {
 		want := union(wantInts)
 		got := union(emittedInts[key])
-		if !equalIntervals(want, got) {
+		if !equalIntervals(want, got) && !onlyEndExtended(want, got, key, emitted) {
 			v.IntervalMismatches = append(v.IntervalMismatches, fmt.Sprintf(
 				"source identity %s display window changed: want %v got %v", key, want, got))
 		}
@@ -385,6 +386,126 @@ func equalIntervals(a, b [][2]int) bool {
 		}
 	}
 	return true
+}
+
+// screenWindows records, per source identity, the emitted windows and the side
+// of the screen each one occupies, plus every emitted start per side. Rules A
+// and C may only extend an end up to the next start in the same region, so the
+// region's starts (not just this cue's) are the limit.
+type screenWindows struct {
+	windows    map[string][][2]int
+	windowSide map[string]map[int]int
+	sideStarts [2][]int
+}
+
+func collectScreenWindows(events []renderedEvent) screenWindows {
+	c := screenWindows{windows: map[string][][2]int{}, windowSide: map[string]map[int]int{}}
+	add := func(key string, start, end int, top bool) {
+		c.windows[key] = append(c.windows[key], [2]int{start, end})
+		if c.windowSide[key] == nil {
+			c.windowSide[key] = map[int]int{}
+		}
+		side := 0
+		if top {
+			side = 1
+		}
+		c.windowSide[key][start] = side
+		c.sideStarts[side] = append(c.sideStarts[side], start)
+	}
+	for _, e := range events {
+		top := e.alignment >= 7
+		for _, id := range e.enIDs {
+			add(fmt.Sprintf("en:%d", id), e.assStart, e.assEnd, top)
+		}
+		for _, id := range e.zhIDs {
+			add(fmt.Sprintf("zh:%d", id), e.assStart, e.assEnd, top)
+		}
+	}
+	for side := range c.sideStarts {
+		sort.Ints(c.sideStarts[side])
+	}
+	return c
+}
+
+// regionStarts returns the emitted starts of the screen side that holds the
+// window beginning at start, in order.
+func (c screenWindows) regionStarts(key string, start int) []int {
+	side, found := c.windowSide[key][start]
+	if !found {
+		return nil
+	}
+	return c.sideStarts[side]
+}
+
+func onlyEndExtended(want, got [][2]int, key string, emitted screenWindows) bool {
+	if len(want) != len(got) {
+		return false
+	}
+	region := emitted.regionStarts(key, want[0][0])
+	windows := append([][2]int(nil), emitted.windows[key]...)
+	sort.Slice(windows, func(i, j int) bool { return windows[i][0] < windows[j][0] })
+	for i := range want {
+		if want[i][0] != got[i][0] {
+			return false
+		}
+		if want[i][1] == got[i][1] {
+			continue
+		}
+		// The renderer may split one source window into contiguous slices. The
+		// slices must still start together, leave no blank, and stay inside the
+		// source window except for the tail the short-screen rule grows. The
+		// grown tail belongs to the last slice, so its own start is the floor's
+		// origin.
+		var inside [][2]int
+		for _, window := range windows {
+			if window[0] >= want[i][0] && window[0] < want[i][1] {
+				inside = append(inside, window)
+			}
+		}
+		if len(inside) == 0 {
+			return false
+		}
+		for j := 1; j < len(inside); j++ {
+			if inside[j][0] != inside[j-1][1] {
+				return false
+			}
+		}
+		last := inside[len(inside)-1]
+		if got[i][1] != allowedEnd(last[0], want[i][1], region) {
+			return false
+		}
+	}
+	return true
+}
+
+// allowedEnd is the only end rules C and A can produce for a screen that starts
+// at start, ends at end, and sits in the region whose starts are given. C grows
+// a screen shorter than the reading floor toward start+shortScreenMS, stopping
+// at the next start of that region; A then closes a remaining gap shorter than
+// gapCloseMS to that start. C runs first, so the two results combine.
+func allowedEnd(start, end int, regionStarts []int) int {
+	c := end
+	if end-start < shortScreenMS {
+		c = start + shortScreenMS
+		if next := nextStartAfter(regionStarts, start); next > 0 && next < c {
+			c = next
+		}
+	}
+	if next := nextStartAfter(regionStarts, c); next > 0 && next-c < gapCloseMS {
+		c = next
+	}
+	return c
+}
+
+// nextStartAfter returns the first start strictly after at, but never the screen
+// itself: a screen whose own start is at is skipped.
+func nextStartAfter(starts []int, at int) int {
+	for _, start := range starts {
+		if start > at {
+			return start
+		}
+	}
+	return 0
 }
 
 // --- Portable fixtures -----------------------------------------------------
@@ -483,9 +604,9 @@ func TestReviewProbeFourLinesMustTryWidthMergeBeforePartition(t *testing.T) {
 	}
 }
 
-// Probe 3: P1/P2: dialogue character caps include whitespace
+// Probe 3: P1/P2: dialogue character caps include whitespace, and a two-speaker
+// side passes its cap only when the measured width proves the merged line fits.
 func TestReviewProbeDialogueCapIncludesSpaces(t *testing.T) {
-	reviewWidthHook(t)
 	cfg := fixtureConfig()
 	cfg.EnChars = 14 // "- A long - B line" counts 15: spaces count, dashes do not
 	style := fixtureStyle()
@@ -496,14 +617,34 @@ func TestReviewProbeDialogueCapIncludesSpaces(t *testing.T) {
 		[]Cue{{ID: 1, Start: 1000, End: 2200, Display: "答复", Plain: "答复", Alignment: 2}},
 	)
 	mapping := fixtureMapping(bundle, []Group{{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue}})
+	// The width cannot be measured, so the counted length decides and the
+	// merged line stays forbidden.
+	old := fontWidthMeasurerOverride
+	fontWidthMeasurerOverride = func(string, string, float64, int, float64, bool) (float64, bool) { return 0, false }
+	t.Cleanup(func() { fontWidthMeasurerOverride = old })
 	_, events, err := renderWithAudits(bundle, mapping, cfg, style, 1920, 1080, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, e := range events {
 		if len(sourceLines(e.enText)) == 1 && countedLength(e.enText) > cfg.EnChars {
-			t.Fatalf("dialogue merged above cap %d: %q (counted %d)", cfg.EnChars, e.enText, countedLength(e.enText))
+			t.Fatalf("dialogue merged above cap %d without a reliable measurement: %q (counted %d)", cfg.EnChars, e.enText, countedLength(e.enText))
 		}
+	}
+	// A reliable measurement that proves the line fits allows the merge.
+	fontWidthMeasurerOverride = func(string, string, float64, int, float64, bool) (float64, bool) { return 100, true }
+	_, events, err = renderWithAudits(bundle, mapping, cfg, style, 1920, 1080, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	merged := false
+	for _, e := range events {
+		if len(sourceLines(e.enText)) == 1 && countedLength(e.enText) > cfg.EnChars {
+			merged = true
+		}
+	}
+	if !merged {
+		t.Fatal("a measured dialogue line past the cap was not merged")
 	}
 }
 

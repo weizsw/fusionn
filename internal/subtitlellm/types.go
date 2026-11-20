@@ -168,7 +168,60 @@ type Mapping struct {
 	Parameters        MappingParameters `json:"parameters"`
 	Groups            []Group           `json:"groups"`
 	SplitChecks       []SplitCheck      `json:"split_checks,omitempty"`
+	ScreenPlans       []ScreenPlan      `json:"screen_plans,omitempty"`
 	Fingerprint       string            `json:"fingerprint,omitempty"`
+}
+
+// ScreenPlan is one model-proposed re-segmentation of a mapping group into
+// display screens. It identifies its group by the exact source IDs and holds
+// only text: timing is derived from the English source cues at render time.
+type ScreenPlan struct {
+	ENIDs   []int        `json:"en_ids"`
+	ZHIDs   []int        `json:"zh_ids"`
+	Screens []ScreenText `json:"screens"`
+}
+
+// ScreenText is one screen of a plan: the English and Chinese piece shown
+// together. Either side may be empty when that text has no counterpart.
+type ScreenText struct {
+	EN string `json:"en"`
+	ZH string `json:"zh"`
+}
+
+// ScreenPlanAudit counts the screen plans of one alignment and render run.
+// Candidates, Requested, Requests and CacheHits come from alignment; Applied
+// and Rejected are recorded by the renderer, which validates each plan.
+type ScreenPlanAudit struct {
+	Candidates    int                 `json:"candidates"`
+	Requested     int                 `json:"requested"`
+	Applied       int                 `json:"applied"`
+	Rejected      map[string]int      `json:"rejected,omitempty"`
+	RejectedGroup []RejectedPlanGroup `json:"rejected_groups,omitempty"`
+	Requests      int                 `json:"requests"`
+	CacheHits     int                 `json:"cache_hits"`
+	Failures      []string            `json:"failures,omitempty"`
+	// Retried counts the plans the pre-render check rejected and sent back
+	// with their reason; Recovered counts the ones the answer fixed.
+	Retried   int         `json:"retried"`
+	Recovered int         `json:"recovered"`
+	Retries   []PlanRetry `json:"retries,omitempty"`
+}
+
+// PlanRetry records one group whose plan failed the pre-render check, the first
+// reason, and whether the follow-up answer replaced it.
+type PlanRetry struct {
+	ENIDs  []int  `json:"en_ids"`
+	ZHIDs  []int  `json:"zh_ids"`
+	Reason string `json:"reason"`
+	Result string `json:"result"`
+}
+
+// RejectedPlanGroup names one group whose plan failed validation, with the full
+// error, so a rejected plan can be identified without re-running the renderer.
+type RejectedPlanGroup struct {
+	ENIDs  []int  `json:"en_ids"`
+	ZHIDs  []int  `json:"zh_ids"`
+	Reason string `json:"reason"`
 }
 
 // SplitCheck records whether showing ZH[i] together with EN[i] keeps every
@@ -261,6 +314,7 @@ type Audit struct {
 	HTTPAttempts      int               `json:"http_attempts_this_run,omitempty"`
 	ResolvedModels    []string          `json:"resolved_models,omitempty"`
 	SplitChecks       *SplitCheckAudit  `json:"split_checks,omitempty"`
+	ScreenPlans       *ScreenPlanAudit  `json:"screen_plans,omitempty"`
 	Coverage          Coverage          `json:"coverage"`
 	Provenance        *Provenance       `json:"provenance,omitempty"`
 }
@@ -358,6 +412,20 @@ func mappingDigest(m Mapping) (string, error) {
 			checks[i] = map[string]any{"zh": stringsValue(check.ZH), "en": stringsValue(check.EN), "same": check.Same}
 		}
 		value["split_checks"] = checks
+	}
+	// The same holds for screen plans: a mapping without plans keeps its fingerprint.
+	if len(m.ScreenPlans) > 0 {
+		plans := make([]any, len(m.ScreenPlans))
+		for i, plan := range m.ScreenPlans {
+			screens := make([]any, len(plan.Screens))
+			for j, screen := range plan.Screens {
+				screens[j] = map[string]any{"en": screen.EN, "zh": screen.ZH}
+			}
+			plans[i] = map[string]any{
+				"en_ids": intsValue(plan.ENIDs), "zh_ids": intsValue(plan.ZHIDs), "screens": screens,
+			}
+		}
+		value["screen_plans"] = plans
 	}
 	return digestValue(value)
 }

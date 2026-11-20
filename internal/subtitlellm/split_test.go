@@ -325,7 +325,7 @@ func TestChineseSourceBreakIsNotForcedBelowTotalReadingTime(t *testing.T) {
 
 func TestSpeakerWrappingKeepsOriginalLineBreaks(t *testing.T) {
 	cfg := renderTestConfig()
-	cfg.ZhChars = 12 // the flat line counts 15; each source line fits
+	cfg.ZhChars = 11 // the flat line counts 12 with spaces uncounted; each source line fits
 	plain := "- 什么？\n- 一个亚历克斯、一个瑞安"
 	bundle := makeBundle(
 		[]Cue{{ID: 1, Start: 1000, End: 5000, Display: "- What? - An Alex, a Ryan.", Plain: "- What?\n- An Alex, a Ryan.", MultiSpeaker: true}},
@@ -420,10 +420,10 @@ func TestCountedLength(t *testing.T) {
 
 func TestLimitIndex(t *testing.T) {
 	runes := []rune("你好，世界！再见")
-	if got := limitIndex(runes, 4); string(runes[:got]) != "你好，世界！" {
+	if got := limitIndex(runes, 4, true); string(runes[:got]) != "你好，世界！" {
 		t.Fatalf("limitIndex cut %q, want punctuation kept with the last counted character", string(runes[:got]))
 	}
-	if got := limitIndex(runes, 10); got != len(runes) {
+	if got := limitIndex(runes, 10, true); got != len(runes) {
 		t.Fatalf("limitIndex = %d, want whole text %d", got, len(runes))
 	}
 }
@@ -431,7 +431,7 @@ func TestLimitIndex(t *testing.T) {
 // A line break never leaves a space at either end of a wrapped line.
 func TestWrapDropsSpacesAtLineBreaks(t *testing.T) {
 	for _, lines := range [][]string{
-		wrapBalancedZH("同意 - 而且阿尔-纳瓦兹改变了… - 女士 我们有线索", 20),
+		wrapBalancedZH("同意 - 而且阿尔-纳瓦兹改变了… - 女士 我们有线索", 12),
 		wrapLine("一二三四五六七八九十 一二三四五", "zh", 10),
 	} {
 		if len(lines) < 2 {

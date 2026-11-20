@@ -30,7 +30,8 @@ func importMapping(bundle Bundle, cfg config.LLMConfig) (Mapping, Audit, error) 
 		return Mapping{}, Audit{}, fmt.Errorf("parse mapping %q: %w", cfg.MappingPath, err)
 	}
 	allowed := map[string]bool{
-		"version": true, "source_fingerprint": true, "parameters": true, "groups": true, "split_checks": true, "fingerprint": true,
+		"version": true, "source_fingerprint": true, "parameters": true, "groups": true, "split_checks": true,
+		"screen_plans": true, "fingerprint": true,
 	}
 	for key := range top {
 		if !allowed[key] {
@@ -75,6 +76,11 @@ func importMapping(bundle Bundle, cfg config.LLMConfig) (Mapping, Audit, error) 
 	if err := validateImportedGroups(mapping, bundle); err != nil {
 		return Mapping{}, Audit{}, fmt.Errorf("mapping %q failed revalidation: %w", cfg.MappingPath, err)
 	}
+	// An imported mapping uses the plans it contains and asks for no new ones.
+	planAudit := &ScreenPlanAudit{}
+	for range mapping.ScreenPlans {
+		planAudit.Requested++
+	}
 
 	provenance := &Provenance{
 		Source:            "prototype-import",
@@ -92,6 +98,7 @@ func importMapping(bundle Bundle, cfg config.LLMConfig) (Mapping, Audit, error) 
 		WindowMissing: []WindowMissing{},
 		Pairing:       pairingStats(bundle, mapping.Groups),
 		Coverage:      Coverage{EN: len(bundle.EN), ZH: len(bundle.ZH)},
+		ScreenPlans:   planAudit,
 		Provenance:    provenance,
 	}
 	return mapping, audit, nil

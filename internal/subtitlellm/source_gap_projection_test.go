@@ -153,6 +153,7 @@ func TestTerminalListS02E01Group305EmbeddedFixture(t *testing.T) {
 
 // TestCounterexample_IndependentShortCuePreserved verifies that an originally
 // independent short cue (such as 80ms) is preserved and not removed as noise.
+// The short-screen rule grows only its end, to the 1200ms reading floor.
 func TestCounterexample_IndependentShortCuePreserved(t *testing.T) {
 	cfg := renderTestConfig()
 	bundle := makeBundle(
@@ -168,8 +169,8 @@ func TestCounterexample_IndependentShortCuePreserved(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event for independent short cue, got %d", len(events))
 	}
-	if events[0].start != 2000 || events[0].end != 2080 {
-		t.Fatalf("expected exact 80ms timing [2000..2080], got [%d..%d]", events[0].start, events[0].end)
+	if events[0].start != 2000 || events[0].end != 3200 {
+		t.Fatalf("expected the 80ms cue kept from 2000 and grown to the 1200ms floor [2000..3200], got [%d..%d]", events[0].start, events[0].end)
 	}
 	assertGlyphs(t, events[0].text, "等下Wait.")
 }
@@ -201,10 +202,12 @@ func TestCounterexample_IdenticalTextDifferentSourceIDsPreserved(t *testing.T) {
 	if len(events) != 2 {
 		t.Fatalf("expected 2 separate events for identical text with different IDs, got %d", len(events))
 	}
-	if events[0].start != 1000 || events[0].end != 2000 {
+	// The first screen is short, so its end grows to the 1200ms floor; its start
+	// and the second screen stay on source time.
+	if events[0].start != 1000 || events[0].end != 2200 {
 		t.Fatalf("unexpected timing for first event: [%d..%d]", events[0].start, events[0].end)
 	}
-	if events[1].start != 4000 || events[1].end != 5000 {
+	if events[1].start != 4000 || events[1].end != 5200 {
 		t.Fatalf("unexpected timing for second event: [%d..%d]", events[1].start, events[1].end)
 	}
 	assertGlyphs(t, events[0].text, "是的Yeah.")
@@ -450,9 +453,14 @@ func TestRoundCentisecondsTiesToEvenBoundary(t *testing.T) {
 		if len(events) != 2 {
 			t.Fatalf("Case 1: expected 2 events, got %d", len(events))
 		}
-		// In ASS centiseconds: 1004->1000, 1796->1800
-		if events[0].start != 1000 || events[0].end != 1800 {
-			t.Fatalf("Case 1: expected event[0] [1000..1800], got [%d..%d]", events[0].start, events[0].end)
+		// In ASS centiseconds: 1004->1000, 1796->1800. The 800ms result is below
+		// the 1200ms reading floor, so the short-screen rule grows its end to
+		// 2200; the start and the rollback the case is about do not change.
+		if events[0].start != 1000 || events[0].end != 2200 {
+			t.Fatalf("Case 1: expected event[0] [1000..2200], got [%d..%d]", events[0].start, events[0].end)
+		}
+		if adjusted[0] != 6000 {
+			t.Fatalf("Case 1: the rollback must keep the cut at 6000, got %d", adjusted[0])
 		}
 		if events[1].start != 6000 || events[1].end != 9000 || !strings.Contains(events[1].text, "第二句中文") {
 			t.Fatalf("Case 1: expected event[1] [6000..9000] with second cue, got [%d..%d] text=%q", events[1].start, events[1].end, events[1].text)

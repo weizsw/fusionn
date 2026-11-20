@@ -157,8 +157,12 @@ func TestRenderEpisodePreservesSourceTextAndDisplayIntervals(t *testing.T) {
 		}
 		previousZH, previousEN = z, e
 	}
-	if fmt.Sprint(joinedIntervals(before)) != fmt.Sprint(joinedIntervals(after)) {
-		t.Fatal("splitting changed the episode's occupied display intervals")
+	// Rules A and C move ends only: a screen may grow to the short-screen
+	// reading floor or to the next screen of the same region, and rule A may
+	// close a blank shorter than 100ms between two of them, which joins their
+	// intervals. Nothing may be lost, shortened or started later.
+	if failure := reasonForIntervalChange(before, after); failure != "" {
+		t.Fatalf("splitting changed the episode's occupied display intervals: %s", failure)
 	}
 	for lang, track := range map[string]struct {
 		cues []Cue
@@ -173,19 +177,6 @@ func TestRenderEpisodePreservesSourceTextAndDisplayIntervals(t *testing.T) {
 		}
 	}
 	assertMappingCoverage(t, mapping, bundle)
-}
-
-func joinedIntervals(intervals [][2]int) [][2]int {
-	sort.Slice(intervals, func(i, j int) bool { return intervals[i][0] < intervals[j][0] })
-	var result [][2]int
-	for _, interval := range intervals {
-		if len(result) == 0 || result[len(result)-1][1] < interval[0] {
-			result = append(result, interval)
-		} else {
-			result[len(result)-1][1] = max(result[len(result)-1][1], interval[1])
-		}
-	}
-	return result
 }
 
 func TestRenderMNRetainsShortChineseInSourceOrder(t *testing.T) {
@@ -794,5 +785,145 @@ func assertMappingCoverage(t *testing.T, mapping Mapping, bundle Bundle) {
 		if len(seen[lang]) != len(cues) {
 			t.Fatalf("%s mapping has %d distinct IDs, sources have %d", lang, len(seen[lang]), len(cues))
 		}
+	}
+}
+
+// reasonForIntervalChange explains why the emitted display intervals differ from
+// the prototype events, or returns "" when only rules A and C moved ends. Both
+// rules move end times only, so a lost source start, a moved start, and an end
+// past the reading floor or past the next screen must still fail.
+func reasonForIntervalChange(want, got [][2]int) string {
+	// Every source window must stay fully occupied: the renderer may split one
+	// window into contiguous slices, but it may not drop any of its display time.
+	for _, source := range want {
+		covered := joinIntervals(overlapping(got, source))
+		if !covers(covered, source) {
+			return fmt.Sprintf("source window %v is no longer fully shown: covered by %v", source, covered)
+		}
+	}
+	// An event may only extend past its source window for rules C and A.
+	order := make([]int, 0, len(got))
+	for _, interval := range got {
+		order = append(order, interval[0])
+	}
+	sort.Ints(order)
+	for _, interval := range got {
+		var source [2]int
+		found := false
+		for _, candidate := range want {
+			if candidate[0] <= interval[0] && (!found || candidate[0] > source[0]) {
+				source, found = candidate, true
+			}
+		}
+		if !found {
+			return fmt.Sprintf("emitted interval %v starts before any source window", interval)
+		}
+		if interval[1] <= source[1] {
+			continue
+		}
+		// Rule C: the end may reach the reading floor.
+		if interval[1] <= source[0]+shortScreenMS {
+			continue
+		}
+		// Rule A: the end may move to the next start, closing a blank shorter
+		// than 100ms.
+		next := 0
+		for _, at := range order {
+			if at > interval[0] {
+				next = at
+				break
+			}
+		}
+		if next > 0 && interval[1] == next && next-source[1] < gapCloseMS {
+			continue
+		}
+		return fmt.Sprintf("emitted interval %v runs past the end rules A and C allow for source window %v", interval, source)
+	}
+	return ""
+}
+
+// overlapping returns the intervals that share time with window.
+func overlapping(intervals [][2]int, window [2]int) [][2]int {
+	var result [][2]int
+	for _, interval := range intervals {
+		if interval[0] < window[1] && window[0] < interval[1] {
+			result = append(result, interval)
+		}
+	}
+	return result
+}
+
+// covers reports whether the joined intervals show every millisecond of window.
+func covers(joined [][2]int, window [2]int) bool {
+	at := window[0]
+	for _, interval := range joined {
+		if interval[0] > at {
+			return false
+		}
+		if interval[1] > at {
+			at = interval[1]
+		}
+		if at >= window[1] {
+			return true
+		}
+	}
+	return at >= window[1]
+}
+
+// joinIntervals merges touching or overlapping intervals, so the occupied
+// display time of one language is compared as a whole.
+func joinIntervals(intervals [][2]int) [][2]int {
+	sorted := append([][2]int(nil), intervals...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i][0] < sorted[j][0] })
+	var result [][2]int
+	for _, interval := range sorted {
+		if len(result) == 0 || result[len(result)-1][1] < interval[0] {
+			result = append(result, interval)
+			continue
+		}
+		if interval[1] > result[len(result)-1][1] {
+			result[len(result)-1][1] = interval[1]
+		}
+	}
+	return result
+}
+
+// TestIntervalVerifierRejectsUnexplainedExtension keeps the check above honest:
+// an end moved for a reason other than rules A and C must still fail.
+func TestIntervalVerifierRejectsUnexplainedExtension(t *testing.T) {
+	want := [][2]int{{1000, 2000}, {5000, 6000}}
+	// A gap of 3000ms is neither a reading floor nor a short blank, so nothing
+	// may extend the first window.
+	got := [][2]int{{1000, 2500}, {5000, 6000}}
+	if reason := reasonForIntervalChange(want, got); reason == "" {
+		t.Fatal("an unexplained end extension passed verification")
+	}
+	// A start that moves must fail even when the end is fine.
+	got = [][2]int{{1200, 2000}, {5000, 6000}}
+	if reason := reasonForIntervalChange(want, got); reason == "" {
+		t.Fatal("a moved start passed verification")
+	}
+	// The reading floor alone is allowed.
+	got = [][2]int{{1000, 2200}, {5000, 6000}}
+	if reason := reasonForIntervalChange(want, got); reason != "" {
+		t.Fatalf("the reading floor was rejected: %s", reason)
+	}
+	// Closing a blank shorter than 100ms is allowed.
+	want = [][2]int{{1000, 2000}, {2050, 3000}}
+	got = [][2]int{{1000, 2050}, {2050, 3000}}
+	if reason := reasonForIntervalChange(want, got); reason != "" {
+		t.Fatalf("closing a 50ms blank was rejected: %s", reason)
+	}
+	// A window shortened to a token length must still fail: the guarantee is on
+	// the occupied display time, not on the event count.
+	want = [][2]int{{1000, 2000}, {5000, 6000}}
+	got = [][2]int{{1000, 1010}, {5000, 5010}}
+	if reason := reasonForIntervalChange(want, got); reason == "" {
+		t.Fatal("dropping nearly all display time passed verification")
+	}
+	// An extra event after every source window must fail too.
+	got = append(got, [2]int{9000, 9010})
+	if reason := reasonForIntervalChange(want, got); reason == "" {
+		t.Fatal("an extra event outside every source window passed verification")
 	}
 }

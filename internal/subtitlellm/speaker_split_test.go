@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/fusionn/internal/config"
 )
 
 // speakerSplitFixture is the 10:49 case: one two-speaker Chinese cue over two
@@ -27,8 +29,13 @@ func zhPart(text string) string {
 
 func renderSpeakerSplit(t *testing.T, bundle Bundle, mapping Mapping) []dialogue {
 	t.Helper()
+	return renderSpeakerSplitCfg(t, bundle, mapping, fixtureConfig())
+}
+
+func renderSpeakerSplitCfg(t *testing.T, bundle Bundle, mapping Mapping, cfg config.LLMConfig) []dialogue {
+	t.Helper()
 	noWidthMeasurer(t)
-	out, _, err := renderWithAudits(bundle, mapping, fixtureConfig(), fixtureStyle(), 1920, 1080, nil)
+	out, _, err := renderWithAudits(bundle, mapping, cfg, fixtureStyle(), 1920, 1080, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +45,11 @@ func renderSpeakerSplit(t *testing.T, bundle Bundle, mapping Mapping) []dialogue
 func TestTwoSpeakerChineseFollowsEnglishCues(t *testing.T) {
 	bundle, groups := speakerSplitFixture("- 让里斯和他的队员得了脑瘤\n- 好吧 但这里是美国",
 		"gave Reece and his men brain tumors.", "Okay, but this is America.")
-	mapping := confirmAllSplits(t, bundle, fixtureMapping(bundle, groups), fixtureConfig())
+	// The flat Chinese line counts 20 with spaces uncounted, so a cap of 19
+	// keeps this two-speaker cue over the limit and the question is asked.
+	cfg := fixtureConfig()
+	cfg.ZhChars = 19
+	mapping := confirmAllSplits(t, bundle, fixtureMapping(bundle, groups), cfg)
 	want := []SplitCheck{{
 		ZH:   []string{"让里斯和他的队员得了脑瘤", "好吧 但这里是美国"},
 		EN:   []string{"gave Reece and his men brain tumors.", "Okay, but this is America."},
@@ -47,7 +58,7 @@ func TestTwoSpeakerChineseFollowsEnglishCues(t *testing.T) {
 	if !reflect.DeepEqual(mapping.SplitChecks, want) {
 		t.Fatalf("split checks = %+v, want %+v", mapping.SplitChecks, want)
 	}
-	events := renderSpeakerSplit(t, bundle, mapping)
+	events := renderSpeakerSplitCfg(t, bundle, mapping, cfg)
 	if len(events) != 2 {
 		t.Fatalf("want 2 events, got %d: %+v", len(events), events)
 	}

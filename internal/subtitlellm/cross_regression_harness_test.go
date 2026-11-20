@@ -1377,11 +1377,15 @@ func RunDarkMatterCrossRegressionToDir(dir, outDir string) (*RegressionRunResult
 		}
 	}
 	var windowFailures []string
+	screenWindows := collectScreenWindows(events)
 	for key, bList := range baselineInts {
 		eList := emittedInts[key]
 		bJoined := joinTimeIntervals(bList)
 		eJoined := joinTimeIntervals(eList)
-		if fmt.Sprint(bJoined) != fmt.Sprint(eJoined) {
+		// Rules A and C move ends only: a window may grow to the short-screen
+		// reading floor or to the next screen of the same region, and nothing
+		// else about it may change.
+		if fmt.Sprint(bJoined) != fmt.Sprint(eJoined) && !onlyEndExtended(bJoined, eJoined, key, screenWindows) {
 			windowFailures = append(windowFailures, fmt.Sprintf("cue %s display window changed: want %v got %v", key, bJoined, eJoined))
 		}
 	}

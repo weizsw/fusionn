@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -411,9 +412,21 @@ func TestEngine_TruncatedContextArbitrationUsesActualWindowInput(t *testing.T) {
 	)
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request: %v", err)
+			w.WriteHeader(500)
+			return
+		}
+		// Screen-plan requests are a second request type on this endpoint; they
+		// are answered empty and never count as window calls.
+		if screenPlanRequest(t, body) {
+			answerScreenPlan(w)
+			return
+		}
 		calls.Add(1)
 		var p requestPayload
-		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		if err := json.Unmarshal(body, &p); err != nil {
 			t.Errorf("decode: %v", err)
 			w.WriteHeader(500)
 			return

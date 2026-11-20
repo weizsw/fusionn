@@ -26,10 +26,16 @@ import (
 // A failed request returns completed cues plus an error; callers can keep
 // those times and render the remaining cues with proportional timing.
 func AlignWords(ctx context.Context, videoPath string, bundle Bundle, cfg config.LLMConfig) (WordTimings, error) {
+	return AlignWordsFor(ctx, videoPath, bundle, cfg, nil)
+}
+
+// AlignWordsFor also aligns the English cues that a screen plan cuts inside, so
+// an in-cue cut uses word times when the audio is available.
+func AlignWordsFor(ctx context.Context, videoPath string, bundle Bundle, cfg config.LLMConfig, plans []ScreenPlan) (WordTimings, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if cfg.WordAlignURL == "" || videoPath == "" || len(WordAlignmentCues(bundle, cfg)) == 0 {
+	if cfg.WordAlignURL == "" || videoPath == "" || len(WordAlignmentCuesFor(bundle, cfg, plans)) == 0 {
 		return nil, nil
 	}
 	probe, err := executor.FFProbe(ctx, videoPath)
@@ -54,7 +60,7 @@ func AlignWords(ctx context.Context, videoPath string, bundle Bundle, cfg config
 	if audio == nil {
 		return nil, fmt.Errorf("video has no audio for word alignment")
 	}
-	return collectWordTimings(ctx, bundle, cfg, func(ctx context.Context, cue Cue) ([]byte, int, error) {
+	return collectWordTimings(ctx, bundle, cfg, plans, func(ctx context.Context, cue Cue) ([]byte, int, error) {
 		start := max(0, cue.Start-300)
 		duration := cue.End + 300 - start
 		args := []string{
@@ -92,10 +98,10 @@ func hasCenterChannel(layout string) bool {
 	return false
 }
 
-func collectWordTimings(ctx context.Context, bundle Bundle, cfg config.LLMConfig, extract func(context.Context, Cue) ([]byte, int, error)) (WordTimings, error) {
+func collectWordTimings(ctx context.Context, bundle Bundle, cfg config.LLMConfig, plans []ScreenPlan, extract func(context.Context, Cue) ([]byte, int, error)) (WordTimings, error) {
 	result := WordTimings{}
 	client := &http.Client{Timeout: 60 * time.Second}
-	for _, cue := range WordAlignmentCues(bundle, cfg) {
+	for _, cue := range WordAlignmentCuesFor(bundle, cfg, plans) {
 		clipCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		wav, offset, err := extract(clipCtx, cue)
 		if err == nil {

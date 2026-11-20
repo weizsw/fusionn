@@ -55,13 +55,16 @@ func TestPairYieldsToFollowingChineseSingle(t *testing.T) {
 			{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
 			{ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
 		})
-	if pair.start != 21600 || pair.end != 23350 || single.start != 23350 || single.end != 24520 {
-		t.Fatalf("pair %d-%d, single %d-%d; want pair 21600-23350, single 23350-24520", pair.start, pair.end, single.start, single.end)
+	// The yield itself is unchanged: the pair ends where the single starts. The
+	// single is short, so the short-screen rule grows only its end.
+	if pair.start != 21600 || pair.end != 23350 || single.start != 23350 || single.end != 24550 {
+		t.Fatalf("pair %d-%d, single %d-%d; want pair 21600-23350, single 23350-24550", pair.start, pair.end, single.start, single.end)
 	}
 }
 
-// The 35:34 case: the pair starts on English time 0.501 s (0.50 s in the
-// file) before the Chinese-only line ends, and starts when the single ends.
+// The 35:34 case: the Chinese-only line comes before the pair and the two
+// overlap by 0.50 s. English keeps its timeline, so the pair's start does not
+// move; the single's end is cut to it.
 func TestPairYieldsToPrecedingChineseSingle(t *testing.T) {
 	pair, single := renderSingleOverlap(t,
 		[]Cue{cueAt(singleOverlapEN, 1, 34591, 36468)},
@@ -70,8 +73,24 @@ func TestPairYieldsToPrecedingChineseSingle(t *testing.T) {
 			{ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
 			{ENIDs: []int{1}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
 		})
-	if pair.start != 35090 || pair.end != 36470 || single.start != 34010 || single.end != 35090 {
-		t.Fatalf("pair %d-%d, single %d-%d; want pair 35090-36470, single 34010-35090", pair.start, pair.end, single.start, single.end)
+	if pair.start != 34590 || pair.end != 36470 || single.start != 34010 || single.end != 34590 {
+		t.Fatalf("pair %d-%d, single %d-%d; want pair 34590-36470, single 34010-34590", pair.start, pair.end, single.start, single.end)
+	}
+}
+
+// A single that would vanish when cut to the pair's start keeps both times: the
+// pair must not start earlier than English allows, and a zero-length event is
+// never written.
+func TestPrecedingSingleWithNoRoomKeepsBothTimes(t *testing.T) {
+	pair, single := renderSingleOverlap(t,
+		[]Cue{cueAt(singleOverlapEN, 1, 34900, 36468)},
+		[]Cue{cueAt(singleOverlapZH1, 1, 34930, 35400), cueAt(singleOverlapZH, 2, 35634, 36468)},
+		[]Group{
+			{ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+			{ENIDs: []int{1}, ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
+		})
+	if pair.start != 34900 || single.start != 34930 || single.end != 35400 {
+		t.Fatalf("pair %d-%d, single %d-%d; want pair.start 34900 and the single kept at 34930-35400", pair.start, pair.end, single.start, single.end)
 	}
 }
 
@@ -85,8 +104,10 @@ func TestShortPairCutsChineseSingle(t *testing.T) {
 			{ENIDs: []int{1}, ZHIDs: []int{1}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
 			{ZHIDs: []int{2}, Layer: LayerBottom, Origin: OriginModel, Kind: KindDialogue},
 		})
-	if pair.start != 10000 || pair.end != 11200 || single.start != 11200 || single.end != 12000 {
-		t.Fatalf("pair %d-%d, single %d-%d; want pair 10000-11200, single 11200-12000", pair.start, pair.end, single.start, single.end)
+	// The cut is unchanged: the single starts where the pair ends. The single is
+	// short, so the short-screen rule grows only its end.
+	if pair.start != 10000 || pair.end != 11200 || single.start != 11200 || single.end != 12400 {
+		t.Fatalf("pair %d-%d, single %d-%d; want pair 10000-11200, single 11200-12400", pair.start, pair.end, single.start, single.end)
 	}
 }
 
