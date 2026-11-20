@@ -50,6 +50,7 @@ Thumbs.db
 .pi/
 *.srt
 .cortexkit/magic-context/
+*.ass
 
 # Python bytecode
 __pycache__/
