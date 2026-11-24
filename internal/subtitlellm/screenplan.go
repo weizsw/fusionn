@@ -1185,6 +1185,12 @@ func applyScreenPlans(blocks []block, mapping Mapping, en, zh map[int]Cue, words
 	if len(mapping.ScreenPlans) == 0 {
 		return blocks, nil
 	}
+	recheckGroups := make(map[int]bool)
+	for _, b := range blocks {
+		if b.recheckApplied {
+			recheckGroups[b.group] = true
+		}
+	}
 	byGroup := map[string]ScreenPlan{}
 	for _, plan := range mapping.ScreenPlans {
 		byGroup[planGroupKey(plan.ENIDs, plan.ZHIDs)] = plan
@@ -1196,7 +1202,11 @@ func applyScreenPlans(blocks []block, mapping Mapping, en, zh map[int]Cue, words
 	replacements := map[int]replacement{}
 	for groupIndex := range mapping.Groups {
 		group := mapping.Groups[groupIndex]
-		plan, planned := byGroup[planGroupKey(group.ENIDs, group.ZHIDs)]
+		if recheckGroups[groupIndex] {
+			continue
+		}
+		key := planGroupKey(group.ENIDs, group.ZHIDs)
+		plan, planned := byGroup[key]
 		if !planned {
 			continue
 		}

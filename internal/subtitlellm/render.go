@@ -54,6 +54,10 @@ type block struct {
 	zhFlattened bool
 	enFlattened bool
 	isLyric     bool
+	// recheckApplied marks blocks that were created by semantic recheck.
+	recheckApplied bool
+	// uncertainFallback marks blocks that were created by uncertain semantic recheck fallback.
+	uncertainFallback bool
 	// enSeparatedRole and zhSeparatedRole mark text overrides that hold a role
 	// separated out of a mixed lyric cue. Overrides produced by temporal
 	// projection, holds, short joins or layout keep their source cue's speaker
@@ -401,6 +405,9 @@ func closeTimingGaps(blocks []block) {
 		order := regionOrder(blocks, top)
 		for k := 1; k < len(order); k++ {
 			previous, next := &blocks[order[k-1]], blocks[order[k]]
+			if previous.uncertainFallback || next.uncertainFallback || previous.recheckApplied {
+				continue
+			}
 			gap := assCentis(next.start) - assCentis(previous.end)
 			if gap > 0 && gap < gapCloseMS/10 {
 				previous.end = next.start
@@ -436,6 +443,9 @@ func extendShortScreens(blocks []block) {
 		order := regionOrder(blocks, top)
 		for _, index := range order {
 			b := &blocks[index]
+			if b.uncertainFallback || b.recheckApplied {
+				continue
+			}
 			if short := shortScreenMS/10 - (assCentis(b.end) - assCentis(b.start)); short > 0 {
 				// The floor is measured on the centiseconds the file shows, so
 				// the end lands exactly on start+1200 as the player sees it.
@@ -475,12 +485,12 @@ func yieldToChineseSingles(blocks []block, mapping Mapping, zh map[int]Cue) {
 		return len(b.enIDs) > 0 && len(b.zhIDs) > 0 && !b.isLyric && b.position == nil
 	}
 	for i := range blocks {
-		if !single(blocks[i]) {
+		if !single(blocks[i]) || blocks[i].recheckApplied {
 			continue
 		}
 		s := &blocks[i]
 		for j := range blocks {
-			if j == i || !paired(blocks[j]) || blocks[j].top != s.top {
+			if j == i || !paired(blocks[j]) || blocks[j].top != s.top || blocks[j].recheckApplied {
 				continue
 			}
 			p := &blocks[j]
@@ -632,10 +642,22 @@ func cuesAreLyrics(cues []Cue) bool {
 	return true
 }
 
+func cueHasVisibleSpeakerRows(c Cue) bool {
+	if c.MultiSpeaker || cueHasMixedLyric(c) || countDashes(c) >= 2 {
+		return true
+	}
+	lines := sourceLines(c.Plain)
+	return len(lines) > 1 && startsWithDash(lines[1])
+}
+
 // buildBlocks anchors groups to English timing. Short text can stay joined;
 // longer Chinese groups reuse source internal cuts instead of a full hold.
 func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig, words WordTimings, checks *splitChecks) []block {
 	var result []block
+	rechecksByKey := make(map[string]SemanticRecheck, len(mapping.SemanticRechecks))
+	for _, r := range mapping.SemanticRechecks {
+		rechecksByKey[recheckGroupKey(r.ENIDs, r.ZHIDs)] = r
+	}
 	for groupIndex, group := range mapping.Groups {
 		es := cuesFor(en, group.ENIDs)
 		zs := cuesFor(zh, group.ZHIDs)
@@ -678,6 +700,149 @@ func buildBlocks(mapping Mapping, en, zh map[int]Cue, cfg config.LLMConfig, word
 		blockPos := native.Position
 		if top != sourceTop {
 			blockPos = nil
+		}
+
+		key := recheckGroupKey(group.ENIDs, group.ZHIDs)
+		r, hasRecheck := rechecksByKey[key]
+		if hasRecheck && !r.Uncertain {
+			recheckBlocks := buildRecheckBlocks(groupIndex, group, es, zs, r, en, zh, sourceTop, alignment, blockPos)
+			if len(recheckBlocks) > 0 {
+				result = append(result, recheckBlocks...)
+				continue
+			}
+		} else if hasRecheck && r.Uncertain {
+			// Special uncertain fallback only.
+			// Set recheckApplied so screen plans cannot override visible source breaks.
+			makeGroupBlock := func(start, end int, ee, zz []Cue, strategy string) block {
+				return block{
+					start: start, end: end,
+					enIDs: cueIDs(ee), zhIDs: cueIDs(zz), group: groupIndex,
+					strategy: strategy, top: top, sourceTop: sourceTop,
+					alignment: alignment, position: blockPos,
+					isLyric:           groupIsLyric,
+					recheckApplied:    true,
+					uncertainFallback: true,
+				}
+			}
+			if len(es) == 1 && len(zs) == 1 {
+				b := makeGroupBlock(es[0].Start, es[0].End, es, zs, strategyOneToOne)
+				if cueHasVisibleSpeakerRows(es[0]) {
+					text := es[0].Plain
+					b.enText = &text
+					b.enFlattened = true
+				}
+				if cueHasVisibleSpeakerRows(zs[0]) {
+					text := zs[0].Plain
+					b.zhText = &text
+					b.zhFlattened = true
+				}
+				result = append(result, b)
+				continue
+			}
+
+			// When multiple source cues or language windows differ across multiple cues:
+			// Sweep original cue start/end times on both sides and show precisely the currently
+			// active source cues, preserving explicit EN and ZH rows, English/Chinese-only intervals,
+			// no FillGap extension.
+			timePoints := make([]int, 0, (len(es)+len(zs))*2)
+			for _, c := range es {
+				timePoints = append(timePoints, c.Start, c.End)
+			}
+			for _, c := range zs {
+				timePoints = append(timePoints, c.Start, c.End)
+			}
+			sort.Ints(timePoints)
+			var boundaries []int
+			for i, t := range timePoints {
+				if i == 0 || t != timePoints[i-1] {
+					boundaries = append(boundaries, t)
+				}
+			}
+
+			sameCues := func(a, b []Cue) bool {
+				if len(a) != len(b) {
+					return false
+				}
+				for i := range a {
+					if a[i].ID != b[i].ID {
+						return false
+					}
+				}
+				return true
+			}
+
+			type cueInterval struct {
+				start, end int
+				en         []Cue
+				zh         []Cue
+			}
+			var intervals []cueInterval
+			for i := 0; i+1 < len(boundaries); i++ {
+				start, end := boundaries[i], boundaries[i+1]
+				if roundCentiseconds(start) >= roundCentiseconds(end) {
+					continue
+				}
+				var activeES, activeZS []Cue
+				for _, c := range es {
+					if c.Start <= start && c.End >= end {
+						activeES = append(activeES, c)
+					}
+				}
+				for _, c := range zs {
+					if c.Start <= start && c.End >= end {
+						activeZS = append(activeZS, c)
+					}
+				}
+				if len(activeES) == 0 && len(activeZS) == 0 {
+					continue
+				}
+				if len(intervals) > 0 &&
+					roundCentiseconds(intervals[len(intervals)-1].end) >= roundCentiseconds(start) &&
+					sameCues(intervals[len(intervals)-1].en, activeES) &&
+					sameCues(intervals[len(intervals)-1].zh, activeZS) {
+					intervals[len(intervals)-1].end = end
+				} else {
+					intervals = append(intervals, cueInterval{start: start, end: end, en: activeES, zh: activeZS})
+				}
+			}
+
+			formatActiveText := func(cues []Cue) (string, bool) {
+				if len(cues) == 0 {
+					return "", false
+				}
+				var parts []string
+				hasExplicit := false
+				for _, c := range cues {
+					if cueHasVisibleSpeakerRows(c) {
+						hasExplicit = true
+						parts = append(parts, c.Plain)
+					} else {
+						parts = append(parts, c.Display)
+					}
+				}
+				if hasExplicit || len(cues) > 1 {
+					return strings.Join(parts, "\n"), true
+				}
+				return parts[0], false
+			}
+
+			for _, inv := range intervals {
+				splitStrat := strategyTimedSplit
+				if len(inv.en) == 0 || len(inv.zh) == 0 {
+					splitStrat = strategyOneSided
+				}
+				b := makeGroupBlock(inv.start, inv.end, inv.en, inv.zh, splitStrat)
+				if text, override := formatActiveText(inv.en); override {
+					b.enText = &text
+					b.enFlattened = true
+				}
+				if text, override := formatActiveText(inv.zh); override {
+					b.zhText = &text
+					b.zhFlattened = true
+				}
+				result = append(result, b)
+			}
+			continue
 		}
 
 		makeBlock := func(start, end int, ee, zz []Cue, strategy string) block {
@@ -1613,6 +1778,9 @@ func applySpatialPolicies(blocks []block, mapping Mapping, en, zh map[int]Cue, g
 	usableWidth := geometry.canvasWidth - geometry.marginL - geometry.marginR
 	for i := range blocks {
 		b := &blocks[i]
+		if b.uncertainFallback {
+			continue
+		}
 		ztext, etext := blockDisplayText(*b, en, zh, geometry)
 		zhLines := sourceLines(ztext)
 		enLines := sourceLines(etext)

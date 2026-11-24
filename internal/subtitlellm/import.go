@@ -31,7 +31,7 @@ func importMapping(bundle Bundle, cfg config.LLMConfig) (Mapping, Audit, error) 
 	}
 	allowed := map[string]bool{
 		"version": true, "source_fingerprint": true, "parameters": true, "groups": true, "split_checks": true,
-		"screen_plans": true, "fingerprint": true,
+		"screen_plans": true, "semantic_rechecks": true, "fingerprint": true,
 	}
 	for key := range top {
 		if !allowed[key] {
@@ -75,6 +75,9 @@ func importMapping(bundle Bundle, cfg config.LLMConfig) (Mapping, Audit, error) 
 	}
 	if err := validateImportedGroups(mapping, bundle); err != nil {
 		return Mapping{}, Audit{}, fmt.Errorf("mapping %q failed revalidation: %w", cfg.MappingPath, err)
+	}
+	if err := validateImportedSemanticRechecks(mapping, bundle); err != nil {
+		return Mapping{}, Audit{}, fmt.Errorf("mapping %q failed semantic recheck revalidation: %w", cfg.MappingPath, err)
 	}
 	// An imported mapping uses the plans it contains and asks for no new ones.
 	planAudit := &ScreenPlanAudit{}
@@ -297,4 +300,67 @@ func trackCues(bundle Bundle, lang string) []Cue {
 		return bundle.ZH
 	}
 	return bundle.EN
+}
+
+func validateImportedSemanticRechecks(mapping Mapping, bundle Bundle) error {
+	if len(mapping.SemanticRechecks) == 0 {
+		return nil
+	}
+	en, zh, err := cueIndex(bundle)
+	if err != nil {
+		return err
+	}
+	groupSet := make(map[string]bool, len(mapping.Groups))
+	for _, g := range mapping.Groups {
+		groupSet[recheckGroupKey(g.ENIDs, g.ZHIDs)] = true
+	}
+
+	for _, r := range mapping.SemanticRechecks {
+		key := recheckGroupKey(r.ENIDs, r.ZHIDs)
+		if !groupSet[key] {
+			return fmt.Errorf("semantic recheck group %s not found in mapping groups", key)
+		}
+		if r.Uncertain {
+			continue
+		}
+		es := cuesFor(en, r.ENIDs)
+		zs := cuesFor(zh, r.ZHIDs)
+		_, enInfos := extractGroupLines(es, "e")
+		_, zhInfos := extractGroupLines(zs, "z")
+
+		validEN := make(map[string]bool, len(enInfos))
+		for _, info := range enInfos {
+			validEN[info.Ref] = true
+		}
+		validZH := make(map[string]bool, len(zhInfos))
+		for _, info := range zhInfos {
+			validZH[info.Ref] = true
+		}
+
+		seenEN := make(map[string]bool)
+		seenZH := make(map[string]bool)
+
+		for _, rel := range r.Relations {
+			if len(rel.EN) == 0 && len(rel.ZH) == 0 {
+				return fmt.Errorf("group %s: empty relation", key)
+			}
+			for _, ref := range rel.EN {
+				if !validEN[ref] || seenEN[ref] {
+					return fmt.Errorf("group %s: invalid or duplicate en ref %q", key, ref)
+				}
+				seenEN[ref] = true
+			}
+			for _, ref := range rel.ZH {
+				if !validZH[ref] || seenZH[ref] {
+					return fmt.Errorf("group %s: invalid or duplicate zh ref %q", key, ref)
+				}
+				seenZH[ref] = true
+			}
+		}
+
+		if len(seenEN) != len(enInfos) || len(seenZH) != len(zhInfos) {
+			return fmt.Errorf("group %s: incomplete relations: missing refs", key)
+		}
+	}
+	return nil
 }

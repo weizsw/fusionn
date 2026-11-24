@@ -317,6 +317,13 @@ func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig)
 	httpAttempts += splitRequests
 	audit.CacheHits += splitHits
 
+	// Semantic rechecks resolve ambiguous multi-speaker and lyric groups with
+	// model-provided line relations, keeping lyrics separate from spoken lines.
+	semanticRechecks, recheckAudit, recheckRequests, recheckHits := e.recheckAmbiguousGroups(ctx, bundle, groups, cfg, cacheDir)
+	audit.SemanticRechecks = recheckAudit
+	httpAttempts += recheckRequests
+	audit.CacheHits += recheckHits
+
 	// Screen plans re-segment the groups the deterministic rules cannot show as
 	// one Chinese line and one English line. A failed request leaves those groups
 	// on the existing rules and never fails the merge.
@@ -337,9 +344,10 @@ func (e *Engine) Align(ctx context.Context, bundle Bundle, cfg config.LLMConfig)
 			ResponseFormat:    cfg.ResponseFormat,
 			SchemaEnforcement: schemaEnforcement,
 		},
-		Groups:      groups,
-		SplitChecks: splitChecks,
-		ScreenPlans: screenPlans,
+		Groups:           groups,
+		SplitChecks:      splitChecks,
+		ScreenPlans:      screenPlans,
+		SemanticRechecks: semanticRechecks,
 	}
 	fingerprint, err := mappingDigest(mapping)
 	if err != nil {

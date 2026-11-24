@@ -1,0 +1,1420 @@
+{
+  "episode": "S02E06",
+  "group_ids": [
+    122,
+    296,
+    306,
+    307,
+    317,
+    385,
+    478,
+    594,
+    615,
+    618,
+    621
+  ],
+  "bundle": {
+    "version": 1,
+    "en": [
+      {
+        "id": 1,
+        "start": 695612,
+        "end": 697613,
+        "original_start": 695612,
+        "original_end": 697613,
+        "raw": "- Harper, just a real quick question.\\N-  I need you to get her out of D.C.",
+        "plain": "- Harper, just a real quick question.\n- I need you to get her out of D.C.",
+        "display": "- Harper, just a real quick question.\n- I need you to get her out of D.C.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "spaces_and_speaker_marks_cleaned",
+          "whitespace_flattened",
+          "speaker_line_breaks_kept"
+        ]
+      },
+      {
+        "id": 2,
+        "start": 697614,
+        "end": 699116,
+        "original_start": 697614,
+        "original_end": 699116,
+        "raw": "You good to take some leave?",
+        "plain": "You good to take some leave?",
+        "display": "You good to take some leave?",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 3,
+        "start": 1470595,
+        "end": 1472387,
+        "original_start": 1470595,
+        "original_end": 1472387,
+        "raw": "- Ah!\\N-  \"{\\i1}...in Hell and certify{\\i0}",
+        "plain": "- Ah!\n- \"...in Hell and certify",
+        "display": "- Ah! - \"...in Hell and certify",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "spaces_and_speaker_marks_cleaned",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 4,
+        "start": 1508299,
+        "end": 1510842,
+        "original_start": 1508299,
+        "original_end": 1510842,
+        "raw": "{\\i1}- keep me from going lunatic{\\i0}\\N-  Hey, buddy.",
+        "plain": "- keep me from going lunatic\n- Hey, buddy.",
+        "display": "- keep me from going lunatic - Hey, buddy.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "spaces_and_speaker_marks_cleaned",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 5,
+        "start": 1510843,
+        "end": 1514387,
+        "original_start": 1510843,
+        "original_end": 1514387,
+        "raw": "{\\i1}boots, boots, boots, boots,{\\i0}",
+        "plain": "boots, boots, boots, boots,",
+        "display": "boots, boots, boots, boots,",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": [
+          "markup_removed_or_newline_decoded"
+        ]
+      },
+      {
+        "id": 6,
+        "start": 1514388,
+        "end": 1516556,
+        "original_start": 1514388,
+        "original_end": 1516556,
+        "raw": "{\\i1}- moving up and down again{\\i0}\\N- Okay.",
+        "plain": "- moving up and down again\n- Okay.",
+        "display": "- moving up and down again - Okay.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 7,
+        "start": 1572071,
+        "end": 1574990,
+        "original_start": 1572071,
+        "original_end": 1574990,
+        "raw": "...and you want to take a stroll\\Ndown memory fucking lane?",
+        "plain": "...and you want to take a stroll\ndown memory fucking lane?",
+        "display": "...and you want to take a stroll down memory fucking lane?",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 8,
+        "start": 1574991,
+        "end": 1576409,
+        "original_start": 1574991,
+        "original_end": 1576409,
+        "raw": "It was something about a girl.",
+        "plain": "It was something about a girl.",
+        "display": "It was something about a girl.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 9,
+        "start": 1919501,
+        "end": 1921252,
+        "original_start": 1919501,
+        "original_end": 1921252,
+        "raw": "{\\i1}- and my friends.{\\i0}\\N-  Eerie, eh?",
+        "plain": "- and my friends.\n- Eerie, eh?",
+        "display": "- and my friends. - Eerie, eh?",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "spaces_and_speaker_marks_cleaned",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 10,
+        "start": 2441648,
+        "end": 2443190,
+        "original_start": 2441648,
+        "original_end": 2443190,
+        "raw": "{\\i1}I'm gonna need something.{\\i0}",
+        "plain": "I'm gonna need something.",
+        "display": "I'm gonna need something.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": [
+          "markup_removed_or_newline_decoded"
+        ]
+      },
+      {
+        "id": 11,
+        "start": 2443191,
+        "end": 2445734,
+        "original_start": 2443191,
+        "original_end": 2445734,
+        "raw": "{\\i1}- What's coming?\\N- Come on, you can't get me immunity?{\\i0}",
+        "plain": "- What's coming?\n- Come on, you can't get me immunity?",
+        "display": "- What's coming? - Come on, you can't get me immunity?",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 12,
+        "start": 2445735,
+        "end": 2447319,
+        "original_start": 2445735,
+        "original_end": 2447319,
+        "raw": "{\\i1}Tell me what's coming.{\\i0}",
+        "plain": "Tell me what's coming.",
+        "display": "Tell me what's coming.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": [
+          "markup_removed_or_newline_decoded"
+        ]
+      },
+      {
+        "id": 13,
+        "start": 3128835,
+        "end": 3130877,
+        "original_start": 3128835,
+        "original_end": 3130877,
+        "raw": "Careful. Careful.",
+        "plain": "Careful. Careful.",
+        "display": "Careful. Careful.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 14,
+        "start": 3215212,
+        "end": 3217756,
+        "original_start": 3215212,
+        "original_end": 3217756,
+        "raw": "Hmm? He's just a functionary, Landry.",
+        "plain": "Hmm? He's just a functionary, Landry.",
+        "display": "Hmm? He's just a functionary, Landry.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 15,
+        "start": 3223054,
+        "end": 3224930,
+        "original_start": 3223054,
+        "original_end": 3224930,
+        "raw": "- Hmm?\\N- I don't know. I don't know.",
+        "plain": "- Hmm?\n- I don't know. I don't know.",
+        "display": "- Hmm? - I don't know. I don't know.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 16,
+        "start": 3224931,
+        "end": 3226181,
+        "original_start": 3224931,
+        "original_end": 3226181,
+        "raw": "Who?",
+        "plain": "Who?",
+        "display": "Who?",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 17,
+        "start": 3234857,
+        "end": 3237150,
+        "original_start": 3234857,
+        "original_end": 3237150,
+        "raw": "web around all of us?\\NWho is that, huh?",
+        "plain": "web around all of us?\nWho is that, huh?",
+        "display": "web around all of us? Who is that, huh?",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 18,
+        "start": 3237151,
+        "end": 3238610,
+        "original_start": 3237151,
+        "original_end": 3238610,
+        "raw": "- I can't.\\N- Who is that?",
+        "plain": "- I can't.\n- Who is that?",
+        "display": "- I can't. - Who is that?",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 19,
+        "start": 3241155,
+        "end": 3242364,
+        "original_start": 3241155,
+        "original_end": 3242364,
+        "raw": "I can't.",
+        "plain": "I can't.",
+        "display": "I can't.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      }
+    ],
+    "zh": [
+      {
+        "id": 1,
+        "start": 695862,
+        "end": 698865,
+        "original_start": 695862,
+        "original_end": 698865,
+        "raw": "我需要你带她离开华盛顿\\N你可以请假吗？",
+        "plain": "我需要你带她离开华盛顿\n你可以请假吗？",
+        "display": "我需要你带她离开华盛顿 你可以请假吗？",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 2,
+        "start": 1471137,
+        "end": 1472345,
+        "original_start": 1471137,
+        "original_end": 1472345,
+        "raw": "并证明",
+        "plain": "并证明",
+        "display": "并证明",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 3,
+        "start": 1508674,
+        "end": 1509591,
+        "original_start": 1508674,
+        "original_end": 1509591,
+        "raw": "嘿 伙计",
+        "plain": "嘿 伙计",
+        "display": "嘿 伙计",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 4,
+        "start": 1509592,
+        "end": 1510967,
+        "original_start": 1509592,
+        "original_end": 1510967,
+        "raw": "不要让我疯掉！",
+        "plain": "不要让我疯掉！",
+        "display": "不要让我疯掉！",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 5,
+        "start": 1510968,
+        "end": 1516098,
+        "original_start": 1510968,
+        "original_end": 1516098,
+        "raw": "靴子 靴子 靴子 靴子 又上又下！",
+        "plain": "靴子 靴子 靴子 靴子 又上又下！",
+        "display": "靴子 靴子 靴子 靴子 又上又下！",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 6,
+        "start": 1572154,
+        "end": 1573321,
+        "original_start": 1572154,
+        "original_end": 1573321,
+        "raw": "你居然有闲情",
+        "plain": "你居然有闲情",
+        "display": "你居然有闲情",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 7,
+        "start": 1573322,
+        "end": 1576158,
+        "original_start": 1573322,
+        "original_end": 1576158,
+        "raw": "- 在回忆小道上散步？\\N- 是为了某个女孩",
+        "plain": "- 在回忆小道上散步？\n- 是为了某个女孩",
+        "display": "- 在回忆小道上散步？ - 是为了某个女孩",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 8,
+        "start": 1919668,
+        "end": 1920502,
+        "original_start": 1919668,
+        "original_end": 1920502,
+        "raw": "很诡异吧？",
+        "plain": "很诡异吧？",
+        "display": "很诡异吧？",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 9,
+        "start": 2442023,
+        "end": 2444150,
+        "original_start": 2442023,
+        "original_end": 2444150,
+        "raw": "- 我需要点保障\\N- 什么样的袭击？",
+        "plain": "- 我需要点保障\n- 什么样的袭击？",
+        "display": "- 我需要点保障 - 什么样的袭击？",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 10,
+        "start": 2444151,
+        "end": 2447195,
+        "original_start": 2444151,
+        "original_end": 2447195,
+        "raw": "- 我知道你不能给我豁免权\\N- 告诉我接下来会发生什么",
+        "plain": "- 我知道你不能给我豁免权\n- 告诉我接下来会发生什么",
+        "display": "- 我知道你不能给我豁免权 - 告诉我接下来会发生什么",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 11,
+        "start": 3127375,
+        "end": 3129836,
+        "original_start": 3127375,
+        "original_end": 3129836,
+        "raw": "- 对不起\\N- 小心",
+        "plain": "- 对不起\n- 小心",
+        "display": "- 对不起 - 小心",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 12,
+        "start": 3130461,
+        "end": 3131295,
+        "original_start": 3130461,
+        "original_end": 3131295,
+        "raw": "小心",
+        "plain": "小心",
+        "display": "小心",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 13,
+        "start": 3215338,
+        "end": 3217714,
+        "original_start": 3215338,
+        "original_end": 3217714,
+        "raw": "- 我是说…\\N- 他只是个公务员 兰德里",
+        "plain": "- 我是说…\n- 他只是个公务员 兰德里",
+        "display": "- 我是说… - 他只是个公务员 兰德里",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 14,
+        "start": 3223095,
+        "end": 3224888,
+        "original_start": 3223095,
+        "original_end": 3224888,
+        "raw": "- 我不…我不知道\\N- 谁？",
+        "plain": "- 我不…我不知道\n- 谁？",
+        "display": "- 我不…我不知道 - 谁？",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 15,
+        "start": 3236525,
+        "end": 3239695,
+        "original_start": 3236525,
+        "original_end": 3239695,
+        "raw": "- 那是谁啊？到底是谁？\\N- 我不能…",
+        "plain": "- 那是谁啊？到底是谁？\n- 我不能…",
+        "display": "- 那是谁啊？到底是谁？ - 我不能…",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 16,
+        "start": 3241113,
+        "end": 3242365,
+        "original_start": 3241113,
+        "original_end": 3242365,
+        "raw": "我不能说",
+        "plain": "我不能说",
+        "display": "我不能说",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      }
+    ]
+  },
+  "mapping": {
+    "version": 1,
+    "groups": [
+      {
+        "en_ids": [
+          1,
+          2
+        ],
+        "zh_ids": [
+          1
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 3
+      },
+      {
+        "en_ids": [
+          3
+        ],
+        "zh_ids": [
+          2
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 7
+      },
+      {
+        "en_ids": [
+          4
+        ],
+        "zh_ids": [
+          3,
+          4
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 7
+      },
+      {
+        "en_ids": [
+          5,
+          6
+        ],
+        "zh_ids": [
+          5
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 7
+      },
+      {
+        "en_ids": [
+          7,
+          8
+        ],
+        "zh_ids": [
+          6,
+          7
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 7
+      },
+      {
+        "en_ids": [
+          9
+        ],
+        "zh_ids": [
+          8
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 9
+      },
+      {
+        "en_ids": [
+          10,
+          11,
+          12
+        ],
+        "zh_ids": [
+          9,
+          10
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 11
+      },
+      {
+        "en_ids": [
+          13
+        ],
+        "zh_ids": [
+          11,
+          12
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 14
+      },
+      {
+        "en_ids": [
+          14
+        ],
+        "zh_ids": [
+          13
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 15
+      },
+      {
+        "en_ids": [
+          15,
+          16
+        ],
+        "zh_ids": [
+          14
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 15
+      },
+      {
+        "en_ids": [
+          17,
+          18,
+          19
+        ],
+        "zh_ids": [
+          15,
+          16
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 15
+      }
+    ],
+    "screen_plans": [
+      {
+        "en_ids": [
+          1,
+          2
+        ],
+        "zh_ids": [
+          1
+        ],
+        "screens": [
+          {
+            "en": "- Harper, just a real quick question.",
+            "zh": "我需要你带她离开华盛顿"
+          },
+          {
+            "en": "- I need you to get her out of D.C.",
+            "zh": "你可以请假吗？"
+          },
+          {
+            "en": "You good to take some leave?",
+            "zh": ""
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          5,
+          6
+        ],
+        "zh_ids": [
+          5
+        ],
+        "screens": [
+          {
+            "en": "boots, boots, boots, boots,",
+            "zh": "靴子 靴子 靴子 靴子"
+          },
+          {
+            "en": "- moving up and down again - Okay.",
+            "zh": "又上又下！"
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          7,
+          8
+        ],
+        "zh_ids": [
+          6,
+          7
+        ],
+        "screens": [
+          {
+            "en": "...and you want to take a stroll down memory fucking lane?",
+            "zh": "你居然有闲情 - 在回忆小道上散步？"
+          },
+          {
+            "en": "It was something about a girl.",
+            "zh": "- 是为了某个女孩"
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          10,
+          11,
+          12
+        ],
+        "zh_ids": [
+          9,
+          10
+        ],
+        "screens": [
+          {
+            "en": "I'm gonna need something.",
+            "zh": "- 我需要点保障"
+          },
+          {
+            "en": "- What's coming?",
+            "zh": "- 什么样的袭击？"
+          },
+          {
+            "en": "- Come on, you can't get me immunity?",
+            "zh": "- 我知道你不能给我豁免权"
+          },
+          {
+            "en": "Tell me what's coming.",
+            "zh": "- 告诉我接下来会发生什么"
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          13
+        ],
+        "zh_ids": [
+          11,
+          12
+        ],
+        "screens": [
+          {
+            "en": "Careful. Careful.",
+            "zh": "- 对不起 - 小心 小心"
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          15,
+          16
+        ],
+        "zh_ids": [
+          14
+        ],
+        "screens": [
+          {
+            "en": "- Hmm? - I don't know. I don't know.",
+            "zh": "- 我不…我不知道"
+          },
+          {
+            "en": "Who?",
+            "zh": "- 谁？"
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          17,
+          18,
+          19
+        ],
+        "zh_ids": [
+          15,
+          16
+        ],
+        "screens": [
+          {
+            "en": "web around all of us? Who is that, huh?",
+            "zh": "- 那是谁啊？到底是谁？"
+          },
+          {
+            "en": "- I can't. - Who is that?",
+            "zh": "- 我不能…"
+          },
+          {
+            "en": "I can't.",
+            "zh": "我不能说"
+          }
+        ]
+      }
+    ],
+    "semantic_rechecks": [
+      {
+        "en_ids": [
+          1,
+          2
+        ],
+        "zh_ids": [
+          1
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": null
+          },
+          {
+            "en": [
+              "e1"
+            ],
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": [
+              "e2"
+            ],
+            "zh": [
+              "z1"
+            ]
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          3
+        ],
+        "zh_ids": [
+          2
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": null
+          },
+          {
+            "en": [
+              "e1"
+            ],
+            "zh": [
+              "z0"
+            ]
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          4
+        ],
+        "zh_ids": [
+          3,
+          4
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": [
+              "z1"
+            ]
+          },
+          {
+            "en": [
+              "e1"
+            ],
+            "zh": [
+              "z0"
+            ]
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          5,
+          6
+        ],
+        "zh_ids": [
+          5
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0",
+              "e1"
+            ],
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": [
+              "e2"
+            ],
+            "zh": null
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          7,
+          8
+        ],
+        "zh_ids": [
+          6,
+          7
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": [
+              "e1"
+            ],
+            "zh": [
+              "z1"
+            ]
+          },
+          {
+            "en": [
+              "e2"
+            ],
+            "zh": [
+              "z2"
+            ]
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          9
+        ],
+        "zh_ids": [
+          8
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": null
+          },
+          {
+            "en": [
+              "e1"
+            ],
+            "zh": [
+              "z0"
+            ]
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          10,
+          11,
+          12
+        ],
+        "zh_ids": [
+          9,
+          10
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": [
+              "e1"
+            ],
+            "zh": [
+              "z1"
+            ]
+          },
+          {
+            "en": [
+              "e2"
+            ],
+            "zh": [
+              "z2"
+            ]
+          },
+          {
+            "en": [
+              "e3"
+            ],
+            "zh": [
+              "z3"
+            ]
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          13
+        ],
+        "zh_ids": [
+          11,
+          12
+        ],
+        "relations": [
+          {
+            "en": null,
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": [
+              "z1",
+              "z2"
+            ]
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          14
+        ],
+        "zh_ids": [
+          13
+        ],
+        "relations": [
+          {
+            "en": null,
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": [
+              "z1"
+            ]
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          15,
+          16
+        ],
+        "zh_ids": [
+          14
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": null
+          },
+          {
+            "en": [
+              "e1"
+            ],
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": [
+              "e2"
+            ],
+            "zh": [
+              "z1"
+            ]
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          17,
+          18,
+          19
+        ],
+        "zh_ids": [
+          15,
+          16
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": null
+          },
+          {
+            "en": [
+              "e1",
+              "e3"
+            ],
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": [
+              "e2"
+            ],
+            "zh": [
+              "z1"
+            ]
+          },
+          {
+            "en": [
+              "e4"
+            ],
+            "zh": [
+              "z2"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "words": {
+    "1": [
+      {
+        "text": "Harper",
+        "start_ms": 695952,
+        "end_ms": 696272
+      },
+      {
+        "text": "just",
+        "start_ms": 696272,
+        "end_ms": 696352
+      },
+      {
+        "text": "a",
+        "start_ms": 696352,
+        "end_ms": 696352
+      },
+      {
+        "text": "real",
+        "start_ms": 696512,
+        "end_ms": 696592
+      },
+      {
+        "text": "quick",
+        "start_ms": 696592,
+        "end_ms": 696752
+      },
+      {
+        "text": "question",
+        "start_ms": 696752,
+        "end_ms": 697232
+      },
+      {
+        "text": "I",
+        "start_ms": 697792,
+        "end_ms": 697872
+      },
+      {
+        "text": "need",
+        "start_ms": 697872,
+        "end_ms": 697872
+      },
+      {
+        "text": "you",
+        "start_ms": 697872,
+        "end_ms": 697872
+      },
+      {
+        "text": "to",
+        "start_ms": 697872,
+        "end_ms": 697872
+      },
+      {
+        "text": "get",
+        "start_ms": 697872,
+        "end_ms": 697872
+      },
+      {
+        "text": "her",
+        "start_ms": 698192,
+        "end_ms": 698192
+      },
+      {
+        "text": "out",
+        "start_ms": 698192,
+        "end_ms": 698192
+      },
+      {
+        "text": "of",
+        "start_ms": 698192,
+        "end_ms": 698192
+      },
+      {
+        "text": "DC",
+        "start_ms": 698192,
+        "end_ms": 698192
+      }
+    ],
+    "11": [
+      {
+        "text": "What's",
+        "start_ms": 2443211,
+        "end_ms": 2443371
+      },
+      {
+        "text": "coming",
+        "start_ms": 2443451,
+        "end_ms": 2443691
+      },
+      {
+        "text": "Come",
+        "start_ms": 2444171,
+        "end_ms": 2444411
+      },
+      {
+        "text": "on",
+        "start_ms": 2444411,
+        "end_ms": 2444571
+      },
+      {
+        "text": "you",
+        "start_ms": 2444571,
+        "end_ms": 2444571
+      },
+      {
+        "text": "can't",
+        "start_ms": 2444571,
+        "end_ms": 2444731
+      },
+      {
+        "text": "get",
+        "start_ms": 2444731,
+        "end_ms": 2444891
+      },
+      {
+        "text": "me",
+        "start_ms": 2444971,
+        "end_ms": 2445051
+      },
+      {
+        "text": "immunity",
+        "start_ms": 2445051,
+        "end_ms": 2445451
+      }
+    ]
+  }
+}

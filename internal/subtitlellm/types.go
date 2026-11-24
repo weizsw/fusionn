@@ -169,7 +169,30 @@ type Mapping struct {
 	Groups            []Group           `json:"groups"`
 	SplitChecks       []SplitCheck      `json:"split_checks,omitempty"`
 	ScreenPlans       []ScreenPlan      `json:"screen_plans,omitempty"`
+	SemanticRechecks  []SemanticRecheck `json:"semantic_rechecks,omitempty"`
 	Fingerprint       string            `json:"fingerprint,omitempty"`
+}
+
+// SemanticRecheck records semantic relations for ambiguous speaker or lyric groups.
+type SemanticRecheck struct {
+	ENIDs     []int              `json:"en_ids"`
+	ZHIDs     []int              `json:"zh_ids"`
+	Relations []SemanticRelation `json:"relations,omitempty"`
+	Uncertain bool               `json:"uncertain,omitempty"`
+}
+
+// SemanticRelation relates source line references between languages.
+type SemanticRelation struct {
+	EN []string `json:"en"`
+	ZH []string `json:"zh"`
+}
+
+// SemanticRecheckAudit counts the semantic rechecks of one alignment and render run.
+type SemanticRecheckAudit struct {
+	Candidates int      `json:"candidates"`
+	Requested  int      `json:"requested"`
+	Applied    int      `json:"applied"`
+	Failures   []string `json:"failures,omitempty"`
 }
 
 // ScreenPlan is one model-proposed re-segmentation of a mapping group into
@@ -299,24 +322,25 @@ type WindowFailure struct {
 
 // Audit is the deterministic validation record for an alignment run.
 type Audit struct {
-	Rejected          []RejectedRow     `json:"rejected"`
-	Conflicts         []Group           `json:"conflicts"`
-	ContextDuplicates int               `json:"context_duplicates"`
-	WindowMissing     []WindowMissing   `json:"window_missing"`
-	Restored          map[string][]int  `json:"restored"`
-	TimingPaired      map[string][]int  `json:"timing_paired,omitempty"`
-	Pairing           Pairing           `json:"pairing"`
-	CacheCorrupted    []CacheCorruption `json:"cache_corrupted,omitempty"`
-	RequestRetries    []RequestRetry    `json:"request_retries,omitempty"`
-	FailedWindows     []int             `json:"failed_windows,omitempty"`
-	WindowFailures    []WindowFailure   `json:"window_failures,omitempty"`
-	CacheHits         int               `json:"cache_hits,omitempty"`
-	HTTPAttempts      int               `json:"http_attempts_this_run,omitempty"`
-	ResolvedModels    []string          `json:"resolved_models,omitempty"`
-	SplitChecks       *SplitCheckAudit  `json:"split_checks,omitempty"`
-	ScreenPlans       *ScreenPlanAudit  `json:"screen_plans,omitempty"`
-	Coverage          Coverage          `json:"coverage"`
-	Provenance        *Provenance       `json:"provenance,omitempty"`
+	Rejected          []RejectedRow         `json:"rejected"`
+	Conflicts         []Group               `json:"conflicts"`
+	ContextDuplicates int                   `json:"context_duplicates"`
+	WindowMissing     []WindowMissing       `json:"window_missing"`
+	Restored          map[string][]int      `json:"restored"`
+	TimingPaired      map[string][]int      `json:"timing_paired,omitempty"`
+	Pairing           Pairing               `json:"pairing"`
+	CacheCorrupted    []CacheCorruption     `json:"cache_corrupted,omitempty"`
+	RequestRetries    []RequestRetry        `json:"request_retries,omitempty"`
+	FailedWindows     []int                 `json:"failed_windows,omitempty"`
+	WindowFailures    []WindowFailure       `json:"window_failures,omitempty"`
+	CacheHits         int                   `json:"cache_hits,omitempty"`
+	HTTPAttempts      int                   `json:"http_attempts_this_run,omitempty"`
+	ResolvedModels    []string              `json:"resolved_models,omitempty"`
+	SplitChecks       *SplitCheckAudit      `json:"split_checks,omitempty"`
+	ScreenPlans       *ScreenPlanAudit      `json:"screen_plans,omitempty"`
+	SemanticRechecks  *SemanticRecheckAudit `json:"semantic_rechecks,omitempty"`
+	Coverage          Coverage              `json:"coverage"`
+	Provenance        *Provenance           `json:"provenance,omitempty"`
 }
 
 // intsOrEmpty returns a non-nil slice so JSON output uses [] rather than null.
@@ -426,6 +450,25 @@ func mappingDigest(m Mapping) (string, error) {
 			}
 		}
 		value["screen_plans"] = plans
+	}
+	if len(m.SemanticRechecks) > 0 {
+		rechecks := make([]any, len(m.SemanticRechecks))
+		for i, r := range m.SemanticRechecks {
+			rels := make([]any, len(r.Relations))
+			for j, rel := range r.Relations {
+				rels[j] = map[string]any{"en": stringsValue(rel.EN), "zh": stringsValue(rel.ZH)}
+			}
+			entry := map[string]any{
+				"en_ids":    intsValue(r.ENIDs),
+				"zh_ids":    intsValue(r.ZHIDs),
+				"relations": rels,
+			}
+			if r.Uncertain {
+				entry["uncertain"] = true
+			}
+			rechecks[i] = entry
+		}
+		value["semantic_rechecks"] = rechecks
 	}
 	return digestValue(value)
 }

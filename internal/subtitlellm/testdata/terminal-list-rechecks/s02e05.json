@@ -1,0 +1,1051 @@
+{
+  "episode": "S02E05",
+  "group_ids": [
+    82,
+    210,
+    420,
+    424,
+    432,
+    433,
+    435,
+    436,
+    437,
+    442
+  ],
+  "bundle": {
+    "version": 1,
+    "en": [
+      {
+        "id": 1,
+        "start": 397648,
+        "end": 398940,
+        "original_start": 397648,
+        "original_end": 398940,
+        "raw": "Watch her for me.",
+        "plain": "Watch her for me.",
+        "display": "Watch her for me.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 2,
+        "start": 398941,
+        "end": 400859,
+        "original_start": 398941,
+        "original_end": 400859,
+        "raw": "Wait, wait. Where the fuck are you going?",
+        "plain": "Wait, wait. Where the fuck are you going?",
+        "display": "Wait, wait. Where the fuck are you going?",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 3,
+        "start": 1069736,
+        "end": 1071153,
+        "original_start": 1069736,
+        "original_end": 1071153,
+        "raw": "{\\i1}Breaking news:{\\i0}",
+        "plain": "Breaking news:",
+        "display": "Breaking news:",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": [
+          "markup_removed_or_newline_decoded"
+        ]
+      },
+      {
+        "id": 4,
+        "start": 1071154,
+        "end": 1072988,
+        "original_start": 1071154,
+        "original_end": 1072988,
+        "raw": "{\\i1}- a local journalist has gone missing.{\\i0}\\N- Fucking hell.",
+        "plain": "- a local journalist has gone missing.\n- Fucking hell.",
+        "display": "- a local journalist has gone missing. - Fucking hell.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 5,
+        "start": 1072989,
+        "end": 1075532,
+        "original_start": 1072989,
+        "original_end": 1075532,
+        "raw": "-  Raife?\\N-  {\\i1}Here's Erika with the story.{\\i0}",
+        "plain": "- Raife?\n- Here's Erika with the story.",
+        "display": "- Raife? - Here's Erika with the story.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "spaces_and_speaker_marks_cleaned",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 6,
+        "start": 2480854,
+        "end": 2482062,
+        "original_start": 2480854,
+        "original_end": 2482062,
+        "raw": "-  {\\i1}Yes, sir.{\\i0}\\N-  {\\i1}All right.{\\i0}",
+        "plain": "- Yes, sir.\n- All right.",
+        "display": "- Yes, sir. - All right.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "spaces_and_speaker_marks_cleaned",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 7,
+        "start": 2482063,
+        "end": 2483564,
+        "original_start": 2482063,
+        "original_end": 2483564,
+        "raw": "-  {\\i1}I'll grab one, thanks.{\\i0}\\N-  {\\i1}Hey,{\\i0}",
+        "plain": "- I'll grab one, thanks.\n- Hey,",
+        "display": "- I'll grab one, thanks. - Hey,",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "spaces_and_speaker_marks_cleaned",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 8,
+        "start": 2490822,
+        "end": 2493324,
+        "original_start": 2490822,
+        "original_end": 2493324,
+        "raw": "I just want to say thank you.",
+        "plain": "I just want to say thank you.",
+        "display": "I just want to say thank you.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 9,
+        "start": 2516348,
+        "end": 2519434,
+        "original_start": 2516348,
+        "original_end": 2519434,
+        "raw": "- {\\i1}♪ We were always on the run...{\\i0}\\N- Boom.",
+        "plain": "- ♪ We were always on the run...\n- Boom.",
+        "display": "- ♪ We were always on the run... - Boom.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 10,
+        "start": 2520685,
+        "end": 2523187,
+        "original_start": 2520685,
+        "original_end": 2523187,
+        "raw": "- {\\i1}♪ We were bad for one another...{\\i0}\\N- No...",
+        "plain": "- ♪ We were bad for one another...\n- No...",
+        "display": "- ♪ We were bad for one another... - No...",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 11,
+        "start": 2524940,
+        "end": 2526649,
+        "original_start": 2524940,
+        "original_end": 2526649,
+        "raw": "- {\\i1}♪ But we were good at having fun...{\\i0}\\N- All right, all right, all right.",
+        "plain": "- ♪ But we were good at having fun...\n- All right, all right, all right.",
+        "display": "- ♪ But we were good at having fun... - All right, all right, all right.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 12,
+        "start": 2526650,
+        "end": 2527859,
+        "original_start": 2526650,
+        "original_end": 2527859,
+        "raw": "Reece got that one.",
+        "plain": "Reece got that one.",
+        "display": "Reece got that one.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 13,
+        "start": 2528860,
+        "end": 2531362,
+        "original_start": 2528860,
+        "original_end": 2531362,
+        "raw": "- What we got next? Queen of hearts...\\N- {\\i1}♪ We got stoned along the seawall...{\\i0}",
+        "plain": "- What we got next? Queen of hearts...\n- ♪ We got stoned along the seawall...",
+        "display": "- What we got next? Queen of hearts...\n- ♪ We got stoned along the seawall...",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened",
+          "speaker_line_breaks_kept"
+        ]
+      },
+      {
+        "id": 14,
+        "start": 2531363,
+        "end": 2533197,
+        "original_start": 2531363,
+        "original_end": 2533197,
+        "raw": "-  Diamonds.\\N- Diamonds? Diamonds. Sorry, I'm...",
+        "plain": "- Diamonds.\n- Diamonds? Diamonds. Sorry, I'm...",
+        "display": "- Diamonds. - Diamonds? Diamonds. Sorry, I'm...",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "spaces_and_speaker_marks_cleaned",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 15,
+        "start": 2543124,
+        "end": 2544792,
+        "original_start": 2543124,
+        "original_end": 2544792,
+        "raw": "- Hold up, hold up.\\N-  {\\i1}We have since learned{\\i0}",
+        "plain": "- Hold up, hold up.\n- We have since learned",
+        "display": "- Hold up, hold up. - We have since learned",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "spaces_and_speaker_marks_cleaned",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 16,
+        "start": 2544793,
+        "end": 2547378,
+        "original_start": 2544793,
+        "original_end": 2547378,
+        "raw": "{\\i1}more details of Ms. Buranek's reporting{\\i0}",
+        "plain": "more details of Ms. Buranek's reporting",
+        "display": "more details of Ms. Buranek's reporting",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": [
+          "markup_removed_or_newline_decoded"
+        ]
+      },
+      {
+        "id": 17,
+        "start": 2547379,
+        "end": 2549630,
+        "original_start": 2547379,
+        "original_end": 2549630,
+        "raw": "{\\i1}at the time of her disappearance.{\\i0}",
+        "plain": "at the time of her disappearance.",
+        "display": "at the time of her disappearance.",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": [
+          "markup_removed_or_newline_decoded"
+        ]
+      }
+    ],
+    "zh": [
+      {
+        "id": 1,
+        "start": 397689,
+        "end": 400859,
+        "original_start": 397689,
+        "original_end": 400859,
+        "raw": "- 帮我看着她\\N- 等等 你他妈的要去哪里？",
+        "plain": "- 帮我看着她\n- 等等 你他妈的要去哪里？",
+        "display": "- 帮我看着她 - 等等 你他妈的要去哪里？",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 2,
+        "start": 1070528,
+        "end": 1072237,
+        "original_start": 1070528,
+        "original_end": 1072237,
+        "raw": "- 突发新闻\\N- 他妈的",
+        "plain": "- 突发新闻\n- 他妈的",
+        "display": "- 突发新闻 - 他妈的",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 3,
+        "start": 1072238,
+        "end": 1073989,
+        "original_start": 1072238,
+        "original_end": 1073989,
+        "raw": "- 有位本地记者失踪了\\N- 雷夫",
+        "plain": "- 有位本地记者失踪了\n- 雷夫",
+        "display": "- 有位本地记者失踪了 - 雷夫",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 4,
+        "start": 1073990,
+        "end": 1075699,
+        "original_start": 1073990,
+        "original_end": 1075699,
+        "raw": "由艾丽卡为大家报道",
+        "plain": "由艾丽卡为大家报道",
+        "display": "由艾丽卡为大家报道",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 5,
+        "start": 2481188,
+        "end": 2483063,
+        "original_start": 2481188,
+        "original_end": 2483063,
+        "raw": "- 好的\\N- 我去拿 谢谢",
+        "plain": "- 好的\n- 我去拿 谢谢",
+        "display": "- 好的 - 我去拿 谢谢",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 6,
+        "start": 2491156,
+        "end": 2493574,
+        "original_start": 2491156,
+        "original_end": 2493574,
+        "raw": "- 我只想说谢谢你们\\N- 是",
+        "plain": "- 我只想说谢谢你们\n- 是",
+        "display": "- 我只想说谢谢你们 - 是",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 7,
+        "start": 2516598,
+        "end": 2518767,
+        "original_start": 2516598,
+        "original_end": 2518767,
+        "raw": "我们总在四处奔波",
+        "plain": "我们总在四处奔波",
+        "display": "我们总在四处奔波",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 8,
+        "start": 2520894,
+        "end": 2523479,
+        "original_start": 2520894,
+        "original_end": 2523479,
+        "raw": "我们对彼此不利",
+        "plain": "我们对彼此不利",
+        "display": "我们对彼此不利",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 9,
+        "start": 2525023,
+        "end": 2527901,
+        "original_start": 2525023,
+        "original_end": 2527901,
+        "raw": "好了 里斯有那张牌",
+        "plain": "好了 里斯有那张牌",
+        "display": "好了 里斯有那张牌",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 10,
+        "start": 2528902,
+        "end": 2531112,
+        "original_start": 2528902,
+        "original_end": 2531112,
+        "raw": "接下来出什么？红桃Q",
+        "plain": "接下来出什么？红桃Q",
+        "display": "接下来出什么？红桃Q",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": false,
+        "changes": []
+      },
+      {
+        "id": 11,
+        "start": 2531655,
+        "end": 2534407,
+        "original_start": 2531655,
+        "original_end": 2534407,
+        "raw": "- 方块\\N- 方块 不好意思 我没牌可出",
+        "plain": "- 方块\n- 方块 不好意思 我没牌可出",
+        "display": "- 方块 - 方块 不好意思 我没牌可出",
+        "style": "Default",
+        "alignment": 2,
+        "position": null,
+        "top": false,
+        "multi_speaker": true,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 12,
+        "start": 2543124,
+        "end": 2544166,
+        "original_start": 2543124,
+        "original_end": 2544166,
+        "raw": "{\\an8}等一下",
+        "plain": "等一下",
+        "display": "等一下",
+        "style": "Default",
+        "alignment": 8,
+        "position": null,
+        "top": true,
+        "multi_speaker": false,
+        "changes": [
+          "markup_removed_or_newline_decoded"
+        ]
+      },
+      {
+        "id": 13,
+        "start": 2544167,
+        "end": 2547711,
+        "original_start": 2544167,
+        "original_end": 2547711,
+        "raw": "{\\an8}我们在伯然纳克小姐失踪时\\N得知了更多",
+        "plain": "我们在伯然纳克小姐失踪时\n得知了更多",
+        "display": "我们在伯然纳克小姐失踪时 得知了更多",
+        "style": "Default",
+        "alignment": 8,
+        "position": null,
+        "top": true,
+        "multi_speaker": false,
+        "changes": [
+          "markup_removed_or_newline_decoded",
+          "whitespace_flattened"
+        ]
+      },
+      {
+        "id": 14,
+        "start": 2547712,
+        "end": 2549630,
+        "original_start": 2547712,
+        "original_end": 2549630,
+        "raw": "{\\an8}关于她的报道的细节",
+        "plain": "关于她的报道的细节",
+        "display": "关于她的报道的细节",
+        "style": "Default",
+        "alignment": 8,
+        "position": null,
+        "top": true,
+        "multi_speaker": false,
+        "changes": [
+          "markup_removed_or_newline_decoded"
+        ]
+      }
+    ]
+  },
+  "mapping": {
+    "version": 1,
+    "groups": [
+      {
+        "en_ids": [
+          1,
+          2
+        ],
+        "zh_ids": [
+          1
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 1
+      },
+      {
+        "en_ids": [
+          3,
+          4,
+          5
+        ],
+        "zh_ids": [
+          2,
+          3,
+          4
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 5
+      },
+      {
+        "en_ids": [
+          6,
+          7
+        ],
+        "zh_ids": [
+          5
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 11
+      },
+      {
+        "en_ids": [
+          8
+        ],
+        "zh_ids": [
+          6
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 11
+      },
+      {
+        "en_ids": [
+          9
+        ],
+        "zh_ids": [
+          7
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 11
+      },
+      {
+        "en_ids": [
+          10
+        ],
+        "zh_ids": [
+          8
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 12
+      },
+      {
+        "en_ids": [
+          11,
+          12
+        ],
+        "zh_ids": [
+          9
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 12
+      },
+      {
+        "en_ids": [
+          13
+        ],
+        "zh_ids": [
+          10
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 12
+      },
+      {
+        "en_ids": [
+          14
+        ],
+        "zh_ids": [
+          11
+        ],
+        "layer": "bottom",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 12
+      },
+      {
+        "en_ids": [
+          15,
+          16,
+          17
+        ],
+        "zh_ids": [
+          12,
+          13,
+          14
+        ],
+        "layer": "top",
+        "origin": "model",
+        "kind": "dialogue",
+        "owner_window": 12
+      }
+    ],
+    "screen_plans": [
+      {
+        "en_ids": [
+          1,
+          2
+        ],
+        "zh_ids": [
+          1
+        ],
+        "screens": [
+          {
+            "en": "Watch her for me.",
+            "zh": "- 帮我看着她"
+          },
+          {
+            "en": "Wait, wait. Where the fuck are you going?",
+            "zh": "- 等等 你他妈的要去哪里？"
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          3,
+          4,
+          5
+        ],
+        "zh_ids": [
+          2,
+          3,
+          4
+        ],
+        "screens": [
+          {
+            "en": "Breaking news:",
+            "zh": "- 突发新闻"
+          },
+          {
+            "en": "- a local journalist has gone missing. - Fucking hell.",
+            "zh": "- 他妈的 - 有位本地记者失踪了"
+          },
+          {
+            "en": "- Raife? - Here's Erika with the story.",
+            "zh": "- 雷夫 由艾丽卡为大家报道"
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          6,
+          7
+        ],
+        "zh_ids": [
+          5
+        ],
+        "screens": [
+          {
+            "en": "- Yes, sir. - All right.",
+            "zh": "- 好的 -"
+          },
+          {
+            "en": "- I'll grab one, thanks. - Hey,",
+            "zh": "我去拿 谢谢"
+          }
+        ]
+      }
+    ],
+    "semantic_rechecks": [
+      {
+        "en_ids": [
+          3,
+          4,
+          5
+        ],
+        "zh_ids": [
+          2,
+          3,
+          4
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": [
+              "e2"
+            ],
+            "zh": [
+              "z1"
+            ]
+          },
+          {
+            "en": [
+              "e1"
+            ],
+            "zh": [
+              "z2"
+            ]
+          },
+          {
+            "en": [
+              "e3"
+            ],
+            "zh": [
+              "z3"
+            ]
+          },
+          {
+            "en": [
+              "e4"
+            ],
+            "zh": [
+              "z4"
+            ]
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          6,
+          7
+        ],
+        "zh_ids": [
+          5
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": [
+              "e1"
+            ],
+            "zh": null
+          },
+          {
+            "en": [
+              "e2"
+            ],
+            "zh": [
+              "z1"
+            ]
+          },
+          {
+            "en": [
+              "e3"
+            ],
+            "zh": null
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          8
+        ],
+        "zh_ids": [
+          6
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": null,
+            "zh": [
+              "z1"
+            ]
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          9
+        ],
+        "zh_ids": [
+          7
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": [
+              "e1"
+            ],
+            "zh": null
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          10
+        ],
+        "zh_ids": [
+          8
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": [
+              "e1"
+            ],
+            "zh": null
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          11,
+          12
+        ],
+        "zh_ids": [
+          9
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": null
+          },
+          {
+            "en": [
+              "e1",
+              "e2"
+            ],
+            "zh": [
+              "z0"
+            ]
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          13
+        ],
+        "zh_ids": [
+          10
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": [
+              "e1"
+            ],
+            "zh": null
+          }
+        ]
+      },
+      {
+        "en_ids": [
+          15,
+          16,
+          17
+        ],
+        "zh_ids": [
+          12,
+          13,
+          14
+        ],
+        "relations": [
+          {
+            "en": [
+              "e0"
+            ],
+            "zh": [
+              "z0"
+            ]
+          },
+          {
+            "en": [
+              "e3"
+            ],
+            "zh": [
+              "z1"
+            ]
+          },
+          {
+            "en": [
+              "e1"
+            ],
+            "zh": [
+              "z2"
+            ]
+          },
+          {
+            "en": [
+              "e2"
+            ],
+            "zh": [
+              "z3"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "words": {}
+}
