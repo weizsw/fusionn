@@ -232,6 +232,7 @@ func (p *BazarrSearchProcessor) checkAndSetSubtitle(ctx context.Context, pctx *P
 		log.Info(ctx, "subtitle_found", "Found Chinese subtitle from Bazarr", zap.String("path", subPath))
 		pctx.ChineseSubPath = subPath
 		pctx.ChineseSubSource = ChineseSourceBazarr
+		pctx.NeedsConversion = isTraditionalChinesePath(subPath)
 		return nil
 	}
 
@@ -242,6 +243,7 @@ func (p *BazarrSearchProcessor) checkAndSetSubtitle(ctx context.Context, pctx *P
 				log.Info(ctx, "subtitle_found", "Found Chinese subtitle from Bazarr API path", zap.String("path", s.Path))
 				pctx.ChineseSubPath = s.Path
 				pctx.ChineseSubSource = ChineseSourceBazarr
+				pctx.NeedsConversion = isTraditionalChinesePath(s.Path)
 				return nil
 			}
 			log.Debug(ctx, "subtitle_path_inaccessible", "Bazarr API subtitle path not accessible",
@@ -251,6 +253,14 @@ func (p *BazarrSearchProcessor) checkAndSetSubtitle(ctx context.Context, pctx *P
 
 	log.Info(ctx, "search_completed", "Bazarr search completed but subtitle file not found locally")
 	return nil
+}
+
+// isTraditionalChinesePath reports whether the file name carries a Traditional
+// Chinese language tag. Bazarr search runs when the video has no embedded
+// Chinese track, so this name is the only signal that the text needs OpenCC.
+func isTraditionalChinesePath(path string) bool {
+	name := strings.ToLower(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
+	return strings.HasSuffix(name, ".zh-tw") || strings.HasSuffix(name, ".zh-hant")
 }
 
 func (p *BazarrSearchProcessor) findChineseSidecar(ctx context.Context, videoPath string, log logger.Logger) string {

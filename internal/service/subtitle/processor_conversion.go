@@ -36,10 +36,13 @@ func (p *ConversionProcessor) ShouldRun(pctx *ProcessingContext) bool {
 	// Run if OpenCC is enabled and Chinese subtitle needs conversion. A merged
 	// path means the dual-language step already wrote the final subtitle, so
 	// converting the unused Chinese track would only be wasted work.
+	// A Bazarr file is not ours: Process deletes the original after converting,
+	// so a later merge failure would lose it; the LLM merger converts a copy.
 	return p.openccConfig.Enabled &&
 		pctx.ChineseSubPath != "" &&
 		pctx.MergedSubPath == "" &&
-		pctx.NeedsConversion
+		pctx.NeedsConversion &&
+		pctx.ChineseSubSource != ChineseSourceBazarr
 }
 
 // Process converts Traditional to Simplified Chinese. A conversion failure is

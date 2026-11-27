@@ -12,6 +12,34 @@ import (
 	"github.com/fusionn/internal/notification"
 )
 
+// A Traditional Bazarr file belongs to Bazarr: ConversionProcessor deletes the
+// original after converting, so it must not convert one. Extracted tracks are
+// our own temp file and keep converting.
+func TestConversionProcessorShouldRunSkipsBazarrSource(t *testing.T) {
+	processor := NewConversionProcessor(config.OpenCCConfig{Enabled: true, Config: "t2s.json"})
+	cases := []struct {
+		name   string
+		source string
+		want   bool
+	}{
+		{name: "bazarr", source: ChineseSourceBazarr, want: false},
+		{name: "extracted", source: ChineseSourceExtracted, want: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pctx := &ProcessingContext{
+				ChineseSubPath:   filepath.Join(t.TempDir(), "Episode.zh-TW.srt"),
+				ChineseSubSource: tc.source,
+				NeedsConversion:  true,
+			}
+			if got := processor.ShouldRun(pctx); got != tc.want {
+				t.Errorf("ShouldRun() = %v, want %v for source %q", got, tc.want, tc.source)
+			}
+		})
+	}
+}
+
 // The dual-language step already wrote the merged subtitle, so converting the
 // unused Chinese track would only be wasted work.
 func TestConversionProcessorSkipsWhenMergedSubPathSet(t *testing.T) {
